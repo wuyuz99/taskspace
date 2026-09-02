@@ -20,7 +20,6 @@ import (
 // on any machine.
 type stubRuntime struct{ stopped bool }
 
-func (s *stubRuntime) Name() string                    { return "stub" }
 func (s *stubRuntime) Available(context.Context) error { return nil }
 func (s *stubRuntime) SessionName(t string) string     { return "aw-" + t }
 func (s *stubRuntime) HasSession(context.Context, string) (bool, error) {

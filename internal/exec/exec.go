@@ -26,17 +26,6 @@ type Result struct {
 // every git and tmux call actually wants.
 func (r Result) Out() string { return strings.TrimSpace(r.Stdout) }
 
-// Lines returns non-empty trimmed stdout lines.
-func (r Result) Lines() []string {
-	var out []string
-	for _, ln := range strings.Split(r.Stdout, "\n") {
-		if ln = strings.TrimRight(ln, "\r"); ln != "" {
-			out = append(out, ln)
-		}
-	}
-	return out
-}
-
 // Runner executes a command in a working directory.
 //
 // A non-zero exit status is returned as an *ExitError, with Result still
@@ -71,15 +60,6 @@ func (e *ExitError) Error() string {
 func IsExit(err error) bool {
 	var ee *ExitError
 	return errors.As(err, &ee)
-}
-
-// ExitCode returns the exit code of err, or -1 if err is not an *ExitError.
-func ExitCode(err error) int {
-	var ee *ExitError
-	if errors.As(err, &ee) {
-		return ee.ExitCode
-	}
-	return -1
 }
 
 type real struct{}

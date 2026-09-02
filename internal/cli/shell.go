@@ -109,7 +109,9 @@ func (a *App) newExecCmd() *cobra.Command {
 			"order. Useful for the things you would otherwise do in each tab by hand:\n\n" +
 			"  aw exec checkout-redesign -- git push\n" +
 			"  aw exec checkout-redesign -- git status --short",
-		Args: cobra.MinimumNArgs(2),
+		// One arg, not two, so that a missing command produces our own message
+		// rather than cobra's "requires at least 2 arg(s)".
+		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			t, err := a.loadTask(args[0])
 			if err != nil {

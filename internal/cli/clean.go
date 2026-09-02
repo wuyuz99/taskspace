@@ -16,7 +16,6 @@ type cleanPlan struct {
 	Name     string
 	Repo     task.Repo
 	Present  bool
-	Status   awgit.Status
 	Blockers []string
 	Discard  awgit.Discardability
 }
@@ -122,7 +121,6 @@ func (a *App) inspectForClean(ctx context.Context, t *task.Task, wantBranchInfo 
 			return nil, fmt.Errorf("%s: %w", name, err)
 		}
 		p.Present = st.Exists
-		p.Status = st
 
 		if st.Exists {
 			if n := st.DirtyCount(); n > 0 {

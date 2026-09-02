@@ -45,8 +45,6 @@ func (s SessionState) Pane(window string) (PaneState, bool) {
 
 // Runtime manages persistent sessions.
 type Runtime interface {
-	// Name identifies the runtime in output and errors.
-	Name() string
 	// Available reports whether this runtime can be used at all.
 	Available(ctx context.Context) error
 	// SessionName maps a task name to this runtime's session identifier.

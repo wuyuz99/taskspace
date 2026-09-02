@@ -2,6 +2,7 @@ package status
 
 import (
 	"context"
+	"errors"
 	"os"
 	osexec "os/exec"
 	"path/filepath"
@@ -20,7 +21,6 @@ type fakeRuntime struct {
 	err   error
 }
 
-func (f *fakeRuntime) Name() string                    { return "fake" }
 func (f *fakeRuntime) Available(context.Context) error { return nil }
 func (f *fakeRuntime) SessionName(t string) string     { return "aw-" + t }
 func (f *fakeRuntime) HasSession(context.Context, string) (bool, error) {
@@ -142,9 +142,6 @@ func TestMissingWorktreeIsReportedNotFatal(t *testing.T) {
 	if got.Repos[0].Git != GitMissing {
 		t.Errorf("Git = %q, want missing", got.Repos[0].Git)
 	}
-	if got.Repos[0].GitSummary() != "missing" {
-		t.Errorf("GitSummary = %q, want missing", got.Repos[0].GitSummary())
-	}
 }
 
 func TestRowsAreOrderedByRepoName(t *testing.T) {
@@ -183,50 +180,6 @@ func TestAllSortsTasks(t *testing.T) {
 	}
 }
 
-func TestGitSummary(t *testing.T) {
-	cases := []struct {
-		name string
-		row  RepoStatus
-		want string
-	}{
-		{"clean", RepoStatus{Git: GitClean}, "clean"},
-		{"missing", RepoStatus{Git: GitMissing}, "missing"},
-		{"error", RepoStatus{Git: GitError}, "error"},
-		{
-			"one dirty file",
-			RepoStatus{Git: GitDirty, Detail: awgit.Status{Modified: 1}},
-			"dirty (1 file)",
-		},
-		{
-			"several dirty files",
-			RepoStatus{Git: GitDirty, Detail: awgit.Status{Modified: 2, Untracked: 1}},
-			"dirty (3 files)",
-		},
-		{
-			"clean but ahead",
-			RepoStatus{Git: GitClean, Detail: awgit.Status{Ahead: 2}},
-			"clean, ahead 2",
-		},
-		{
-			"stash only",
-			RepoStatus{Git: GitDirty, Detail: awgit.Status{Stashes: 1}},
-			"clean, 1 stash",
-		},
-		{
-			"everything at once",
-			RepoStatus{Git: GitDirty, Detail: awgit.Status{Modified: 1, Stashes: 2, Ahead: 1, Behind: 3}},
-			"dirty (1 file), 2 stashes, ahead 1, behind 3",
-		},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			if got := c.row.GitSummary(); got != c.want {
-				t.Errorf("GitSummary() = %q, want %q", got, c.want)
-			}
-		})
-	}
-}
-
 func TestAgentLabelFlowsThrough(t *testing.T) {
 	repo := initRepo(t)
 	tk := task.New("t")
@@ -241,5 +194,33 @@ func TestAgentLabelFlowsThrough(t *testing.T) {
 	}
 	if got.Repos[1].Agent != "shell" {
 		t.Errorf("Agent = %q, want shell for an agent-less repo", got.Repos[1].Agent)
+	}
+}
+
+// A runtime that cannot be queried must not be reported as "nothing running":
+// that would tell the user their agents are stopped when we simply do not know.
+func TestUnqueryableRuntimeIsUnknownNotNoSession(t *testing.T) {
+	repo := initRepo(t)
+	tk := task.New("t")
+	tk.SetRepo("backend", task.Repo{Worktree: repo, Branch: "main"})
+
+	broken := &fakeRuntime{
+		state: runtime.SessionState{Panes: map[string]runtime.PaneState{}},
+		err:   errors.New("no server running on /tmp/tmux-1000/default"),
+	}
+	got := New(awgit.New(awexec.Real()), broken).Task(context.Background(), tk)
+
+	if got.Repos[0].Runtime != RuntimeUnknown {
+		t.Errorf("Runtime = %q, want %q", got.Repos[0].Runtime, RuntimeUnknown)
+	}
+	if got.RuntimeErr == nil {
+		t.Error("RuntimeErr = nil; the reason must be available to explain the cell")
+	}
+	if got.Running {
+		t.Error("Running = true despite the runtime being unqueryable")
+	}
+	// Git state is independent and must still be reported.
+	if got.Repos[0].Git != GitClean {
+		t.Errorf("Git = %q, want clean; a runtime failure must not hide git state", got.Repos[0].Git)
 	}
 }

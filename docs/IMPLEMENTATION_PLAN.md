@@ -273,7 +273,17 @@ is the dominant cost of this command. We report only what we can observe.
 Semantic agent states (`waiting_for_input`, `blocked`) are not guessed.
 
 `internal/status` is the single choke point where a future notifier attaches.
-That is the only concession v0.1 makes to the eventual signaling feature.
+That is the only concession v0.1 makes to the eventual signaling feature — a
+structural one. There is no unused hook interface: a dead seam is not better
+than an obvious place to add one.
+
+Rendering (`dirty (3 files)`, `clean, ahead 2`) lives in `internal/cli`, not
+here. `status` reports observations; turning them into English is presentation,
+and cli is the only package allowed to do that.
+
+A runtime that cannot be queried reports `unknown`, never `no-session`. Telling
+a user nothing is running, when in truth tmux could not be reached, is a lie in
+the direction that costs them work.
 
 ---
 

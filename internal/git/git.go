@@ -194,15 +194,3 @@ func (g *Git) DeleteBranch(ctx context.Context, repo, branch string, force bool)
 	}
 	return nil
 }
-
-// CurrentBranch returns the checked-out branch of a worktree, or "" if detached.
-func (g *Git) CurrentBranch(ctx context.Context, dir string) (string, error) {
-	res, err := g.git(ctx, dir, "symbolic-ref", "--quiet", "--short", "HEAD")
-	if err != nil {
-		if awexec.IsExit(err) {
-			return "", nil
-		}
-		return "", err
-	}
-	return res.Out(), nil
-}

@@ -56,13 +56,7 @@ func (a *App) warnf(format string, args ...any) {
 }
 
 // loadTask is the common "resolve the task argument" step.
-func (a *App) loadTask(name string) (*task.Task, error) {
-	t, err := a.Store.Load(name)
-	if err != nil {
-		return nil, err
-	}
-	return t, nil
-}
+func (a *App) loadTask(name string) (*task.Task, error) { return a.Store.Load(name) }
 
 // Execute builds and runs the command tree.
 func Execute(ctx context.Context) int {

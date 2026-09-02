@@ -29,9 +29,6 @@ func NewTmux(r awexec.Runner) *Tmux {
 	return &Tmux{run: r, StopGrace: 2 * time.Second}
 }
 
-// Name implements Runtime.
-func (t *Tmux) Name() string { return "tmux" }
-
 func (t *Tmux) tmux(ctx context.Context, args ...string) (awexec.Result, error) {
 	return t.run.Run(ctx, "", append([]string{"tmux"}, args...)...)
 }

@@ -56,7 +56,7 @@ func (a *App) newStatusCmd() *cobra.Command {
 				for _, r := range ts.Repos {
 					empty = false
 					fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
-						r.Task, r.Repo, dash(r.Branch), r.Agent, r.Runtime, r.GitSummary())
+						r.Task, r.Repo, dash(r.Branch), r.Agent, r.Runtime, gitSummary(r))
 				}
 			}
 			if err := tw.Flush(); err != nil {
@@ -66,9 +66,12 @@ func (a *App) newStatusCmd() *cobra.Command {
 				a.printf("no repositories attached yet\n")
 			}
 
-			// Surface the reason behind any "error" cell; a bare label is not
-			// actionable.
+			// Surface the reason behind any "error" or "unknown" cell; a bare
+			// label is not actionable.
 			for _, ts := range results {
+				if ts.RuntimeErr != nil {
+					a.warnf("\n%s: runtime could not be queried: %v\n", ts.Task, ts.RuntimeErr)
+				}
 				for _, r := range ts.Repos {
 					if r.Err != nil {
 						a.warnf("\n%s/%s: %v\n", r.Task, r.Repo, r.Err)
@@ -78,6 +81,34 @@ func (a *App) newStatusCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// gitSummary renders the GIT column.
+//
+// This lives in cli, not status: status reports observations, and turning them
+// into English is presentation.
+func gitSummary(r status.RepoStatus) string {
+	switch r.Git {
+	case status.GitMissing:
+		return "missing"
+	case status.GitError:
+		return "error"
+	}
+
+	s := "clean"
+	if n := r.Detail.DirtyCount(); n > 0 {
+		s = fmt.Sprintf("dirty (%d file%s)", n, plural(n))
+	}
+	if r.Detail.Stashes > 0 {
+		s += fmt.Sprintf(", %d stash%s", r.Detail.Stashes, stashPlural(r.Detail.Stashes))
+	}
+	if r.Detail.Ahead > 0 {
+		s += fmt.Sprintf(", ahead %d", r.Detail.Ahead)
+	}
+	if r.Detail.Behind > 0 {
+		s += fmt.Sprintf(", behind %d", r.Detail.Behind)
+	}
+	return s
 }
 
 func runtimeLabel(ts status.TaskStatus) string {

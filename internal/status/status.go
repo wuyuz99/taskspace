@@ -7,7 +7,7 @@ package status
 
 import (
 	"context"
-	"fmt"
+
 	"sort"
 	"sync"
 
@@ -61,51 +61,14 @@ type RepoStatus struct {
 	Err error
 }
 
-// GitSummary renders the git column.
-func (r RepoStatus) GitSummary() string {
-	switch r.Git {
-	case GitMissing:
-		return "missing"
-	case GitError:
-		return "error"
-	}
-
-	s := "clean"
-	if n := r.Detail.DirtyCount(); n > 0 {
-		s = fmt.Sprintf("dirty (%d file%s)", n, plural(n))
-	}
-	if r.Detail.Stashes > 0 {
-		s += fmt.Sprintf(", %d stash%s", r.Detail.Stashes, stashPlural(r.Detail.Stashes))
-	}
-	if r.Detail.Ahead > 0 {
-		s += fmt.Sprintf(", ahead %d", r.Detail.Ahead)
-	}
-	if r.Detail.Behind > 0 {
-		s += fmt.Sprintf(", behind %d", r.Detail.Behind)
-	}
-	return s
-}
-
-func plural(n int) string {
-	if n == 1 {
-		return ""
-	}
-	return "s"
-}
-
-func stashPlural(n int) string {
-	if n == 1 {
-		return ""
-	}
-	return "es"
-}
-
 // TaskStatus is a task and its repositories.
 type TaskStatus struct {
 	Task    string
 	Session string
 	Running bool
 	Repos   []RepoStatus
+	// RuntimeErr is set when the runtime could not be queried at all.
+	RuntimeErr error
 }
 
 // Aggregator collects status across git and the runtime.
@@ -127,13 +90,20 @@ func (a *Aggregator) Task(ctx context.Context, t *task.Task) TaskStatus {
 	out := TaskStatus{Task: t.Name}
 
 	var sess runtime.SessionState
+	// A runtime we could not query is not the same as a runtime with nothing
+	// running. Reporting a broken tmux server as "no-session" would tell the
+	// user their agents are stopped when we simply do not know.
+	runtimeUnknown := a.Runtime == nil
 	if a.Runtime != nil {
 		out.Session = a.Runtime.SessionName(t.Name)
-		if st, err := a.Runtime.State(ctx, out.Session); err == nil {
+		st, err := a.Runtime.State(ctx, out.Session)
+		if err != nil {
+			runtimeUnknown = true
+			out.RuntimeErr = err
+			sess = runtime.SessionState{Panes: map[string]runtime.PaneState{}}
+		} else {
 			sess = st
 			out.Running = st.Exists
-		} else {
-			sess = runtime.SessionState{Panes: map[string]runtime.PaneState{}}
 		}
 	}
 
@@ -147,7 +117,7 @@ func (a *Aggregator) Task(ctx context.Context, t *task.Task) TaskStatus {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			rows[i] = a.repoStatus(ctx, t.Name, name, repo, sess)
+			rows[i] = a.repoStatus(ctx, t.Name, name, repo, sess, runtimeUnknown)
 		}()
 	}
 	wg.Wait()
@@ -156,7 +126,7 @@ func (a *Aggregator) Task(ctx context.Context, t *task.Task) TaskStatus {
 	return out
 }
 
-func (a *Aggregator) repoStatus(ctx context.Context, taskName, repoName string, r task.Repo, sess runtime.SessionState) RepoStatus {
+func (a *Aggregator) repoStatus(ctx context.Context, taskName, repoName string, r task.Repo, sess runtime.SessionState, runtimeUnknown bool) RepoStatus {
 	row := RepoStatus{
 		Task:    taskName,
 		Repo:    repoName,
@@ -167,7 +137,7 @@ func (a *Aggregator) repoStatus(ctx context.Context, taskName, repoName string, 
 	}
 
 	switch {
-	case a.Runtime == nil:
+	case runtimeUnknown:
 		row.Runtime = RuntimeUnknown
 	case !sess.Exists:
 		row.Runtime = RuntimeNoSession

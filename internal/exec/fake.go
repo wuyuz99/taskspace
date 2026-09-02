@@ -37,17 +37,17 @@ type handler struct {
 // NewFake returns an empty Fake.
 func NewFake() *Fake { return &Fake{} }
 
-// Respond makes any command whose argv contains match return res.
-func (f *Fake) Respond(match string, res Result) *Fake {
+// respond makes any command whose argv contains match return res.
+func (f *Fake) respond(match string, res Result) *Fake {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.handlers = append(f.handlers, handler{match: match, res: res})
 	return f
 }
 
-// RespondOut is Respond with only stdout set.
+// RespondOut scripts a command to succeed with the given stdout.
 func (f *Fake) RespondOut(match, stdout string) *Fake {
-	return f.Respond(match, Result{Stdout: stdout})
+	return f.respond(match, Result{Stdout: stdout})
 }
 
 // Fail makes any command whose argv contains match exit non-zero with stderr.
