@@ -221,6 +221,11 @@ go build -o aw ./cmd/aw
 scripts/e2e.sh ./aw
 ```
 
+To try it by hand, `scripts/demo.sh` builds a two-repo playground rigged to fail
+the way real projects do — the backend needs a gitignored `.env`, and the
+frontend reads `../backend/api.json`, so it only works if the repos are
+siblings. It prints a walkthrough, and `scripts/demo.sh --clean` removes it.
+
 **Developing on Windows** (the tool is Unix-only, but you can build it there):
 cross-compile and run under WSL.
 

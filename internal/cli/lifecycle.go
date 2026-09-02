@@ -53,7 +53,7 @@ func (a *App) newStartCmd() *cobra.Command {
 				}
 
 				if res.Created {
-					if err := a.runPostCreate(ctx, name, r); err != nil {
+					if err := a.runPostCreate(ctx, t, name, r); err != nil {
 						// A half-provisioned worktree the user can inspect beats
 						// destroying one, so this is a warning, not a rollback.
 						a.warnf("%-12s post_create failed: %v\n", name, err)
@@ -103,7 +103,14 @@ func (a *App) newStartCmd() *cobra.Command {
 //
 // A fresh worktree has no .env, node_modules or venv. Without this hook the
 // tool is not usable on a real project on the first try.
-func (a *App) runPostCreate(ctx context.Context, name string, r task.Repo) error {
+//
+// The hook gets AW_REPO_PATH pointing at the source repository. Without it the
+// only way to reach the original checkout is a relative path back out of the
+// worktree, whose depth depends on where AW_ROOT is — so such a hook silently
+// breaks for anyone who moves their state directory. Prefer:
+//
+//	cp "$AW_REPO_PATH/.env" .
+func (a *App) runPostCreate(ctx context.Context, t *task.Task, name string, r task.Repo) error {
 	if r.PostCreate == "" {
 		return nil
 	}
@@ -112,6 +119,13 @@ func (a *App) runPostCreate(ctx context.Context, name string, r task.Repo) error
 	cmd := osexec.CommandContext(ctx, "sh", "-c", r.PostCreate)
 	cmd.Dir = r.Worktree
 	cmd.Stdout, cmd.Stderr = a.Out, a.Err
+	cmd.Env = append(os.Environ(),
+		"AW_TASK="+t.Name,
+		"AW_REPO="+name,
+		"AW_REPO_PATH="+r.Path,
+		"AW_WORKTREE="+r.Worktree,
+		"AW_TASK_DIR="+a.Store.TaskDir(t.Name),
+	)
 	return cmd.Run()
 }
 

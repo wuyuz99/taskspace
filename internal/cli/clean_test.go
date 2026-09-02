@@ -277,3 +277,37 @@ func TestPathPrintsOnlyThePath(t *testing.T) {
 		t.Errorf("path printed %q, want exactly %q", got, want)
 	}
 }
+
+// The hook must be able to reach its source repository without a relative path
+// out of the worktree: that depth depends on where AW_ROOT is, so such a hook
+// silently breaks for anyone who moves their state directory.
+func TestPostCreateHookGetsRepoPathInEnvironment(t *testing.T) {
+	h := newHarness(t)
+	if _, err := h.app.Store.Create("hook-task"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newRepoCmd(), "add", "hook-task", h.repo,
+		"--post-create", `printf '%s\n' "$AW_REPO_PATH" > hook-saw.txt`); err != nil {
+		t.Fatalf("repo add: %v", err)
+	}
+	if err := h.exec(t, h.app.newStartCmd(), "hook-task", "--no-runtime"); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+
+	tk, err := h.app.Store.Load("hook-task")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wt string
+	for _, n := range tk.RepoNames() {
+		wt = tk.Repos[n].Worktree
+	}
+
+	got, err := os.ReadFile(filepath.Join(wt, "hook-saw.txt"))
+	if err != nil {
+		t.Fatalf("hook did not run: %v", err)
+	}
+	if strings.TrimSpace(string(got)) != h.repo {
+		t.Errorf("AW_REPO_PATH = %q, want %q", strings.TrimSpace(string(got)), h.repo)
+	}
+}
