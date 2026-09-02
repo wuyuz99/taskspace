@@ -1,0 +1,257 @@
+package runtime
+
+import (
+	"context"
+	"strings"
+	"testing"
+
+	awexec "github.com/aw-tool/aw/internal/exec"
+)
+
+func ctx() context.Context { return context.Background() }
+
+func TestSessionNameSanitizesTmuxTargetSyntax(t *testing.T) {
+	tm := NewTmux(awexec.NewFake())
+	cases := map[string]string{
+		"checkout-redesign": "aw-checkout-redesign",
+		// '.' and ':' are tmux target syntax; leaving them in breaks every -t.
+		"checkout.redesign": "aw-checkout-redesign",
+		"payments_fix":      "aw-payments_fix",
+		"weird name":        "aw-weird-name",
+	}
+	for in, want := range cases {
+		if got := tm.SessionName(in); got != want {
+			t.Errorf("SessionName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// Prefix matching would make "aw-pay" select the session "aw-payments-fix".
+// Every target we build must be an exact match.
+func TestTargetsUseExactMatchPrefix(t *testing.T) {
+	f := awexec.NewFake()
+	tm := NewTmux(f)
+	if _, err := tm.HasSession(ctx(), "aw-pay"); err != nil {
+		t.Fatalf("HasSession: %v", err)
+	}
+	cmds := f.Commands()
+	if len(cmds) != 1 {
+		t.Fatalf("commands = %v, want one", cmds)
+	}
+	if !strings.Contains(cmds[0], "-t =aw-pay") {
+		t.Errorf("command = %q, want an exact-match target '=aw-pay'", cmds[0])
+	}
+}
+
+func TestStartCreatesSessionThenWindows(t *testing.T) {
+	f := awexec.NewFake()
+	f.Fail("has-session", "no server running", 1)
+	tm := NewTmux(f)
+	tm.Shell = "/bin/bash"
+
+	windows := []Window{
+		{Name: "backend", Dir: "/wt/task/backend", Command: []string{"claude"}},
+		{Name: "frontend", Dir: "/wt/task/frontend", Command: []string{"codex", "--flag"}},
+		{Name: "infra", Dir: "/wt/task/infra"},
+	}
+	if err := tm.Start(ctx(), "aw-task", windows); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	cmds := strings.Join(f.Commands(), "\n")
+
+	if !strings.Contains(cmds, "new-session -d -s aw-task -n backend -c /wt/task/backend claude") {
+		t.Errorf("missing correct new-session; got:\n%s", cmds)
+	}
+	if !strings.Contains(cmds, "new-window -d -t =aw-task -n frontend -c /wt/task/frontend codex --flag") {
+		t.Errorf("missing correct new-window for frontend; got:\n%s", cmds)
+	}
+	// A window with no agent gets an interactive shell.
+	if !strings.Contains(cmds, "new-window -d -t =aw-task -n infra -c /wt/task/infra /bin/bash") {
+		t.Errorf("agent-less window did not launch a shell; got:\n%s", cmds)
+	}
+	// Without remain-on-exit, a crashed agent's traceback disappears with the window.
+	if strings.Count(cmds, "remain-on-exit on") != 3 {
+		t.Errorf("remain-on-exit not set on every window; got:\n%s", cmds)
+	}
+}
+
+func TestStartReusesExistingSessionAndAddsOnlyMissingWindows(t *testing.T) {
+	f := awexec.NewFake()
+	f.RespondOut("list-panes", "backend\t0\tclaude\n")
+	tm := NewTmux(f)
+
+	windows := []Window{
+		{Name: "backend", Dir: "/wt/backend", Command: []string{"claude"}},
+		{Name: "frontend", Dir: "/wt/frontend", Command: []string{"codex"}},
+	}
+	if err := tm.Start(ctx(), "aw-task", windows); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	cmds := strings.Join(f.Commands(), "\n")
+
+	if strings.Contains(cmds, "new-session") {
+		t.Errorf("Start recreated an existing session; got:\n%s", cmds)
+	}
+	// backend is already running: recreating it would kill the agent.
+	if strings.Contains(cmds, "-n backend") {
+		t.Errorf("Start recreated the running backend window; got:\n%s", cmds)
+	}
+	if !strings.Contains(cmds, "-n frontend") {
+		t.Errorf("Start did not add the missing frontend window; got:\n%s", cmds)
+	}
+}
+
+func TestStartRejectsEmptyWindowList(t *testing.T) {
+	tm := NewTmux(awexec.NewFake())
+	if err := tm.Start(ctx(), "aw-task", nil); err == nil {
+		t.Fatal("Start with no windows = nil, want error")
+	}
+}
+
+func TestStopInterruptsBeforeKilling(t *testing.T) {
+	f := awexec.NewFake()
+	f.RespondOut("list-panes", "backend\t0\tclaude\nfrontend\t0\tcodex\n")
+	tm := NewTmux(f)
+	tm.StopGrace = 0 // keep the test fast; ordering is what matters
+
+	if err := tm.Stop(ctx(), "aw-task"); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+	cmds := f.Commands()
+	joined := strings.Join(cmds, "\n")
+
+	if strings.Count(joined, "send-keys") != 2 {
+		t.Errorf("want C-c to each live window; got:\n%s", joined)
+	}
+	if !strings.Contains(joined, "send-keys -t =aw-task:backend C-c") {
+		t.Errorf("missing interrupt for backend; got:\n%s", joined)
+	}
+	if !strings.Contains(joined, "kill-session -t =aw-task") {
+		t.Errorf("missing kill-session; got:\n%s", joined)
+	}
+
+	var lastSend, kill int
+	for i, c := range cmds {
+		if strings.Contains(c, "send-keys") {
+			lastSend = i
+		}
+		if strings.Contains(c, "kill-session") {
+			kill = i
+		}
+	}
+	if kill < lastSend {
+		t.Errorf("kill-session ran before the interrupts; got:\n%s", joined)
+	}
+}
+
+func TestStopOnMissingSessionIsANoOp(t *testing.T) {
+	f := awexec.NewFake()
+	f.Fail("has-session", "can't find session", 1)
+	tm := NewTmux(f)
+
+	if err := tm.Stop(ctx(), "aw-gone"); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+	if f.Ran("kill-session") {
+		t.Errorf("Stop killed something despite no session; got: %v", f.Commands())
+	}
+}
+
+func TestStopSkipsDeadPanes(t *testing.T) {
+	f := awexec.NewFake()
+	f.RespondOut("list-panes", "backend\t1\tclaude\nfrontend\t0\tcodex\n")
+	tm := NewTmux(f)
+	tm.StopGrace = 0
+
+	if err := tm.Stop(ctx(), "aw-task"); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+	joined := strings.Join(f.Commands(), "\n")
+	if strings.Contains(joined, "=aw-task:backend C-c") {
+		t.Errorf("interrupted an already-dead pane; got:\n%s", joined)
+	}
+	if !strings.Contains(joined, "=aw-task:frontend C-c") {
+		t.Errorf("did not interrupt the live pane; got:\n%s", joined)
+	}
+}
+
+func TestStateUsesFormatStringsNotHumanOutput(t *testing.T) {
+	f := awexec.NewFake()
+	f.RespondOut("list-panes", "backend\t0\tclaude\nfrontend\t1\tbash\n")
+	tm := NewTmux(f)
+
+	st, err := tm.State(ctx(), "aw-task")
+	if err != nil {
+		t.Fatalf("State: %v", err)
+	}
+	if !st.Exists {
+		t.Fatal("Exists = false, want true")
+	}
+	if len(st.Panes) != 2 {
+		t.Fatalf("Panes = %+v, want 2", st.Panes)
+	}
+	if p, _ := st.Pane("backend"); p.Dead {
+		t.Error("backend reported dead, want alive")
+	}
+	if p, _ := st.Pane("frontend"); !p.Dead {
+		t.Error("frontend reported alive, want dead")
+	}
+	if !strings.Contains(strings.Join(f.Commands(), "\n"), "-F #{window_name}") {
+		t.Error("State did not request a format string")
+	}
+}
+
+func TestStateOnMissingSession(t *testing.T) {
+	f := awexec.NewFake()
+	f.Fail("has-session", "can't find session", 1)
+	tm := NewTmux(f)
+
+	st, err := tm.State(ctx(), "aw-gone")
+	if err != nil {
+		t.Fatalf("State: %v", err)
+	}
+	if st.Exists {
+		t.Error("Exists = true for a missing session")
+	}
+	if len(st.Panes) != 0 {
+		t.Errorf("Panes = %+v, want empty", st.Panes)
+	}
+}
+
+// A user splitting a window to probe something must not make the agent look
+// dead, so a window is alive if any of its panes is alive.
+func TestParsePanesCollapsesSplitsOptimistically(t *testing.T) {
+	panes := parsePanes("backend\t1\tclaude\nbackend\t0\tbash\n")
+	if len(panes) != 1 {
+		t.Fatalf("panes = %+v, want 1 window", panes)
+	}
+	if panes["backend"].Dead {
+		t.Error("window reported dead although one pane is alive")
+	}
+
+	allDead := parsePanes("backend\t1\tclaude\nbackend\t1\tbash\n")
+	if !allDead["backend"].Dead {
+		t.Error("window with only dead panes reported alive")
+	}
+}
+
+func TestParsePanesIgnoresMalformedLines(t *testing.T) {
+	panes := parsePanes("\nbackend\n\nfrontend\t0\tcodex\n")
+	if len(panes) != 1 {
+		t.Fatalf("panes = %+v, want only the well-formed line", panes)
+	}
+	if _, ok := panes["frontend"]; !ok {
+		t.Error("well-formed line was dropped")
+	}
+}
+
+func TestLaunchArgvFallsBackToShell(t *testing.T) {
+	tm := NewTmux(awexec.NewFake())
+	tm.Shell = "/bin/zsh"
+	if got := tm.launchArgv(Window{Name: "infra"}); len(got) != 1 || got[0] != "/bin/zsh" {
+		t.Errorf("launchArgv = %v, want [/bin/zsh]", got)
+	}
+	if got := tm.launchArgv(Window{Name: "backend", Command: []string{"claude", "-p"}}); strings.Join(got, " ") != "claude -p" {
+		t.Errorf("launchArgv = %v, want [claude -p]", got)
+	}
+}

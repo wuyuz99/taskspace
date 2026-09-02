@@ -1,0 +1,97 @@
+// Package runtime owns persistent terminal sessions.
+//
+// tmux is the only implementation in v0.1, but the interface is sized so that
+// zellij or a plain detached subprocess can be added without the rest of aw
+// learning about them. Nothing outside this package should know what tmux is.
+package runtime
+
+import (
+	"context"
+	"strings"
+)
+
+// Window is one pane's worth of work: a named shell in a directory, optionally
+// running a command.
+type Window struct {
+	Name string
+	Dir  string
+	// Command is the agent argv. Empty means the user's interactive shell.
+	Command []string
+}
+
+// PaneState is what we can actually observe about a running window.
+//
+// It deliberately stops at "is the process still alive". Semantic states like
+// "waiting for input" are not knowable from tmux, and guessing them would make
+// the status output untrustworthy.
+type PaneState struct {
+	Window  string
+	Dead    bool
+	Command string
+}
+
+// SessionState is the observed state of one task's session.
+type SessionState struct {
+	Name   string
+	Exists bool
+	Panes  map[string]PaneState
+}
+
+// Pane returns the state of a named window.
+func (s SessionState) Pane(window string) (PaneState, bool) {
+	p, ok := s.Panes[window]
+	return p, ok
+}
+
+// Runtime manages persistent sessions.
+type Runtime interface {
+	// Name identifies the runtime in output and errors.
+	Name() string
+	// Available reports whether this runtime can be used at all.
+	Available(ctx context.Context) error
+	// SessionName maps a task name to this runtime's session identifier.
+	SessionName(task string) string
+	// HasSession reports whether a session exists.
+	HasSession(ctx context.Context, session string) (bool, error)
+	// Start creates the session if absent and ensures every window exists.
+	Start(ctx context.Context, session string, windows []Window) error
+	// OpenWindow adds one window to an existing session.
+	OpenWindow(ctx context.Context, session string, w Window) error
+	// Stop ends the session, giving processes a chance to exit cleanly first.
+	Stop(ctx context.Context, session string) error
+	// Attach hands the terminal over to the session.
+	Attach(ctx context.Context, session string) error
+	// State reports what is observably running.
+	State(ctx context.Context, session string) (SessionState, error)
+}
+
+// WindowName returns the window identifier a repo is given, so that callers
+// outside this package (status, in particular) can look a repo's pane back up
+// without duplicating the sanitizing rules.
+func WindowName(repo string) string { return sanitize(repo) }
+
+// sanitize makes a string safe to use as a session or window identifier.
+//
+// tmux reads '.' and ':' as target syntax (session:window.pane), so a task
+// named "checkout.redesign" would break every -t argument we construct. Task
+// names permit dots because repositories legitimately have them, so the
+// substitution happens here instead.
+//
+// Two names differing only in the substituted characters collapse to the same
+// session ("a.b" and "a-b"). That is accepted: it needs an unusual pair of task
+// names, and the alternative is banning dots outright.
+func sanitize(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == '-' || r == '_':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('-')
+		}
+	}
+	return b.String()
+}
