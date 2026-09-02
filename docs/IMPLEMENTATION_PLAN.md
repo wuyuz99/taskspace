@@ -312,5 +312,20 @@ WSL. End-to-end runs use a `GOOS=linux` build of the binary in the same way.
 - No notifications; only the structural choke point for them.
 - `.context/` location reserved but unimplemented.
 - Single configuration knob (`AW_ROOT`); no config file system yet.
+- Session names collapse `.` to `-`, so tasks named `a.b` and `a-b` would map to
+  one session. Accepted over banning dots from task names.
 - The module path `github.com/aw-tool/aw` is a placeholder pending a decision on
   where this repository lives.
+
+### Deviation: `aw shell` opens a subshell
+
+`task.md` specifies that `aw shell` should open a new tmux window in the task's
+session when the runtime is up, and fall back to a subshell otherwise. It opens
+a plain subshell in the worktree, always.
+
+The conditional version behaves differently depending on where it is run from —
+creating a window you cannot see if you are outside tmux, and needing a new
+`OpenWindowHere` method on the Runtime interface that zellij would then have to
+implement. A subshell in the right directory solves the actual complaint ("I
+navigate there by hand every time") in every context, and `aw path` composes for
+anything more elaborate. Revisit if using it proves otherwise.
