@@ -135,12 +135,25 @@ A new worktree has your tracked files and nothing else. No `.env`, no
 
 ```bash
 aw repo add checkout-redesign ~/src/backend \
-  --post-create 'cp ../../.env . && pnpm install'
+  --post-create 'cp "$AW_REPO_PATH/.env" . && pnpm install'
 ```
 
-The hook runs once, in the new worktree, the first time it is created. If it
-fails you get a warning and a worktree you can inspect — `aw` will not delete
-your worktree because a provisioning step failed.
+The hook runs once, in the new worktree, the first time it is created, with
+these variables set:
+
+| Variable | Value |
+| --- | --- |
+| `AW_REPO_PATH` | the source repository the worktree came from |
+| `AW_WORKTREE` | the new worktree (also the working directory) |
+| `AW_TASK_DIR` | the task's workspace directory, parent of every repo |
+| `AW_TASK`, `AW_REPO` | the task and repo names |
+
+Use `$AW_REPO_PATH` rather than a relative path like `../../../src/backend`.
+How many `..` you need depends on where `AW_ROOT` is, so a relative hook breaks
+for anyone who moves their state directory.
+
+If the hook fails you get a warning and a worktree you can inspect — `aw` will
+not delete your worktree because a provisioning step failed.
 
 ## Status
 
