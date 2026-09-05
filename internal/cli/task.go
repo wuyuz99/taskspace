@@ -15,23 +15,33 @@ func (a *App) newTaskCmd() *cobra.Command {
 		Short: "Create, list, inspect and remove tasks",
 	}
 	cmd.AddCommand(a.newTaskCreateCmd(), a.newTaskListCmd(), a.newTaskShowCmd(), a.newTaskRmCmd())
+	cmd.AddCommand(a.newTaskUpdateCmd(), a.newTaskNoteCmd(false), a.newTaskNoteCmd(true))
 	return cmd
 }
 
 func (a *App) newTaskCreateCmd() *cobra.Command {
 	var repos []string
+	var details taskDetails
 
 	cmd := &cobra.Command{
 		Use:   "create NAME",
 		Short: "Create a task",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			brief, err := details.readBrief()
+			if err != nil {
+				return err
+			}
 			name := args[0]
 			t, err := a.Store.Create(name)
 			if err != nil {
 				return err
 			}
 			a.printf("created task %s\n", name)
+			details.apply(cmd, t, brief)
+			if err := a.Store.Save(t); err != nil {
+				return err
+			}
 
 			// --repo name=path is sugar for a following `aw repo add`.
 			for _, spec := range repos {
@@ -51,6 +61,7 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 	}
 	cmd.Flags().StringArrayVar(&repos, "repo", nil,
 		"attach a repository as name=path (repeatable)")
+	details.flags(cmd)
 	return cmd
 }
 
@@ -71,14 +82,10 @@ func (a *App) newTaskListCmd() *cobra.Command {
 			}
 
 			tw := tabwriter.NewWriter(a.Out, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(tw, "TASK\tREPOS")
+			fmt.Fprintln(tw, "WORKSPACE\tTICKET\tTITLE\tLOCAL SUMMARY\tUPDATED (UTC)\tREPOS")
 			for _, t := range tasks {
 				names := t.RepoNames()
-				if len(names) == 0 {
-					fmt.Fprintf(tw, "%s\t-\n", t.Name)
-					continue
-				}
-				fmt.Fprintf(tw, "%s\t%s\n", t.Name, joinNames(names))
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", t.Name, dash(t.Ticket), dash(oneLine(t.Title)), dash(noteSummary(t.Handoff)), handoffTime(t), dash(joinNames(names)))
 			}
 			return tw.Flush()
 		},
@@ -99,6 +106,7 @@ func (a *App) newTaskShowCmd() *cobra.Command {
 			a.printf("task:     %s\n", t.Name)
 			a.printf("session:  %s\n", a.Runtime.SessionName(t.Name))
 			a.printf("workspace: %s\n", a.Store.TaskDir(t.Name))
+			a.printTaskContext(t)
 			if len(t.Repos) == 0 {
 				a.printf("\nno repositories yet; add one with:\n  aw repo add %s PATH\n", t.Name)
 				return nil

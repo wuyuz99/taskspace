@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"github.com/aw-tool/aw/internal/task"
 	"os"
 	osexec "os/exec"
 
@@ -10,7 +11,8 @@ import (
 )
 
 func (a *App) newShellCmd() *cobra.Command {
-	return &cobra.Command{
+	var root bool
+	cmd := &cobra.Command{
 		Use:   "shell TASK [REPO]",
 		Short: "Open an interactive shell in a task's worktree",
 		Long: "shell starts your shell in the worktree, with the terminal tab labelled.\n" +
@@ -27,18 +29,35 @@ func (a *App) newShellCmd() *cobra.Command {
 			if len(args) == 2 {
 				repoArg = args[1]
 			}
-			r, name, err := a.worktreeDir(t, repoArg)
+			if root && repoArg != "" {
+				return fmt.Errorf("--root cannot be combined with a repository")
+			}
+			var r task.Repo
+			var name string
+			if root {
+				r.Worktree = a.Store.TaskDir(t.Name)
+				if err := os.MkdirAll(r.Worktree, 0755); err != nil {
+					return err
+				}
+			} else {
+				r, name, err = a.worktreeDir(t, repoArg)
+			}
 			if err != nil {
 				return err
 			}
 
-			setTitle(a.Out, fmt.Sprintf("aw: %s/%s", t.Name, name), a.noTitle)
+			label := t.Name
+			if name != "" {
+				label += "/" + name
+			}
+			setTitle(a.Out, "aw: "+label, a.noTitle)
+			a.printTaskContext(t)
 
 			sh := os.Getenv("SHELL")
 			if sh == "" {
 				sh = "/bin/sh"
 			}
-			a.warnf("aw: %s/%s in %s\n", t.Name, name, r.Worktree)
+			a.warnf("aw: %s in %s\n", label, r.Worktree)
 
 			shell := osexec.CommandContext(cmd.Context(), sh)
 			shell.Dir = r.Worktree
@@ -47,6 +66,7 @@ func (a *App) newShellCmd() *cobra.Command {
 				"AW_TASK="+t.Name,
 				"AW_REPO="+name,
 				"AW_WORKTREE="+r.Worktree,
+				"AW_TASK_DIR="+a.Store.TaskDir(t.Name),
 			)
 			if err := shell.Run(); err != nil {
 				// A shell exiting non-zero is how shells exit; it is not an aw error.
@@ -59,10 +79,13 @@ func (a *App) newShellCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&root, "root", false, "open the task directory, creating it if needed; no worktrees or agents are started")
+	return cmd
 }
 
 func (a *App) newPathCmd() *cobra.Command {
-	return &cobra.Command{
+	var root bool
+	cmd := &cobra.Command{
 		Use:   "path TASK [REPO]",
 		Short: "Print a worktree path",
 		Long: "path prints the worktree path and nothing else, so it composes:\n\n" +
@@ -79,6 +102,13 @@ func (a *App) newPathCmd() *cobra.Command {
 			}
 			// Deliberately not worktreeDir: printing a path should work even
 			// before `aw start` has created it.
+			if root {
+				if repoArg != "" {
+					return fmt.Errorf("--root cannot be combined with a repository")
+				}
+				a.printf("%s\n", a.Store.TaskDir(t.Name))
+				return nil
+			}
 			names := t.RepoNames()
 			if len(names) == 0 {
 				return fmt.Errorf("task %q has no repositories", t.Name)
@@ -97,6 +127,8 @@ func (a *App) newPathCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&root, "root", false, "print the task directory, even before it exists")
+	return cmd
 }
 
 func (a *App) newExecCmd() *cobra.Command {

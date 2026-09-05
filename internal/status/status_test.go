@@ -23,10 +23,12 @@ type fakeRuntime struct {
 
 func (f *fakeRuntime) Available(context.Context) error { return nil }
 func (f *fakeRuntime) SessionName(t string) string     { return "aw-" + t }
+func (f *fakeRuntime) WindowName(repo string) string   { return repo }
 func (f *fakeRuntime) HasSession(context.Context, string) (bool, error) {
 	return f.state.Exists, nil
 }
 func (f *fakeRuntime) Start(context.Context, string, []runtime.Window) error { return nil }
+func (f *fakeRuntime) Restart(context.Context, string, runtime.Window) error { return nil }
 func (f *fakeRuntime) OpenWindow(context.Context, string, runtime.Window) error {
 	return nil
 }
@@ -42,6 +44,20 @@ func session(panes map[string]runtime.PaneState) *fakeRuntime {
 
 func noSession() *fakeRuntime {
 	return &fakeRuntime{state: runtime.SessionState{Panes: map[string]runtime.PaneState{}}}
+}
+
+type alternateNamingRuntime struct{ *fakeRuntime }
+
+func (f *alternateNamingRuntime) WindowName(repo string) string { return "custom/" + repo }
+
+func TestStatusUsesBackendWindowIdentity(t *testing.T) {
+	tk := task.New("t")
+	tk.SetRepo("api.v1", task.Repo{Worktree: filepath.Join(t.TempDir(), "missing")})
+	rt := &alternateNamingRuntime{session(map[string]runtime.PaneState{"custom/api.v1": {Dead: false}})}
+	got := New(awgit.New(awexec.Real()), rt).Task(context.Background(), tk)
+	if got.Repos[0].Runtime != RuntimeRunning {
+		t.Fatalf("backend naming ignored: %+v", got)
+	}
 }
 
 func initRepo(t *testing.T) string {

@@ -2,7 +2,7 @@
 
 > **Worktrees are per-repository. Features aren't.**
 
-`aw` manages multi-repo, multi-worktree coding-agent tasks.
+`aw` manages named development workspaces across repositories, with optional coding-agent commands.
 
 > **Early-stage project.** v0.1, Unix-only, and the command surface will change.
 > It is usable on real repositories today — that was the point of the first
@@ -90,7 +90,48 @@ aw stop checkout-redesign
 aw clean checkout-redesign
 ```
 
-## Core concepts
+## Human-readable task context
+
+A workspace can be named after a ticket, or use any ordinary task name.
+No ticket key, URL, Jira connection, or account is required.
+
+```bash
+aw task create PAY-142 --title "Handle expired cards during checkout"
+aw task brief PAY-142 "Reject expired cards and show an inline error."
+aw task handoff PAY-142 "Backend validation done; connect the frontend next."
+aw task list
+aw task show PAY-142
+```
+
+Keep requirements and acceptance criteria in the **brief**, and local progress,
+next steps, validation commands, and open questions in the **handoff**. Handoff
+updates are timestamped in UTC; summaries are written by you or your agent,
+not inferred from Git or process activity. `task list` shows the title and the
+first non-heading line of the handoff (up to 90 characters), plus its timestamp.
+`attach` and `shell` print the full context before handing over the terminal.
+
+For longer Markdown notes, use your editor and import/export files:
+
+```bash
+aw task brief PAY-142 --file brief.md
+aw task handoff PAY-142 --file handoff.md
+aw task brief PAY-142 > brief-copy.md
+aw task handoff PAY-142 --clear
+aw task update PAY-142 --title "Validate expired payment cards"
+```
+
+Notes are stored in the task JSON record, survive `aw clean`, and are deleted
+with `aw task rm`. Imported files are copied into the record, not linked or
+automatically synchronized. Updating a handoff never changes the brief.
+
+Optional `--ticket PAY-142` and `--ticket-url https://example.com/browse/PAY-142`
+flags on `task create` and `task update` record ticket metadata locally.
+Multiple differently named workspaces can reference the same ticket. Empty
+values on `task update` clear those fields. `--brief-file` is also available
+on create/update. Jira discovery, synchronization, and automatic updates are
+not implemented.
+
+## Workspace structure
 
 **Task** — a logical unit of work. The thing you actually think in. It has a
 name, and it owns one entry per repository.
@@ -110,8 +151,52 @@ $AW_ROOT/worktrees/checkout-redesign/
 
 Cross-repo relative paths (`../frontend`) keep working inside a task.
 
-**Session** — one tmux session per task (`aw-<task>`), one window per repo,
+**Session** — one tmux session per task (`aw@<encoded-task>`), one window per repo,
 named after the repo. Closing `aw` never stops an agent.
+
+### Enter the whole workspace
+
+```bash
+aw shell PAY-142 --root
+cd "$(aw path PAY-142 --root)"
+```
+
+The root contains the task's repository directories, useful for cross-repository
+inspection or launching your preferred agent there. `shell --root` creates the
+directory if necessary, even before repositories are added, but does not create
+worktrees or start a session. `path --root` only prints its path. Neither accepts
+a repository argument. Existing repository-specific shell/path commands still work.
+Shells expose `AW_TASK_DIR`, `AW_TASK`, `AW_WORKTREE` (the current directory), and
+`AW_REPO` (empty at the task root). The root shell has a task-only terminal label.
+
+### Recover a stopped agent
+
+```bash
+aw restart PAY-142 backend
+```
+
+Restart relaunches the configured command only when every pane in that repository
+window is dead. A live agent or ad-hoc split causes refusal. Missing sessions or
+windows should be created with `aw start`. Restart replaces dead-window output,
+so inspect it first; it does not resume agent conversation history or rerun setup.
+Ordinary `start` continues to preserve existing windows, including dead ones.
+
+### Runtime compatibility
+
+Persistent sessions currently require tmux. Session lifecycle and window identity
+are behind `internal/runtime.Runtime`, so additional multiplexers can implement
+that interface. No other backend or runtime selector is implemented yet.
+Notes, task metadata, paths, plain shells, and `start --no-runtime` do not need tmux.
+
+Session names now use the `aw@` namespace; dots are encoded as `~2e`, with the
+escape marker itself escaped. `a.b` and `a-b` have distinct sessions and windows.
+Window targets are exact matches, and automatic renaming is disabled.
+
+**Upgrading from old sessions:** old `aw-...` sessions are not adopted or stopped
+by this version. Start/restart refuse if a possible legacy session exists. Inspect
+that session using tmux, then stop or rename it manually before starting a new
+session. Old names were ambiguous, so automatic migration could affect another
+task. Worktree paths, branches, and task records do not change.
 
 ## Where things live
 
@@ -205,6 +290,7 @@ worktrees exist.
 | `aw repo add TASK PATH [--name --branch --base --agent --post-create]` | Attach a repository |
 | `aw repo rm TASK REPO` | Detach a repository (leaves the worktree) |
 | `aw start TASK [REPO...]` | Create worktrees, launch the session |
+| `aw restart TASK REPO` | Relaunch a dead repository window |
 | `aw stop TASK` | Interrupt agents, end the session, keep worktrees |
 | `aw attach TASK` | Attach (or `switch-client` when already in tmux) |
 | `aw shell TASK [REPO]` | Interactive shell in a worktree |
@@ -259,8 +345,8 @@ GOOS=linux GOARCH=amd64 go build -o aw-linux ./cmd/aw
   It errs toward reporting a stash, which is the safe direction.
 - **No `.context/`** shared task directory yet; the location is reserved.
 - **One config knob** (`AW_ROOT`). There is no config file.
-- Session names collapse `.` to `-`, so tasks named `a.b` and `a-b` would share
-  a session. Unlikely, but real.
+- Existing sessions from the old `aw-...` naming scheme require manual inspection
+  and stopping or renaming before starting their replacement.
 
 ## Roadmap
 

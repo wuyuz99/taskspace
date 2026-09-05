@@ -22,11 +22,13 @@ type stubRuntime struct{ stopped bool }
 
 func (s *stubRuntime) Available(context.Context) error { return nil }
 func (s *stubRuntime) SessionName(t string) string     { return "aw-" + t }
+func (s *stubRuntime) WindowName(repo string) string   { return repo }
 func (s *stubRuntime) HasSession(context.Context, string) (bool, error) {
 	return false, nil
 }
 func (s *stubRuntime) Start(context.Context, string, []runtime.Window) error    { return nil }
 func (s *stubRuntime) OpenWindow(context.Context, string, runtime.Window) error { return nil }
+func (s *stubRuntime) Restart(context.Context, string, runtime.Window) error    { return nil }
 func (s *stubRuntime) Stop(context.Context, string) error {
 	s.stopped = true
 	return nil

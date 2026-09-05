@@ -142,7 +142,7 @@ func (a *Aggregator) repoStatus(ctx context.Context, taskName, repoName string, 
 	case !sess.Exists:
 		row.Runtime = RuntimeNoSession
 	default:
-		if pane, ok := sess.Pane(sanitizeWindow(repoName)); !ok {
+		if pane, ok := sess.Pane(a.Runtime.WindowName(repoName)); !ok {
 			row.Runtime = RuntimeNoWindow
 		} else if pane.Dead {
 			row.Runtime = RuntimeDead
@@ -171,10 +171,6 @@ func (a *Aggregator) repoStatus(ctx context.Context, taskName, repoName string, 
 	}
 	return row
 }
-
-// sanitizeWindow mirrors the runtime's window naming so status can look up the
-// pane belonging to a repo.
-func sanitizeWindow(repo string) string { return runtime.WindowName(repo) }
 
 // All reports the status of every task, sorted by name.
 func (a *Aggregator) All(ctx context.Context, tasks []*task.Task) []TaskStatus {

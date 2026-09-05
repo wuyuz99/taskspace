@@ -7,6 +7,7 @@ package runtime
 
 import (
 	"context"
+	"fmt"
 	"strings"
 )
 
@@ -49,12 +50,16 @@ type Runtime interface {
 	Available(ctx context.Context) error
 	// SessionName maps a task name to this runtime's session identifier.
 	SessionName(task string) string
+	// WindowName maps a repository name to the backend's window identifier.
+	WindowName(repo string) string
 	// HasSession reports whether a session exists.
 	HasSession(ctx context.Context, session string) (bool, error)
 	// Start creates the session if absent and ensures every window exists.
 	Start(ctx context.Context, session string, windows []Window) error
 	// OpenWindow adds one window to an existing session.
 	OpenWindow(ctx context.Context, session string, w Window) error
+	// Restart relaunches a dead window, refusing if any pane is still alive.
+	Restart(ctx context.Context, session string, w Window) error
 	// Stop ends the session, giving processes a chance to exit cleanly first.
 	Stop(ctx context.Context, session string) error
 	// Attach hands the terminal over to the session.
@@ -75,20 +80,18 @@ func WindowName(repo string) string { return sanitize(repo) }
 // names permit dots because repositories legitimately have them, so the
 // substitution happens here instead.
 //
-// Two names differing only in the substituted characters collapse to the same
-// session ("a.b" and "a-b"). That is accepted: it needs an unusual pair of task
-// names, and the alternative is banning dots outright.
+// Escape bytes, including the escape marker itself, so identities never collapse.
 func sanitize(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))
-	for _, r := range s {
+	for _, r := range []byte(s) {
 		switch {
 		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
-			b.WriteRune(r)
+			b.WriteByte(r)
 		case r == '-' || r == '_':
-			b.WriteRune(r)
+			b.WriteByte(r)
 		default:
-			b.WriteRune('-')
+			fmt.Fprintf(&b, "~%02x", r)
 		}
 	}
 	return b.String()

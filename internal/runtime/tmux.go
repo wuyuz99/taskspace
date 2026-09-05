@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"os"
 	osexec "os/exec"
@@ -42,13 +43,14 @@ func (t *Tmux) Available(ctx context.Context) error {
 }
 
 // SessionName implements Runtime.
-func (t *Tmux) SessionName(task string) string { return "aw-" + sanitize(task) }
+func (t *Tmux) SessionName(task string) string { return "aw@" + sanitize(task) }
+func (t *Tmux) WindowName(repo string) string  { return WindowName(repo) }
 
 // target builds an exact-match tmux target. The '=' prefix disables tmux's
 // prefix matching, without which "aw-pay" would match session "aw-payments".
 func target(session string) string { return "=" + session }
 
-func windowTarget(session, window string) string { return "=" + session + ":" + window }
+func windowTarget(session, window string) string { return "=" + session + ":=" + window }
 
 // HasSession implements Runtime.
 func (t *Tmux) HasSession(ctx context.Context, session string) (bool, error) {
@@ -70,6 +72,9 @@ func (t *Tmux) Start(ctx context.Context, session string, windows []Window) erro
 	if len(windows) == 0 {
 		return fmt.Errorf("no windows to start for session %s", session)
 	}
+	if err := t.checkLegacySession(ctx, session); err != nil {
+		return err
+	}
 
 	exists, err := t.HasSession(ctx, session)
 	if err != nil {
@@ -82,11 +87,16 @@ func (t *Tmux) Start(ctx context.Context, session string, windows []Window) erro
 		if first.Dir != "" {
 			args = append(args, "-c", first.Dir)
 		}
-		args = append(args, t.launchArgv(first)...)
+		// Create a shell first so even an immediately exiting agent gets
+		// remain-on-exit before it runs. Only this fresh shell is replaced.
+		args = append(args, "/bin/sh")
 		if _, err := t.tmux(ctx, args...); err != nil {
 			return fmt.Errorf("create tmux session %s: %w", session, err)
 		}
 		if err := t.setRemainOnExit(ctx, session, first.Name); err != nil {
+			return err
+		}
+		if err := t.launchFresh(ctx, session, first); err != nil {
 			return err
 		}
 		windows = windows[1:]
@@ -113,12 +123,86 @@ func (t *Tmux) OpenWindow(ctx context.Context, session string, w Window) error {
 	if w.Dir != "" {
 		args = append(args, "-c", w.Dir)
 	}
-	args = append(args, t.launchArgv(w)...)
+	args = append(args, "/bin/sh")
 
 	if _, err := t.tmux(ctx, args...); err != nil {
 		return fmt.Errorf("create tmux window %s in %s: %w", w.Name, session, err)
 	}
-	return t.setRemainOnExit(ctx, session, w.Name)
+	if err := t.setRemainOnExit(ctx, session, w.Name); err != nil {
+		return err
+	}
+	return t.launchFresh(ctx, session, w)
+}
+
+func (t *Tmux) launchFresh(ctx context.Context, session string, w Window) error {
+	args := []string{"respawn-window", "-k", "-t", windowTarget(session, WindowName(w.Name))}
+	if w.Dir != "" {
+		args = append(args, "-c", w.Dir)
+	}
+	args = append(args, t.launchArgv(w)...)
+	_, err := t.tmux(ctx, args...)
+	return err
+}
+
+// Restart never uses -k: tmux itself refuses to replace a live pane even if
+// another process starts one after our observation. Old dead-pane output is replaced.
+func (t *Tmux) Restart(ctx context.Context, session string, w Window) error {
+	if err := t.checkLegacySession(ctx, session); err != nil {
+		return err
+	}
+	st, err := t.State(ctx, session)
+	if err != nil {
+		return err
+	}
+	if !st.Exists {
+		return fmt.Errorf("session is missing; run aw start for this task first")
+	}
+	p, ok := st.Panes[WindowName(w.Name)]
+	if !ok {
+		return fmt.Errorf("window %s is missing; run aw start for this repository first", w.Name)
+	}
+	if !p.Dead {
+		return fmt.Errorf("refusing to restart %s: a pane is still running", w.Name)
+	}
+	if err := t.setRemainOnExit(ctx, session, w.Name); err != nil {
+		return err
+	}
+	args := []string{"respawn-window", "-t", windowTarget(session, WindowName(w.Name))}
+	if w.Dir != "" {
+		args = append(args, "-c", w.Dir)
+	}
+	args = append(args, t.launchArgv(w)...)
+	_, err = t.tmux(ctx, args...)
+	return err
+}
+
+// Old names were ambiguous. Never adopt or kill an old session automatically,
+// and refuse launching duplicate agents while a possible legacy session exists.
+func (t *Tmux) checkLegacySession(ctx context.Context, session string) error {
+	if !strings.HasPrefix(session, "aw@") {
+		return nil
+	}
+	s := strings.TrimPrefix(session, "aw@")
+	var old strings.Builder
+	old.WriteString("aw-")
+	for i := 0; i < len(s); i++ {
+		if s[i] == '~' && i+2 < len(s) {
+			if _, err := hex.DecodeString(s[i+1 : i+3]); err == nil {
+				old.WriteByte('-')
+				i += 2
+				continue
+			}
+		}
+		old.WriteByte(s[i])
+	}
+	exists, err := t.HasSession(ctx, old.String())
+	if err != nil {
+		return err
+	}
+	if exists {
+		return fmt.Errorf("legacy session %q exists; inspect it with tmux and stop or rename it manually before starting %q (old names may belong to another task)", old.String(), session)
+	}
+	return nil
 }
 
 // setRemainOnExit keeps a pane visible after its command exits.
@@ -128,6 +212,9 @@ func (t *Tmux) OpenWindow(ctx context.Context, session string, w Window) error {
 // window rather than globally so aw never changes the behaviour of the user's
 // other tmux sessions.
 func (t *Tmux) setRemainOnExit(ctx context.Context, session, window string) error {
+	if _, err := t.tmux(ctx, "set-option", "-t", windowTarget(session, WindowName(window)), "-w", "automatic-rename", "off"); err != nil {
+		return err
+	}
 	_, err := t.tmux(ctx, "set-option", "-t", windowTarget(session, WindowName(window)), "-w", "remain-on-exit", "on")
 	if err != nil {
 		return fmt.Errorf("set remain-on-exit on %s:%s: %w", session, window, err)

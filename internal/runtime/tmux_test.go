@@ -13,11 +13,11 @@ func ctx() context.Context { return context.Background() }
 func TestSessionNameSanitizesTmuxTargetSyntax(t *testing.T) {
 	tm := NewTmux(awexec.NewFake())
 	cases := map[string]string{
-		"checkout-redesign": "aw-checkout-redesign",
+		"checkout-redesign": "aw@checkout-redesign",
 		// '.' and ':' are tmux target syntax; leaving them in breaks every -t.
-		"checkout.redesign": "aw-checkout-redesign",
-		"payments_fix":      "aw-payments_fix",
-		"weird name":        "aw-weird-name",
+		"checkout.redesign": "aw@checkout~2eredesign",
+		"payments_fix":      "aw@payments_fix",
+		"weird name":        "aw@weird~20name",
 	}
 	for in, want := range cases {
 		if got := tm.SessionName(in); got != want {
@@ -59,14 +59,14 @@ func TestStartCreatesSessionThenWindows(t *testing.T) {
 	}
 	cmds := strings.Join(f.Commands(), "\n")
 
-	if !strings.Contains(cmds, "new-session -d -s aw-task -n backend -c /wt/task/backend claude") {
+	if !strings.Contains(cmds, "new-session -d -s aw-task -n backend -c /wt/task/backend /bin/sh") || !strings.Contains(cmds, "respawn-window -k -t =aw-task:=backend -c /wt/task/backend claude") {
 		t.Errorf("missing correct new-session; got:\n%s", cmds)
 	}
-	if !strings.Contains(cmds, "new-window -d -t =aw-task -n frontend -c /wt/task/frontend codex --flag") {
+	if !strings.Contains(cmds, "respawn-window -k -t =aw-task:=frontend -c /wt/task/frontend codex --flag") {
 		t.Errorf("missing correct new-window for frontend; got:\n%s", cmds)
 	}
 	// A window with no agent gets an interactive shell.
-	if !strings.Contains(cmds, "new-window -d -t =aw-task -n infra -c /wt/task/infra /bin/bash") {
+	if !strings.Contains(cmds, "respawn-window -k -t =aw-task:=infra -c /wt/task/infra /bin/bash") {
 		t.Errorf("agent-less window did not launch a shell; got:\n%s", cmds)
 	}
 	// Without remain-on-exit, a crashed agent's traceback disappears with the window.
@@ -123,7 +123,7 @@ func TestStopInterruptsBeforeKilling(t *testing.T) {
 	if strings.Count(joined, "send-keys") != 2 {
 		t.Errorf("want C-c to each live window; got:\n%s", joined)
 	}
-	if !strings.Contains(joined, "send-keys -t =aw-task:backend C-c") {
+	if !strings.Contains(joined, "send-keys -t =aw-task:=backend C-c") {
 		t.Errorf("missing interrupt for backend; got:\n%s", joined)
 	}
 	if !strings.Contains(joined, "kill-session -t =aw-task") {
@@ -167,10 +167,10 @@ func TestStopSkipsDeadPanes(t *testing.T) {
 		t.Fatalf("Stop: %v", err)
 	}
 	joined := strings.Join(f.Commands(), "\n")
-	if strings.Contains(joined, "=aw-task:backend C-c") {
+	if strings.Contains(joined, "=aw-task:=backend C-c") {
 		t.Errorf("interrupted an already-dead pane; got:\n%s", joined)
 	}
-	if !strings.Contains(joined, "=aw-task:frontend C-c") {
+	if !strings.Contains(joined, "=aw-task:=frontend C-c") {
 		t.Errorf("did not interrupt the live pane; got:\n%s", joined)
 	}
 }

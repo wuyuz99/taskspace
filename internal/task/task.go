@@ -13,12 +13,19 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Task is a logical unit of work spanning one or more repositories.
 type Task struct {
-	Name  string          `json:"name"`
-	Repos map[string]Repo `json:"repos,omitempty"`
+	Name             string          `json:"name"`
+	Repos            map[string]Repo `json:"repos,omitempty"`
+	Title            string          `json:"title,omitempty"`
+	Ticket           string          `json:"ticket,omitempty"`
+	TicketURL        string          `json:"ticket_url,omitempty"`
+	Brief            string          `json:"brief,omitempty"`
+	Handoff          string          `json:"handoff,omitempty"`
+	HandoffUpdatedAt time.Time       `json:"handoff_updated_at,omitempty"`
 }
 
 // Repo is one repository enrolled in a task.

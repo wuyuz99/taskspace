@@ -83,7 +83,7 @@ say "aw start"
 out="$($AW start test-feature 2>&1)"
 check "backend worktree created"  "backend.*created worktree"  "$out"
 check "frontend worktree created" "frontend.*created worktree" "$out"
-check "session reported"          "session aw-test-feature is up" "$out"
+check "session reported"          "session aw@test-feature is up" "$out"
 
 if [ -f "$AW_ROOT/worktrees/test-feature/backend/leak.txt" ]; then
   fail "worktree forked from HEAD, not the base branch (leak.txt present)"

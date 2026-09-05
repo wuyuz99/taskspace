@@ -84,6 +84,7 @@ func Execute(ctx context.Context) int {
 		app.newTaskCmd(),
 		app.newRepoCmd(),
 		app.newStartCmd(),
+		app.newRestartCmd(),
 		app.newStopCmd(),
 		app.newAttachCmd(),
 		app.newShellCmd(),

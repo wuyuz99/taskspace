@@ -160,6 +160,26 @@ func (a *App) newStopCmd() *cobra.Command {
 	}
 }
 
+func (a *App) newRestartCmd() *cobra.Command {
+	return &cobra.Command{Use: "restart TASK REPO", Short: "Relaunch a dead agent or shell",
+		Long: "Restart a dead repository window using its configured command. Refuses live panes. Replaces old pane output; inspect it first. Does not resume agent conversation history or rerun setup hooks.",
+		Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+			t, err := a.loadTask(args[0])
+			if err != nil {
+				return err
+			}
+			r, name, err := a.worktreeDir(t, args[1])
+			if err != nil {
+				return err
+			}
+			if err := a.Runtime.Restart(cmd.Context(), a.Runtime.SessionName(t.Name), runtime.Window{Name: name, Dir: r.Worktree, Command: r.Agent}); err != nil {
+				return err
+			}
+			a.printf("relaunched %s/%s; use aw status %s to check its state\n", t.Name, name, t.Name)
+			return nil
+		}}
+}
+
 func (a *App) newAttachCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "attach TASK",
@@ -173,6 +193,7 @@ func (a *App) newAttachCmd() *cobra.Command {
 			// Label the hosting tab before handing the terminal over, so the tab
 			// is identifiable even after detaching.
 			setTitle(a.Out, "aw: "+t.Name, a.noTitle)
+			a.printTaskContext(t)
 			return a.Runtime.Attach(cmd.Context(), a.Runtime.SessionName(t.Name))
 		},
 	}
