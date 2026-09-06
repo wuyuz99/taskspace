@@ -151,12 +151,23 @@ aw task brief PAY-142 --file brief.md
 aw task handoff PAY-142 --file handoff.md
 aw task brief PAY-142 > brief-copy.md
 aw task handoff PAY-142 --clear
+aw task brief PAY-142 --edit
+aw task handoff PAY-142 --edit
 aw task update PAY-142 --title "Validate expired payment cards"
 ```
 
 Notes are stored in the task JSON record, survive `aw clean`, and are deleted
 with `aw task rm`. Imported files are copied into the record, not linked or
 automatically synchronized. Updating a handoff never changes the brief.
+
+`--edit` opens a temporary Markdown draft using `VISUAL`, then `EDITOR`, falling
+back to `vi`. Editor commands can include arguments (for example, `code --wait`);
+GUI editors must wait until editing finishes. It cannot be combined with text,
+`--file`, or `--clear`. Exiting without changes leaves the note and timestamp
+unchanged. Editor/save failures retain the draft and report its path. If the note
+changed during editing, the command refuses to overwrite it and keeps your draft
+for reconciliation. This checks changes made during the editor session; it does
+not provide general locking for simultaneous task writes.
 
 Optional `--ticket PAY-142` and `--ticket-url https://example.com/browse/PAY-142`
 flags on `task create` and `task update` record ticket metadata locally.

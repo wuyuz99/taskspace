@@ -85,6 +85,7 @@ func (a *App) newTaskNoteCmd(handoff bool) *cobra.Command {
 	}
 	var file string
 	var clear bool
+	var edit bool
 	cmd := &cobra.Command{Use: name + " NAME [TEXT]", Short: "Show or replace the task's " + name,
 		Long: "With no text or flags, print the stored Markdown. TEXT or --file replaces it; --clear removes it. Notes survive aw clean and are deleted with the task record.",
 		Args: cobra.RangeArgs(1, 2),
@@ -103,8 +104,14 @@ func (a *App) newTaskNoteCmd(handoff bool) *cobra.Command {
 			if clear {
 				modes++
 			}
+			if edit {
+				modes++
+			}
 			if modes > 1 {
-				return fmt.Errorf("choose only one of TEXT, --file or --clear")
+				return fmt.Errorf("choose only one of TEXT, --file, --clear or --edit")
+			}
+			if edit {
+				return a.editTaskNote(cmd.Context(), t, handoff)
 			}
 			if modes == 0 {
 				note := t.Brief
@@ -139,6 +146,7 @@ func (a *App) newTaskNoteCmd(handoff bool) *cobra.Command {
 		}}
 	cmd.Flags().StringVar(&file, "file", "", "read Markdown from a file")
 	cmd.Flags().BoolVar(&clear, "clear", false, "clear the stored note")
+	cmd.Flags().BoolVar(&edit, "edit", false, "edit Markdown using VISUAL, EDITOR, or vi")
 	return cmd
 }
 
