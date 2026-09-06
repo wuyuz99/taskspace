@@ -12,6 +12,15 @@ import (
 )
 
 func (a *App) newStartCmd() *cobra.Command {
+	return a.newLaunchCmd(false)
+}
+
+func (a *App) newOpenCmd() *cobra.Command {
+	return a.newLaunchCmd(true)
+}
+
+// Start and open share preparation so worktree and hook behavior stay identical.
+func (a *App) newLaunchCmd(open bool) *cobra.Command {
 	var noRuntime bool
 
 	cmd := &cobra.Command{
@@ -90,12 +99,35 @@ func (a *App) newStartCmd() *cobra.Command {
 			if err := a.Runtime.Start(ctx, session, windows); err != nil {
 				return err
 			}
+			if open {
+				a.printf("\nworkspace: %s\n", t.Name)
+				a.printTaskContext(t)
+				st, err := a.Runtime.State(ctx, session)
+				if err != nil {
+					a.warnf("could not inspect agent state: %v\n", err)
+				} else {
+					for _, name := range names {
+						if pane, ok := st.Pane(a.Runtime.WindowName(name)); ok && pane.Dead {
+							a.warnf("%s has exited; inspect its output, then run: aw restart %s %s\n", name, t.Name, name)
+						}
+					}
+				}
+				setTitle(a.Out, "aw: "+t.Name, a.noTitle)
+				return a.Runtime.Attach(ctx, session)
+			}
 			a.printf("\nsession %s is up; attach with: aw attach %s\n", session, t.Name)
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&noRuntime, "no-runtime", false,
-		"create worktrees but do not start the session")
+	if open {
+		cmd.Use = "open TASK"
+		cmd.Short = "Prepare a workspace, show its context and enter its session"
+		cmd.Long = "open creates missing worktrees and session windows, shows the task brief and handoff, then attaches. Existing windows are preserved, including dead agents; use restart explicitly to relaunch them."
+		cmd.Args = cobra.ExactArgs(1)
+	} else {
+		cmd.Flags().BoolVar(&noRuntime, "no-runtime", false,
+			"create worktrees but do not start the session")
+	}
 	return cmd
 }
 

@@ -70,6 +70,9 @@ aw repo add checkout-redesign ~/src/frontend --agent codex
 # create isolated worktrees and launch the agents
 aw start checkout-redesign
 
+# or prepare, show task context and enter the session in one command
+aw open checkout-redesign
+
 # one tmux session, one named window per repo
 aw attach checkout-redesign        # detach with Ctrl-b d
 
@@ -89,6 +92,37 @@ aw stop checkout-redesign
 # tear the worktrees down, safely
 aw clean checkout-redesign
 ```
+
+## Reusable projects
+
+Save a working task's repository configuration once, then reuse it for new tickets:
+
+```bash
+aw project save payments --from PAY-142
+aw project list
+aw project show payments
+aw task create PAY-156 --project payments --title "Add payment retry"
+aw open PAY-156
+```
+
+Recipes live in `$AW_ROOT/projects/<name>.json`. They copy repository names and
+local source paths, base refs, agent argv, and setup hooks. Worktree paths and
+branches are generated for the new task (`agent/PAY-156`); source task titles,
+tickets, briefs, and handoffs are not copied. No worktrees or agents are created
+until `start` or `open`.
+
+Each task snapshots the recipe. To update the recipe for future tasks, run
+`aw project save payments --from TASK --replace`; existing tasks remain unchanged.
+Saving over an existing recipe without `--replace` is refused. Use `project show`
+to inspect commands and hooks before applying a recipe. Saving never executes them.
+
+`task create --project payments --repo infra=/path/to/infra` can add repositories
+to the snapshot. Duplicate repository names or paths are rejected; they do not
+silently override recipe entries. Validation failures leave no partial task record.
+To customize an inherited entry before starting, remove it with `repo rm` and
+re-add it with the desired flags. These recipes reference local checkouts; they
+do not clone repositories or synchronize configuration across machines. Recorded
+base refs are reused; no fetch is performed. An empty base is resolved at creation.
 
 ## Human-readable task context
 
@@ -155,6 +189,12 @@ Cross-repo relative paths (`../frontend`) keep working inside a task.
 named after the repo. Closing `aw` never stops an agent.
 
 ### Enter the whole workspace
+
+`aw open TASK` prepares missing worktrees and session windows, prints the task
+brief and handoff, and attaches to the session (or switches clients inside tmux).
+Existing windows are preserved. Dead windows get an explicit `aw restart` hint;
+opening does not restart them automatically. Setup hooks run only for newly
+created worktrees, as with `aw start`. Add at least one repository before opening.
 
 ```bash
 aw shell PAY-142 --root
@@ -283,6 +323,8 @@ worktrees exist.
 | Command | What it does |
 | --- | --- |
 | `aw init` | Create/report state directories (never required) |
+| `aw project save NAME --from TASK [--replace]` | Save a reusable repository recipe |
+| `aw project list` / `aw project show NAME` | Inspect saved recipes |
 | `aw task create NAME [--repo name=path]` | Create a task |
 | `aw task list` | List tasks |
 | `aw task show NAME` | Show a task's repos in detail |
@@ -290,6 +332,7 @@ worktrees exist.
 | `aw repo add TASK PATH [--name --branch --base --agent --post-create]` | Attach a repository |
 | `aw repo rm TASK REPO` | Detach a repository (leaves the worktree) |
 | `aw start TASK [REPO...]` | Create worktrees, launch the session |
+| `aw open TASK` | Prepare worktrees, show brief/handoff, and attach |
 | `aw restart TASK REPO` | Relaunch a dead repository window |
 | `aw stop TASK` | Interrupt agents, end the session, keep worktrees |
 | `aw attach TASK` | Attach (or `switch-client` when already in tmux) |

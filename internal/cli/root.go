@@ -82,8 +82,10 @@ func Execute(ctx context.Context) int {
 	root.AddCommand(
 		app.newInitCmd(),
 		app.newTaskCmd(),
+		app.newProjectCmd(),
 		app.newRepoCmd(),
 		app.newStartCmd(),
+		app.newOpenCmd(),
 		app.newRestartCmd(),
 		app.newStopCmd(),
 		app.newAttachCmd(),

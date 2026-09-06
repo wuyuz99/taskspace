@@ -21,6 +21,7 @@ func (a *App) newTaskCmd() *cobra.Command {
 
 func (a *App) newTaskCreateCmd() *cobra.Command {
 	var repos []string
+	var project string
 	var details taskDetails
 
 	cmd := &cobra.Command{
@@ -33,14 +34,25 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 				return err
 			}
 			name := args[0]
-			t, err := a.Store.Create(name)
-			if err != nil {
+			if err := task.ValidateName("task", name); err != nil {
 				return err
 			}
-			a.printf("created task %s\n", name)
+			if a.Store.Exists(name) {
+				return fmt.Errorf("%q: %w", name, task.ErrExists)
+			}
+			t := task.New(name)
 			details.apply(cmd, t, brief)
-			if err := a.Store.Save(t); err != nil {
-				return err
+			if cmd.Flags().Changed("project") {
+				p, err := a.Store.LoadProject(project)
+				if err != nil {
+					return err
+				}
+				for _, repoName := range p.RepoNames() {
+					r := p.Repos[repoName]
+					if err := a.addRepo(cmd.Context(), t, repoName, r.Path, addRepoOptions{Base: r.Base, Agent: r.Agent, PostCreate: r.PostCreate}); err != nil {
+						return err
+					}
+				}
 			}
 
 			// --repo name=path is sugar for a following `aw repo add`.
@@ -53,14 +65,16 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 					return err
 				}
 			}
-			if len(repos) > 0 {
-				return a.Store.Save(t)
+			if err := a.Store.CreatePrepared(t); err != nil {
+				return err
 			}
+			a.printf("created task %s\n", name)
 			return nil
 		},
 	}
 	cmd.Flags().StringArrayVar(&repos, "repo", nil,
 		"attach a repository as name=path (repeatable)")
+	cmd.Flags().StringVar(&project, "project", "", "snapshot a saved project recipe into this task")
 	details.flags(cmd)
 	return cmd
 }
