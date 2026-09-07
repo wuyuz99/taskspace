@@ -8,6 +8,26 @@ rationale. If you are a new contributor, read this first.
 
 Status: **v0.1, pre-release.** Nothing here is stable.
 
+### Implementation update — 2026-09-05
+
+The original design below is retained as historical rationale. The following
+changes supersede its session naming and shell details:
+
+- `shell --root` opens the task directory, creating it if needed; `path --root`
+  prints it without mutations. Repository-specific behavior is unchanged.
+- Sessions use `aw@` plus reversible byte escaping, avoiding both name collisions
+  and overlap with the legacy `aw-` namespace. Possible legacy sessions block
+  start/restart for manual inspection; they are never automatically adopted.
+- `restart TASK REPO` only respawns dead windows without tmux's force flag.
+  Restart replaces old pane output and relaunches argv, not agent conversation
+  state. A live split also blocks restart.
+- Fresh windows start a placeholder shell, receive retain-on-exit and stable-name
+  options, then launch the requested command, preserving immediately exiting agents.
+- The Runtime interface now includes restart and window-name mapping. Status uses
+  the selected backend's naming, with no tmux-specific encoding assumptions.
+  Tmux remains the only implemented backend; selection and additional adapters
+  are future work.
+
 ---
 
 ## 1. Language: Go

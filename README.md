@@ -16,7 +16,7 @@
 A single feature rarely lives in one repository. It touches `backend`,
 `frontend`, and `infra` at the same time. Git gives you worktrees, which are
 per-repository, so keeping a feature isolated means creating three worktrees on
-three branches, opening three terminals, starting an agent in each, and
+three branches, opening terminals for the work, and
 remembering which tab is which.
 
 Most tools model this as:
@@ -28,11 +28,15 @@ repo -> worktree -> agent
 `aw` models it as:
 
 ```
-task -> repos -> worktrees -> agents
+task -> repos -> worktrees -> shells or optional agents
 ```
 
 The **task** is the first-class object. You operate on `checkout-redesign`, not
 on nine separate resources.
+
+Use ordinary shells, launch an agent in selected repositories, or work from the
+task root with a tool that supports multiple repositories. `aw` prepares and
+resumes the workspace; it does not coordinate agents or schedule their work.
 
 ```
 checkout-redesign
@@ -93,6 +97,17 @@ aw stop checkout-redesign
 aw clean checkout-redesign
 ```
 
+### Work with ordinary shells
+
+For a manual workflow without persistent terminals or agent commands:
+
+```bash
+aw task create checkout-review --repo "backend=$HOME/src/backend" --repo "frontend=$HOME/src/frontend"
+aw start checkout-review --no-runtime
+aw shell checkout-review --root
+# backend/ and frontend/ are available in this shell; exit to return
+```
+
 ## Reusable projects
 
 Save a working task's repository configuration once, then reuse it for new tickets:
@@ -119,10 +134,27 @@ to inspect commands and hooks before applying a recipe. Saving never executes th
 `task create --project payments --repo infra=/path/to/infra` can add repositories
 to the snapshot. Duplicate repository names or paths are rejected; they do not
 silently override recipe entries. Validation failures leave no partial task record.
-To customize an inherited entry before starting, remove it with `repo rm` and
-re-add it with the desired flags. These recipes reference local checkouts; they
+Use `repo update` to customize an inherited agent or hook. These recipes reference local checkouts; they
 do not clone repositories or synchronize configuration across machines. Recorded
 base refs are reused; no fetch is performed. An empty base is resolved at creation.
+
+### Update repository settings
+
+```bash
+aw repo update PAY-142 backend --agent codex
+aw repo update PAY-142 backend --post-create 'pnpm install'
+aw repo update PAY-142 backend --shell
+aw repo update PAY-142 backend --post-create=''
+aw project save payments --from PAY-142 --replace
+```
+
+Only supplied settings change. Repeat `--agent` for command arguments; `--shell`
+clears the agent command, and an empty `--post-create` clears the hook. Existing
+windows keep running their original command. Updated agent settings apply when
+a window is created or explicitly restarted; updated hooks run only for newly
+created worktrees. Updating a task does not change its saved project recipe;
+save it back explicitly when desired. Repository paths, branches, and base refs
+are not changed by `repo update`.
 
 ## Human-readable task context
 
@@ -254,6 +286,7 @@ task. Worktree paths, branches, and task records do not change.
 ```
 $AW_ROOT/                    default ~/.aw, override with AW_ROOT
 ├── tasks/<name>.json        declarative task metadata
+├── projects/<name>.json     reusable repository recipes
 └── worktrees/<task>/<repo>  the worktrees
 ```
 
@@ -290,6 +323,38 @@ for anyone who moves their state directory.
 
 If the hook fails you get a warning and a worktree you can inspect — `aw` will
 not delete your worktree because a provisioning step failed.
+
+### Application and service isolation
+
+Worktrees separate checked-out source files. They share the source repository's
+Git object database, refs, and stash stack. Applications in different tasks can
+still use the same listening port, database, container name, or external account.
+`aw` does not allocate these resources or rewrite application configuration.
+Copying a source `.env` also copies its service destinations.
+
+For an application that reads `DATABASE_PATH` and `UPLOAD_DIR` from `.env`, a
+setup hook can put its SQLite database and uploads inside its own worktree:
+
+```bash
+aw repo add checkout-review ~/src/backend --post-create '
+  mkdir -p .local/uploads
+  printf "DATABASE_PATH=.local/app.sqlite\nUPLOAD_DIR=.local/uploads\nWORKSPACE_LABEL=%s/%s\n" "$AW_TASK" "$AW_REPO" > .env
+'
+```
+
+This example assumes the application resolves these paths from its worktree and
+ignores `.env` and `.local/` in Git. The task and repository names label the
+configuration; separate worktree paths keep each database and upload directory
+independent. Adapt the variable names to your application. If it listens on a
+port, assign a different available port to each active instance separately.
+
+Treat generated data here as disposable: Git-ignored files are not a backup and
+can disappear when a worktree is removed. Keep valuable data outside worktrees
+and back it up independently. For external databases, volumes, or other resources,
+record their exact names, owning task, and teardown command in the handoff.
+`aw stop` ends the terminal session; `aw clean` removes worktrees. Neither runs
+an external-resource teardown hook. Inspect ownership before deleting resources,
+especially when configuration was copied from another workspace.
 
 ## Status
 
@@ -342,6 +407,7 @@ worktrees exist.
 | `aw task rm NAME` | Delete the record; refuses while worktrees exist |
 | `aw repo add TASK PATH [--name --branch --base --agent --post-create]` | Attach a repository |
 | `aw repo rm TASK REPO` | Detach a repository (leaves the worktree) |
+| `aw repo update TASK REPO [--agent CMD / --shell] [--post-create SH]` | Update saved agent and setup settings |
 | `aw start TASK [REPO...]` | Create worktrees, launch the session |
 | `aw open TASK` | Prepare worktrees, show brief/handoff, and attach |
 | `aw restart TASK REPO` | Relaunch a dead repository window |
@@ -404,7 +470,8 @@ GOOS=linux GOARCH=amd64 go build -o aw-linux ./cmd/aw
 
 ## Roadmap
 
-Deliberately not built yet:
+These are possible follow-ups after real workspace usage establishes a need;
+agent coordination is not part of the current workspace workflow.
 
 - Cross-repo task context (`.context/TASK.md`, `API_CONTRACT.md`, …) so agents
   can coordinate without sharing a context window
