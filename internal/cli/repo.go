@@ -13,9 +13,66 @@ import (
 func (a *App) newRepoCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "repo",
-		Short: "Attach and detach repositories",
+		Short: "Attach, configure, and detach repositories",
 	}
-	cmd.AddCommand(a.newRepoAddCmd(), a.newRepoRmCmd())
+	cmd.AddCommand(a.newRepoAddCmd(), a.newRepoRmCmd(), a.newRepoUpdateCmd())
+	return cmd
+}
+
+func (a *App) newRepoUpdateCmd() *cobra.Command {
+	var agent []string
+	var hook string
+	var shell bool
+	cmd := &cobra.Command{
+		Use:   "update TASK REPO",
+		Short: "Update saved agent and setup settings",
+		Long:  "Update the saved command or post-create hook. Running windows are untouched. Agent settings apply when a window is created or explicitly restarted; hooks run only when a worktree is newly created.",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			setAgent, setHook := cmd.Flags().Changed("agent"), cmd.Flags().Changed("post-create")
+			if setAgent && shell {
+				return fmt.Errorf("choose either --agent or --shell")
+			}
+			if !setAgent && !setHook && !shell {
+				return fmt.Errorf("specify --agent, --shell, or --post-create")
+			}
+			if setAgent && (len(agent) == 0 || strings.TrimSpace(agent[0]) == "") {
+				return fmt.Errorf("agent command is empty; use --shell to restore the default shell")
+			}
+			t, err := a.loadTask(args[0])
+			if err != nil {
+				return err
+			}
+			r, ok := t.Repo(args[1])
+			if !ok {
+				return fmt.Errorf("task %q has no repo named %q", t.Name, args[1])
+			}
+			if setAgent {
+				r.Agent = agent
+			}
+			if shell {
+				r.Agent = nil
+			}
+			if setHook {
+				r.PostCreate = hook
+			}
+			t.SetRepo(args[1], r)
+			if err := a.Store.Save(t); err != nil {
+				return err
+			}
+			a.printf("updated %s/%s\n", t.Name, args[1])
+			if setAgent || shell {
+				a.printf("  agent: %s (applies on window creation or explicit restart)\n", agentDisplay(r))
+			}
+			if setHook {
+				a.printf("  post_create: %s (applies to newly created worktrees)\n", dash(hook))
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringArrayVar(&agent, "agent", nil, "replace agent argv; repeat for arguments")
+	cmd.Flags().BoolVar(&shell, "shell", false, "clear the agent command and use the default shell")
+	cmd.Flags().StringVar(&hook, "post-create", "", "replace the setup hook; an empty value clears it")
 	return cmd
 }
 
