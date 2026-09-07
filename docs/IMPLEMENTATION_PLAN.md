@@ -8,7 +8,35 @@ rationale. If you are a new contributor, read this first.
 
 Status: **v0.1, pre-release.** Nothing here is stable.
 
-### Implementation update — 2026-09-07
+### Implementation update — 2026-09-07 (notes are files)
+
+The brief and the handoff moved out of `tasks/<name>.json` into
+`worktrees/<task>/.context/TASK.md` and `HANDOFF.md` — the directory section 3
+below reserved and left unused.
+
+Ticket-system integration is decided against, not deferred. That is what forced
+the move: with nothing upstream to re-import from, these files are the original
+statement of what a task is for, not a cache of it. An original belongs
+somewhere you can grep, diff and back it up — and somewhere an agent working in
+`backend/` can read it, which is `../.context/TASK.md`. The record keeps identity
+and configuration; `Task` is no longer a document store.
+
+Consequences worth noting:
+
+- The handoff timestamp is the file's modification time. There is no stored
+  timestamp left to disagree with the text, and a cleared note removes its file,
+  so it has no time rather than the time it was cleared.
+- `--edit` opens the note itself. The temp-file draft and the compare-and-swap
+  that reconciled it against the record are gone: whatever the editor saved is
+  the note, and a concurrent record write cannot touch it.
+- Legacy records migrate on first read, preserving the recorded handoff time as
+  the file's mtime. No command, no flag.
+- `clean` keeps `.context/` — its `os.Remove` of the task directory is
+  non-recursive and simply fails while notes are there. `task rm` deletes them
+  and reports what it deleted; `task rm --force` leaves them alongside the
+  worktrees it also leaves.
+
+### Implementation update — 2026-09-07 (correctness pass)
 
 Correctness pass over the 09-05/09-06 work. No command surface changed:
 
@@ -22,8 +50,8 @@ Correctness pass over the 09-05/09-06 work. No command surface changed:
 - Listings degrade instead of failing: an unreadable task or project file is
   reported on stderr and skipped, so one damaged file cannot hide every other
   workspace. `task.SkippedError` carries what was dropped.
-- Task records are written `0600` at every stage. They hold the brief and
-  handoff, and their mode used to widen to `0644` on the first update.
+- Task records are written `0600` at every stage; their mode used to widen to
+  `0644` on the first update. Note files, once they existed, followed.
 - Brief and handoff text is rendered with control characters stripped. Storage
   is unchanged and still byte-exact; this is a rendering rule on the path into
   attach, open and shell.
@@ -117,7 +145,7 @@ $AW_ROOT/                      default ~/.aw
 │   └── payments-fix.json
 └── worktrees/
     └── checkout-redesign/
-        ├── .context/          reserved, unused in v0.1
+        ├── .context/          TASK.md (brief) and HANDOFF.md (handoff)
         ├── backend/           git worktree
         └── frontend/          git worktree
 ```
@@ -362,7 +390,8 @@ WSL. End-to-end runs use a `GOOS=linux` build of the binary in the same way.
 - Unix only. No Windows support, by design.
 - Submodules detected, not recursed.
 - No notifications; only the structural choke point for them.
-- `.context/` location reserved but unimplemented.
+- `.context/` holds the brief and handoff; a shared API contract or status
+  file for agents to coordinate through is still unimplemented.
 - Single configuration knob (`AW_ROOT`); no config file system yet.
 - Session names collapse `.` to `-`, so tasks named `a.b` and `a-b` would map to
   one session. Accepted over banning dots from task names.

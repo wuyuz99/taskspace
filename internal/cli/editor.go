@@ -2,41 +2,40 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/aw-tool/aw/internal/task"
 )
 
-func (a *App) editTaskNote(ctx context.Context, original *task.Task, handoff bool) error {
-	kind, before := "brief", original.Brief
-	if handoff {
-		kind, before = "handoff", original.Handoff
-	}
-	f, err := os.CreateTemp("", "aw-"+original.Name+"-"+kind+"-*.md")
+// editTaskNote opens the note in the user's editor.
+//
+// The editor opens the note file itself, not a copy. There is nothing to
+// reconcile afterwards and nothing to lose if the editor or the machine dies
+// mid-edit: what the editor saved is the note. Two people editing the same note
+// at once is the editor's problem to warn about, as it is for any other file.
+func (a *App) editTaskNote(ctx context.Context, t *task.Task, noteFile string) error {
+	path := a.Store.NotePath(t.Name, noteFile)
+	before, err := a.Store.ReadNote(t.Name, noteFile)
 	if err != nil {
 		return err
 	}
-	path := f.Name()
-	if _, err := f.WriteString(before); err != nil {
-		f.Close()
-		os.Remove(path)
-		return err
+	// Create the file first: some editors are unhappy opening a path whose
+	// directory does not exist, and an empty note should still be editable.
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create %s: %w", filepath.Dir(path), err)
 	}
-	if err := f.Close(); err != nil {
-		os.Remove(path)
-		return err
-	}
-	// Failed edits remain recoverable, including editor and storage failures.
-	retain := true
-	defer func() {
-		if !retain {
-			os.Remove(path)
+	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
+		if err := os.WriteFile(path, nil, 0o600); err != nil {
+			return fmt.Errorf("create %s: %w", path, err)
 		}
-	}()
-	failure := func(err error) error { return fmt.Errorf("%w; draft kept at %s", err, path) }
+	}
+
 	editor := strings.TrimSpace(os.Getenv("VISUAL"))
 	if editor == "" {
 		editor = strings.TrimSpace(os.Getenv("EDITOR"))
@@ -45,44 +44,33 @@ func (a *App) editTaskNote(ctx context.Context, original *task.Task, handoff boo
 		editor = "vi"
 	}
 	// The editor is a user-configured shell command (e.g. code --wait).
-	// Pass the generated file separately, never interpolate it into shell code.
+	// Pass the path separately, never interpolate it into shell code.
 	cmd := exec.CommandContext(ctx, "sh", "-c", editor+` "$1"`, "aw-editor", path)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
-		return failure(fmt.Errorf("editor failed: %w", err))
+		return fmt.Errorf("editor failed: %w; the note is at %s", err, path)
 	}
-	b, err := os.ReadFile(path)
+
+	after, err := a.Store.ReadNote(t.Name, noteFile)
 	if err != nil {
-		return failure(err)
+		return err
 	}
-	note := string(b)
-	if note == before {
-		retain = false
-		a.printf("%s unchanged for %s\n", kind, original.Name)
-		return nil
+	kind := "brief"
+	if noteFile == task.HandoffFile {
+		kind = "handoff"
 	}
-	// Reload after the potentially long editor session to preserve other metadata.
-	latest, err := a.loadTask(original.Name)
-	if err != nil {
-		return failure(err)
+	switch {
+	case after.Text == before.Text:
+		a.printf("%s unchanged for %s\n", kind, t.Name)
+	case after.Text == "":
+		// Emptying the note in the editor means the same as --clear: no file,
+		// and so no modification time either.
+		if err := a.Store.WriteNote(t.Name, noteFile, ""); err != nil {
+			return err
+		}
+		a.printf("cleared %s for %s\n", kind, t.Name)
+	default:
+		a.printf("updated %s for %s (%s)\n", kind, t.Name, path)
 	}
-	current := latest.Brief
-	if handoff {
-		current = latest.Handoff
-	}
-	if current != before || (handoff && !latest.HandoffUpdatedAt.Equal(original.HandoffUpdatedAt)) {
-		return failure(fmt.Errorf("%s changed while the editor was open; reconcile your draft with the current note", kind))
-	}
-	if handoff {
-		latest.Handoff = note
-		latest.HandoffUpdatedAt = handoffStamp(note)
-	} else {
-		latest.Brief = note
-	}
-	if err := a.Store.Save(latest); err != nil {
-		return failure(err)
-	}
-	retain = false
-	a.printf("updated %s for %s\n", kind, latest.Name)
 	return nil
 }

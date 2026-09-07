@@ -6,6 +6,9 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/aw-tool/aw/internal/task"
 )
 
 func TestTaskNotesWithoutTicketURL(t *testing.T) {
@@ -28,8 +31,16 @@ func TestTaskNotesWithoutTicketURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tk.TicketURL != "" || tk.Brief != brief || tk.HandoffUpdatedAt.IsZero() {
-		t.Fatalf("unexpected task: %+v", tk)
+	storedBrief, err := h.app.Store.ReadNote("PAY-142", task.BriefFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	storedHandoff, err := h.app.Store.ReadNote("PAY-142", task.HandoffFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tk.TicketURL != "" || storedBrief.Text != brief || storedHandoff.UpdatedAt.IsZero() {
+		t.Fatalf("unexpected task: %+v / %+v", tk, storedBrief)
 	}
 	if err := h.exec(t, h.app.newTaskCmd(), "brief", "PAY-142"); err != nil {
 		t.Fatal(err)
@@ -48,11 +59,15 @@ func TestTaskNotesWithoutTicketURL(t *testing.T) {
 	if err := h.exec(t, h.app.newTaskCmd(), "handoff", "PAY-142", "--clear"); err != nil {
 		t.Fatal(err)
 	}
-	tk, err = h.app.Store.Load("PAY-142")
+	clearedHandoff, err := h.app.Store.ReadNote("PAY-142", task.HandoffFile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tk.Handoff != "" || tk.Brief != brief {
+	keptBrief, err := h.app.Store.ReadNote("PAY-142", task.BriefFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if clearedHandoff.Text != "" || keptBrief.Text != brief {
 		t.Fatal("clearing handoff affected the brief or failed")
 	}
 }
@@ -87,12 +102,12 @@ func TestContextRenderingNeutralizesTerminalEscapes(t *testing.T) {
 		t.Fatalf("readable text was lost: %q", shown)
 	}
 	// Stripping is a rendering rule; the stored Markdown keeps every byte.
-	tk, err := h.app.Store.Load("PAY-142")
+	stored, err := h.app.Store.ReadNote("PAY-142", task.BriefFile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tk.Brief != brief {
-		t.Fatalf("stored brief was rewritten: %q", tk.Brief)
+	if stored.Text != brief {
+		t.Fatalf("stored brief was rewritten: %q", stored.Text)
 	}
 }
 
@@ -136,12 +151,12 @@ func TestClearedHandoffDropsItsTimestamp(t *testing.T) {
 	if err := h.exec(t, h.app.newTaskCmd(), "handoff", "PAY-142", "--clear"); err != nil {
 		t.Fatal(err)
 	}
-	tk, err := h.app.Store.Load("PAY-142")
+	note, err := h.app.Store.ReadNote("PAY-142", task.HandoffFile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !tk.HandoffUpdatedAt.IsZero() {
-		t.Fatalf("cleared handoff kept %v", tk.HandoffUpdatedAt)
+	if !note.UpdatedAt.IsZero() {
+		t.Fatalf("cleared handoff kept %v", note.UpdatedAt)
 	}
 	h.out.Reset()
 	if err := h.exec(t, h.app.newTaskCmd(), "list"); err != nil {
@@ -196,8 +211,120 @@ func TestTaskNotesSurviveCleanAndAppearOnAttach(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tk.Handoff != "Run checkout tests next" || tk.Ticket != "PAY-142" {
+	note, err := h.app.Store.ReadNote("ticket-work", task.HandoffFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if note.Text != "Run checkout tests next" || tk.Ticket != "PAY-142" {
 		t.Fatal("clean lost context")
+	}
+}
+
+// A record written before notes were files is migrated the first time anything
+// reads a note, with no flag and no separate command.
+func TestLegacyRecordsMigrateOnFirstUse(t *testing.T) {
+	h := newHarness(t)
+	stamp := time.Date(2026, 9, 1, 10, 30, 0, 0, time.UTC)
+	legacy := `{
+  "name": "PAY-142",
+  "title": "Expired cards",
+  "brief": "Reject expired cards.\n",
+  "handoff": "Frontend next.\n",
+  "handoff_updated_at": "2026-09-01T10:30:00Z"
+}`
+	if err := os.MkdirAll(h.app.Store.TasksDir(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(h.app.Store.TasksDir(), "PAY-142.json"), []byte(legacy), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	h.out.Reset()
+	if err := h.exec(t, h.app.newTaskCmd(), "brief", "PAY-142"); err != nil {
+		t.Fatal(err)
+	}
+	if h.out.String() != "Reject expired cards.\n" {
+		t.Fatalf("brief after migration = %q", h.out.String())
+	}
+	brief, err := h.app.Store.ReadNote("PAY-142", task.BriefFile)
+	if err != nil || brief.Text != "Reject expired cards.\n" {
+		t.Fatalf("brief file = %q (%v)", brief.Text, err)
+	}
+	handoff, err := h.app.Store.ReadNote("PAY-142", task.HandoffFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !handoff.UpdatedAt.Equal(stamp) {
+		t.Errorf("handoff time = %v, want the recorded %v", handoff.UpdatedAt, stamp)
+	}
+	raw, err := os.ReadFile(filepath.Join(h.app.Store.TasksDir(), "PAY-142.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "Reject expired cards") {
+		t.Errorf("record still holds the brief: %s", raw)
+	}
+	if !strings.Contains(string(raw), "Expired cards") {
+		t.Errorf("migration dropped the title: %s", raw)
+	}
+}
+
+// Notes are deleted with the task record, as documented — but --force leaves
+// the worktrees on disk, so it leaves the brief describing them too.
+func TestTaskRmDeletesNotesUnlessWorktreesRemain(t *testing.T) {
+	h := newHarness(t)
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "gone"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newTaskCmd(), "brief", "gone", "Requirements"); err != nil {
+		t.Fatal(err)
+	}
+	h.out.Reset()
+	if err := h.exec(t, h.app.newTaskCmd(), "rm", "gone"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.out.String(), task.BriefFile) {
+		t.Errorf("rm did not say what it deleted: %s", h.out.String())
+	}
+	if _, err := os.Stat(h.app.Store.ContextDir("gone")); !os.IsNotExist(err) {
+		t.Errorf("notes survived task rm: %v", err)
+	}
+
+	kept := h.startedTask(t, "kept")
+	if err := h.exec(t, h.app.newTaskCmd(), "brief", kept.Name, "Requirements"); err != nil {
+		t.Fatal(err)
+	}
+	h.errb.Reset()
+	if err := h.exec(t, h.app.newTaskCmd(), "rm", kept.Name, "--force"); err != nil {
+		t.Fatal(err)
+	}
+	note, err := h.app.Store.ReadNote(kept.Name, task.BriefFile)
+	if err != nil || note.Text != "Requirements" {
+		t.Fatalf("--force deleted the notes for worktrees still on disk: %q (%v)", note.Text, err)
+	}
+	if !strings.Contains(h.errb.String(), h.app.Store.ContextDir(kept.Name)) {
+		t.Errorf("--force did not report where the notes are: %s", h.errb.String())
+	}
+}
+
+// The worktrees are disposable; the brief describing them is not.
+func TestCleanKeepsTheContextDirectory(t *testing.T) {
+	h := newHarness(t)
+	tk := h.startedTask(t, "ticket-work")
+	if err := h.exec(t, h.app.newTaskCmd(), "brief", tk.Name, "Requirements"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newCleanCmd(), tk.Name); err != nil {
+		t.Fatal(err)
+	}
+	note, err := h.app.Store.ReadNote(tk.Name, task.BriefFile)
+	if err != nil || note.Text != "Requirements" {
+		t.Fatalf("clean removed the notes: %q (%v)", note.Text, err)
+	}
+	for name := range tk.Repos {
+		if _, err := os.Stat(tk.Repos[name].Worktree); !os.IsNotExist(err) {
+			t.Errorf("clean left the %s worktree behind: %v", name, err)
+		}
 	}
 }
 

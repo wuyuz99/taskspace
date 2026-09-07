@@ -157,6 +157,7 @@ func (a *App) runPostCreate(ctx context.Context, t *task.Task, name string, r ta
 		"AW_REPO_PATH="+r.Path,
 		"AW_WORKTREE="+r.Worktree,
 		"AW_TASK_DIR="+a.Store.TaskDir(t.Name),
+		"AW_CONTEXT_DIR="+a.Store.ContextDir(t.Name),
 	)
 	return cmd.Run()
 }

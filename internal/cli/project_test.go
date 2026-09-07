@@ -49,8 +49,14 @@ func TestProjectRecipeSnapshotsConfigurationOnly(t *testing.T) {
 	if r.Branch != "agent/PAY-156" || r.Worktree != h.app.Store.WorktreePath("PAY-156", "backend") || r.Base != "main" || strings.Join(r.Agent, ",") != "sleep,60" || r.PostCreate != "echo setup" {
 		t.Fatalf("bad snapshot: %+v", r)
 	}
-	if tk.Title != "" || tk.Handoff != "" || tk.Ticket != "" {
+	if tk.Title != "" || tk.Ticket != "" {
 		t.Fatal("task context leaked")
+	}
+	// A recipe carries configuration, never the source task's prose.
+	for _, file := range []string{task.BriefFile, task.HandoffFile} {
+		if note, err := h.app.Store.ReadNote("PAY-156", file); err != nil || note.Text != "" {
+			t.Fatalf("recipe carried %s across: %q (%v)", file, note.Text, err)
+		}
 	}
 	if _, err := os.Stat(r.Worktree); !os.IsNotExist(err) {
 		t.Fatal("recipe application created worktrees")

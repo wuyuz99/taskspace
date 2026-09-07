@@ -92,7 +92,10 @@ func (a *App) newCleanCmd() *cobra.Command {
 				a.printf("%-12s deleted branch %s (%s)\n", p.Name, p.Repo.Branch, p.Discard.Reason())
 			}
 
-			// Tidy the now-empty workspace directory, but never recursively.
+			// Tidy the now-empty workspace directory, but never recursively:
+			// this fails, deliberately, while the task's .context notes are
+			// still there. Worktrees are disposable; the brief that describes
+			// them is not, and only `aw task rm` deletes it.
 			_ = os.Remove(a.Store.TaskDir(t.Name))
 
 			a.printf("\ncleaned %s; the task record is still there (aw task rm %s to remove it)\n",

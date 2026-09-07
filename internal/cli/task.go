@@ -41,7 +41,7 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 				return fmt.Errorf("%q: %w", name, task.ErrExists)
 			}
 			t := task.New(name)
-			details.apply(cmd, t, brief)
+			details.apply(cmd, t)
 			if cmd.Flags().Changed("project") {
 				p, err := a.Store.LoadProject(project)
 				if err != nil {
@@ -66,6 +66,11 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 				}
 			}
 			if err := a.Store.CreatePrepared(t); err != nil {
+				return err
+			}
+			// The brief is written after the record exists, so a failure here
+			// leaves a task without a brief rather than a note without a task.
+			if err := a.applyBrief(cmd, t, brief); err != nil {
 				return err
 			}
 			a.printf("created task %s\n", name)
@@ -98,8 +103,12 @@ func (a *App) newTaskListCmd() *cobra.Command {
 			tw := tabwriter.NewWriter(a.Out, 0, 0, 2, ' ', 0)
 			fmt.Fprintln(tw, "WORKSPACE\tTICKET\tTITLE\tLOCAL SUMMARY\tUPDATED (UTC)\tREPOS")
 			for _, t := range tasks {
-				names := t.RepoNames()
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", t.Name, dash(t.Ticket), dash(oneLine(t.Title)), dash(noteSummary(t.Handoff)), handoffTime(t), dash(joinNames(names)))
+				_, handoff, err := a.notes(t)
+				if err != nil {
+					a.warnf("aw: %s: %v\n", t.Name, err)
+				}
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", t.Name, dash(t.Ticket), dash(oneLine(t.Title)),
+					dash(noteSummary(handoff.Text)), handoffTime(handoff), dash(joinNames(t.RepoNames())))
 			}
 			return tw.Flush()
 		},
@@ -120,6 +129,7 @@ func (a *App) newTaskShowCmd() *cobra.Command {
 			a.printf("task:     %s\n", t.Name)
 			a.printf("session:  %s\n", a.Runtime.SessionName(t.Name))
 			a.printf("workspace: %s\n", a.Store.TaskDir(t.Name))
+			a.printf("context:   %s\n", a.Store.ContextDir(t.Name))
 			a.printTaskContext(t)
 			if len(t.Repos) == 0 {
 				a.printf("\nno repositories yet; add one with:\n  aw repo add %s PATH\n", t.Name)
@@ -179,6 +189,23 @@ func (a *App) newTaskRmCmd() *cobra.Command {
 				return err
 			}
 			a.printf("removed task %s\n", t.Name)
+
+			// Notes go with the record, as they always have. With --force the
+			// worktrees are still on disk, so the brief describing them stays
+			// too — the same reasoning as `repo rm` leaving a worktree behind.
+			if force {
+				if note, err := a.Store.ReadNote(t.Name, task.BriefFile); err == nil && note.Text != "" {
+					a.warnf("note: the task's notes were left at %s\n", a.Store.ContextDir(t.Name))
+				}
+				return nil
+			}
+			held, err := a.Store.RemoveNotes(t.Name)
+			if err != nil {
+				return err
+			}
+			if len(held) > 0 {
+				a.printf("deleted its notes (%s)\n", joinNames(held))
+			}
 			return nil
 		},
 	}

@@ -67,6 +67,7 @@ func (a *App) newShellCmd() *cobra.Command {
 				"AW_REPO="+name,
 				"AW_WORKTREE="+r.Worktree,
 				"AW_TASK_DIR="+a.Store.TaskDir(t.Name),
+				"AW_CONTEXT_DIR="+a.Store.ContextDir(t.Name),
 			)
 			if err := shell.Run(); err != nil {
 				// A shell exiting non-zero is how shells exit; it is not an aw error.

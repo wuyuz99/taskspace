@@ -17,15 +17,27 @@ import (
 )
 
 // Task is a logical unit of work spanning one or more repositories.
+//
+// The record holds identity and configuration. The task's prose — its brief and
+// its handoff — lives in Markdown files under the task's .context directory,
+// where a person and an agent in a worktree can both reach it. See notes.go.
 type Task struct {
-	Name             string          `json:"name"`
-	Repos            map[string]Repo `json:"repos,omitempty"`
-	Title            string          `json:"title,omitempty"`
-	Ticket           string          `json:"ticket,omitempty"`
-	TicketURL        string          `json:"ticket_url,omitempty"`
-	Brief            string          `json:"brief,omitempty"`
-	Handoff          string          `json:"handoff,omitempty"`
-	HandoffUpdatedAt time.Time       `json:"handoff_updated_at,omitempty"`
+	Name      string          `json:"name"`
+	Repos     map[string]Repo `json:"repos,omitempty"`
+	Title     string          `json:"title,omitempty"`
+	Ticket    string          `json:"ticket,omitempty"`
+	TicketURL string          `json:"ticket_url,omitempty"`
+
+	// Legacy fields, read once and cleared by Store.MigrateNotes. Records
+	// written before notes became files carried the Markdown inline. Nothing
+	// should read these directly.
+	//
+	// The timestamp is a pointer because `omitempty` does nothing for a struct:
+	// as a plain time.Time it wrote "0001-01-01T00:00:00Z" into every record
+	// that never had a handoff.
+	LegacyBrief            string     `json:"brief,omitempty"`
+	LegacyHandoff          string     `json:"handoff,omitempty"`
+	LegacyHandoffUpdatedAt *time.Time `json:"handoff_updated_at,omitempty"`
 }
 
 // Repo is one repository enrolled in a task.

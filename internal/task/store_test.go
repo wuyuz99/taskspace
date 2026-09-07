@@ -153,8 +153,8 @@ func TestListReportsUnreadableRecordsWithoutHidingTheRest(t *testing.T) {
 	}
 }
 
-// A task record holds the brief and handoff the user wrote, so it stays 0600
-// rather than widening to 0644 on its first update.
+// Records stay 0600 at every stage rather than widening to 0644 on the first
+// update, matching the note files they point at.
 func TestSavedRecordsAreOwnerOnly(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX permission bits are not meaningful here")
@@ -172,7 +172,7 @@ func TestSavedRecordsAreOwnerOnly(t *testing.T) {
 		if got := info.Mode().Perm(); got != 0o600 {
 			t.Errorf("mode when %s = %o, want 600", stage, got)
 		}
-		created.Brief = "secret"
+		created.Title = "second pass"
 		if err := s.Save(created); err != nil {
 			t.Fatalf("Save: %v", err)
 		}
