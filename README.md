@@ -294,6 +294,12 @@ Only declarative metadata is stored. **Runtime state is never written down** —
 whether a session is up and whether a worktree is dirty are asked of tmux and
 git every time. Nothing can go stale, and there is no repair command.
 
+Task and project files are written `0600`: a task record carries the brief and
+handoff you wrote, which is your own material and not something to publish to
+every account on the machine. A file that cannot be read or parsed is reported
+on stderr and skipped, so one damaged record never hides the rest of your
+workspaces from `aw task list` or `aw status`.
+
 `AW_ROOT` exists because you probably already keep workspace directories
 somewhere visible, and a hidden `~/.aw` should not be forced on that habit.
 
@@ -459,7 +465,11 @@ GOOS=linux GOARCH=amd64 go build -o aw-linux ./cmd/aw
 - **Submodules** are detected and reported, but not recursed into.
 - **No notifications.** `internal/status` is the single place one would attach.
 - **`aw shell` opens a plain subshell**, not a tmux window in the task session.
-  Predictable from any context, but it does not join the session.
+  Predictable from any context, but it does not join the session, and it is a
+  known deviation from the original design note — see `docs/REVIEW_BACKLOG.md`.
+- **Briefs and handoffs render with control characters stripped.** The stored
+  Markdown keeps every byte; what reaches the terminal cannot move the cursor or
+  retitle the tab, because a brief is usually pasted in from somewhere else.
 - **Stash attribution is a heuristic.** git keeps one stash stack per
   repository, so stashes are matched by the branch recorded in their message.
   It errs toward reporting a stash, which is the safe direction.

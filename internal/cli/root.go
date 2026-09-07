@@ -6,6 +6,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -57,6 +58,20 @@ func (a *App) warnf(format string, args ...any) {
 
 // loadTask is the common "resolve the task argument" step.
 func (a *App) loadTask(name string) (*task.Task, error) { return a.Store.Load(name) }
+
+// listed unwraps a listing error: entries the store had to skip are reported as
+// warnings and the remaining rows are still shown, because one unreadable file
+// should not make `aw task list` refuse to tell you about the other nine.
+func (a *App) listed(err error) error {
+	var skipped *task.SkippedError
+	if errors.As(err, &skipped) {
+		for _, e := range skipped.Errs {
+			a.warnf("aw: %v\n", e)
+		}
+		return nil
+	}
+	return err
+}
 
 // Execute builds and runs the command tree.
 func Execute(ctx context.Context) int {

@@ -29,7 +29,7 @@ func (a *App) newStatusCmd() *cobra.Command {
 				tasks = []*task.Task{t}
 			} else {
 				all, err := a.Store.List()
-				if err != nil {
+				if err := a.listed(err); err != nil {
 					return err
 				}
 				tasks = all

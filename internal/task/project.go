@@ -24,8 +24,8 @@ type ProjectRepo struct {
 
 func ProjectFromTask(name string, t *Task) *Project {
 	p := &Project{Name: name, Repos: map[string]ProjectRepo{}}
-	for name, r := range t.Repos {
-		p.Repos[name] = ProjectRepo{Path: r.Path, Base: r.Base, Agent: append([]string(nil), r.Agent...), PostCreate: r.PostCreate}
+	for repoName, r := range t.Repos {
+		p.Repos[repoName] = ProjectRepo{Path: r.Path, Base: r.Base, Agent: append([]string(nil), r.Agent...), PostCreate: r.PostCreate}
 	}
 	return p
 }
@@ -96,17 +96,20 @@ func (s *Store) ListProjects() ([]*Project, error) {
 		return nil, err
 	}
 	var projects []*Project
+	var skipped SkippedError
 	for _, e := range entries {
 		if e.IsDir() || strings.HasPrefix(e.Name(), ".") || !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
 		p, err := s.LoadProject(strings.TrimSuffix(e.Name(), ".json"))
 		if err != nil {
-			return nil, err
+			// One malformed recipe must not hide the rest of the shelf.
+			skipped.Errs = append(skipped.Errs, err)
+			continue
 		}
 		projects = append(projects, p)
 	}
-	return projects, nil // ReadDir sorts by filename.
+	return projects, skipped.orNil() // ReadDir sorts by filename.
 }
 
 // CreatePrepared publishes a fully validated task without overwriting an

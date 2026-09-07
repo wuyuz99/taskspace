@@ -118,6 +118,12 @@ func (a *App) newTaskNoteCmd(handoff bool) *cobra.Command {
 				if handoff {
 					note = t.Handoff
 				}
+				// Exported verbatim so the Markdown round-trips through --file,
+				// but never without a final newline: the shell prompt would
+				// otherwise land on the last line of the note.
+				if note != "" && !strings.HasSuffix(note, "\n") {
+					note += "\n"
+				}
 				_, err := fmt.Fprint(a.Out, note)
 				return err
 			}
@@ -134,7 +140,7 @@ func (a *App) newTaskNoteCmd(handoff bool) *cobra.Command {
 			}
 			if handoff {
 				t.Handoff = note
-				t.HandoffUpdatedAt = time.Now().UTC()
+				t.HandoffUpdatedAt = handoffStamp(note)
 			} else {
 				t.Brief = note
 			}
@@ -150,7 +156,30 @@ func (a *App) newTaskNoteCmd(handoff bool) *cobra.Command {
 	return cmd
 }
 
-func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
+// displayText strips the control characters a terminal would act on.
+//
+// A brief is imported from an arbitrary file, and it is printed on the way into
+// attach, open and shell — the moment before the terminal is handed to tmux. An
+// escape sequence in one would retitle the tab or worse, so nothing but tabs
+// and newlines survives to the screen. The stored note keeps every byte: this
+// is a rendering rule, not a validation rule.
+func displayText(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\t' {
+			return r
+		}
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+func oneLine(s string) string { return strings.Join(strings.Fields(displayText(s)), " ") }
+
+// summaryWidth keeps `aw task list` inside an 80-column terminal: the row
+// already carries a workspace, ticket, title, timestamp and repo names.
+const summaryWidth = 48
 
 func noteSummary(note string) string {
 	for _, line := range strings.Split(note, "\n") {
@@ -159,12 +188,21 @@ func noteSummary(note string) string {
 			continue
 		}
 		r := []rune(oneLine(line))
-		if len(r) > 90 {
-			return string(r[:87]) + "..."
+		if len(r) > summaryWidth {
+			return string(r[:summaryWidth-3]) + "..."
 		}
 		return string(r)
 	}
 	return ""
+}
+
+// handoffStamp dates a handoff, and un-dates a cleared one: a workspace with no
+// local summary must not show a timestamp beside an empty column.
+func handoffStamp(note string) time.Time {
+	if note == "" {
+		return time.Time{}
+	}
+	return time.Now().UTC()
 }
 
 func handoffTime(t *task.Task) string {
@@ -176,18 +214,18 @@ func handoffTime(t *task.Task) string {
 
 func (a *App) printTaskContext(t *task.Task) {
 	if t.Title != "" {
-		a.printf("title: %s\n", t.Title)
+		a.printf("title: %s\n", oneLine(t.Title))
 	}
 	if t.Ticket != "" {
-		a.printf("ticket: %s\n", t.Ticket)
+		a.printf("ticket: %s\n", oneLine(t.Ticket))
 	}
 	if t.TicketURL != "" {
-		a.printf("ticket URL: %s\n", t.TicketURL)
+		a.printf("ticket URL: %s\n", oneLine(t.TicketURL))
 	}
 	if t.Brief != "" {
-		a.printf("\nTask brief\n%s\n", t.Brief)
+		a.printf("\nTask brief\n%s\n", strings.TrimRight(displayText(t.Brief), "\n"))
 	}
 	if t.Handoff != "" {
-		a.printf("\nLocal handoff (updated %s UTC)\n%s\n", handoffTime(t), t.Handoff)
+		a.printf("\nLocal handoff (updated %s UTC)\n%s\n", handoffTime(t), strings.TrimRight(displayText(t.Handoff), "\n"))
 	}
 }

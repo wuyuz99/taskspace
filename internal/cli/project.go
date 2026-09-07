@@ -37,7 +37,7 @@ func (a *App) newProjectCmd() *cobra.Command {
 	list := &cobra.Command{Use: "list", Aliases: []string{"ls"}, Short: "List project recipes", Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projects, err := a.Store.ListProjects()
-			if err != nil {
+			if err := a.listed(err); err != nil {
 				return err
 			}
 			if len(projects) == 0 {

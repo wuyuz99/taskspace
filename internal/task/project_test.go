@@ -47,6 +47,15 @@ func TestProjectPersistenceValidation(t *testing.T) {
 	if _, err := s.LoadProject("bad"); err == nil {
 		t.Fatal("malformed JSON accepted")
 	}
+	// One unreadable recipe must not hide the rest of the shelf.
+	ps, err = s.ListProjects()
+	var skipped *SkippedError
+	if !errors.As(err, &skipped) || len(skipped.Errs) != 1 {
+		t.Fatalf("list with a malformed recipe = %v, want one skipped entry", err)
+	}
+	if len(ps) != 2 || ps[0].Name != "alpha" {
+		t.Fatalf("readable recipes were dropped: %+v", ps)
+	}
 }
 
 func TestCreatePreparedRefusesOverwrite(t *testing.T) {

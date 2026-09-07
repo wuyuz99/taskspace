@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"time"
 
 	"github.com/aw-tool/aw/internal/task"
 )
@@ -76,7 +75,7 @@ func (a *App) editTaskNote(ctx context.Context, original *task.Task, handoff boo
 	}
 	if handoff {
 		latest.Handoff = note
-		latest.HandoffUpdatedAt = time.Now().UTC()
+		latest.HandoffUpdatedAt = handoffStamp(note)
 	} else {
 		latest.Brief = note
 	}

@@ -8,6 +8,28 @@ rationale. If you are a new contributor, read this first.
 
 Status: **v0.1, pre-release.** Nothing here is stable.
 
+### Implementation update — 2026-09-07
+
+Correctness pass over the 09-05/09-06 work. No command surface changed:
+
+- `stop` interrupts panes by id. A window target resolves to that window's
+  active pane, so a split opened to probe something never saw the SIGINT and was
+  hard-killed instead — the opposite of the "interrupt, wait, kill" promise.
+- `start` reads session state once rather than probing each window separately,
+  and `OpenWindow` refuses a name that already exists. tmux permits duplicate
+  window names, so creating one and respawning the target would have killed the
+  command in the *first* window of that name.
+- Listings degrade instead of failing: an unreadable task or project file is
+  reported on stderr and skipped, so one damaged file cannot hide every other
+  workspace. `task.SkippedError` carries what was dropped.
+- Task records are written `0600` at every stage. They hold the brief and
+  handoff, and their mode used to widen to `0644` on the first update.
+- Brief and handoff text is rendered with control characters stripped. Storage
+  is unchanged and still byte-exact; this is a rendering rule on the path into
+  attach, open and shell.
+- A cleared handoff clears its timestamp, and printing a note ends with a
+  newline.
+
 ### Implementation update — 2026-09-05
 
 The original design below is retained as historical rationale. The following

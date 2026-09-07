@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -53,6 +54,123 @@ func TestTaskNotesWithoutTicketURL(t *testing.T) {
 	}
 	if tk.Handoff != "" || tk.Brief != brief {
 		t.Fatal("clearing handoff affected the brief or failed")
+	}
+}
+
+// A brief comes from a file the user did not write by hand — a ticket export,
+// most often — and it is printed on the way into attach, open and shell. An
+// escape sequence in one must not reach the terminal.
+func TestContextRenderingNeutralizesTerminalEscapes(t *testing.T) {
+	h := newHarness(t)
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-142"); err != nil {
+		t.Fatal(err)
+	}
+	brief := "Reject \x1b]2;pwned\x07expired cards\n"
+	file := filepath.Join(t.TempDir(), "brief.md")
+	if err := os.WriteFile(file, []byte(brief), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newTaskCmd(), "brief", "PAY-142", "--file", file); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newTaskCmd(), "handoff", "PAY-142", "next\x1b[2Jsteps"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newAttachCmd(), "PAY-142"); err != nil {
+		t.Fatal(err)
+	}
+	shown := h.out.String()
+	if strings.ContainsAny(shown, "\x1b\x07") {
+		t.Fatalf("control characters reached the terminal: %q", shown)
+	}
+	if !strings.Contains(shown, "Reject ]2;pwnedexpired cards") {
+		t.Fatalf("readable text was lost: %q", shown)
+	}
+	// Stripping is a rendering rule; the stored Markdown keeps every byte.
+	tk, err := h.app.Store.Load("PAY-142")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tk.Brief != brief {
+		t.Fatalf("stored brief was rewritten: %q", tk.Brief)
+	}
+}
+
+// Printing the note is how it gets back out to a file or a pager, so it stays
+// byte-for-byte — but it must not glue the shell prompt to the last line.
+func TestNoteExportEndsWithANewline(t *testing.T) {
+	h := newHarness(t)
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-142"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newTaskCmd(), "brief", "PAY-142", "no trailing newline"); err != nil {
+		t.Fatal(err)
+	}
+	h.out.Reset()
+	if err := h.exec(t, h.app.newTaskCmd(), "brief", "PAY-142"); err != nil {
+		t.Fatal(err)
+	}
+	if h.out.String() != "no trailing newline\n" {
+		t.Fatalf("export = %q", h.out.String())
+	}
+	// An empty note prints nothing at all, not a bare newline.
+	h.out.Reset()
+	if err := h.exec(t, h.app.newTaskCmd(), "handoff", "PAY-142"); err != nil {
+		t.Fatal(err)
+	}
+	if h.out.String() != "" {
+		t.Fatalf("empty note printed %q", h.out.String())
+	}
+}
+
+// A cleared handoff has no summary, so it must not keep a timestamp beside the
+// empty column.
+func TestClearedHandoffDropsItsTimestamp(t *testing.T) {
+	h := newHarness(t)
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-142"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newTaskCmd(), "handoff", "PAY-142", "Backend done"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newTaskCmd(), "handoff", "PAY-142", "--clear"); err != nil {
+		t.Fatal(err)
+	}
+	tk, err := h.app.Store.Load("PAY-142")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !tk.HandoffUpdatedAt.IsZero() {
+		t.Fatalf("cleared handoff kept %v", tk.HandoffUpdatedAt)
+	}
+	h.out.Reset()
+	if err := h.exec(t, h.app.newTaskCmd(), "list"); err != nil {
+		t.Fatal(err)
+	}
+	if date := regexp.MustCompile(`\d{4}-\d{2}-\d{2}`); date.MatchString(h.out.String()) {
+		t.Fatalf("list showed a timestamp for a cleared handoff: %s", h.out.String())
+	}
+}
+
+// One corrupt record must not make the whole listing refuse to run.
+func TestListsDegradeAroundUnreadableRecords(t *testing.T) {
+	h := newHarness(t)
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-142"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(h.app.Store.TasksDir(), "broken.json"), []byte("{not json"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	h.out.Reset()
+	h.errb.Reset()
+	if err := h.exec(t, h.app.newTaskCmd(), "list"); err != nil {
+		t.Fatalf("list refused to run: %v", err)
+	}
+	if !strings.Contains(h.out.String(), "PAY-142") {
+		t.Fatalf("readable task was hidden: %s", h.out.String())
+	}
+	if !strings.Contains(h.errb.String(), "broken") {
+		t.Fatalf("unreadable record was not reported: %s", h.errb.String())
 	}
 }
 

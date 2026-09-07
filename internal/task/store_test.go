@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -130,6 +131,51 @@ func TestListIsSortedAndSkipsNonTaskFiles(t *testing.T) {
 	want := []string{"alpha", "mid", "zeta"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Errorf("List = %v, want %v", got, want)
+	}
+}
+
+func TestListReportsUnreadableRecordsWithoutHidingTheRest(t *testing.T) {
+	s := newTestStore(t)
+	for _, n := range []string{"alpha", "zeta"} {
+		if _, err := s.Create(n); err != nil {
+			t.Fatalf("Create %s: %v", n, err)
+		}
+	}
+	mustWrite(t, filepath.Join(s.TasksDir(), "corrupt.json"), "{not json")
+
+	tasks, err := s.List()
+	var skipped *SkippedError
+	if !errors.As(err, &skipped) || len(skipped.Errs) != 1 {
+		t.Fatalf("List = %v, want one skipped entry", err)
+	}
+	if len(tasks) != 2 || tasks[0].Name != "alpha" || tasks[1].Name != "zeta" {
+		t.Errorf("readable tasks were dropped: %+v", tasks)
+	}
+}
+
+// A task record holds the brief and handoff the user wrote, so it stays 0600
+// rather than widening to 0644 on its first update.
+func TestSavedRecordsAreOwnerOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not meaningful here")
+	}
+	s := newTestStore(t)
+	created, err := s.Create("private")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	for _, stage := range []string{"created", "updated"} {
+		info, err := os.Stat(filepath.Join(s.TasksDir(), "private.json"))
+		if err != nil {
+			t.Fatalf("stat (%s): %v", stage, err)
+		}
+		if got := info.Mode().Perm(); got != 0o600 {
+			t.Errorf("mode when %s = %o, want 600", stage, got)
+		}
+		created.Brief = "secret"
+		if err := s.Save(created); err != nil {
+			t.Fatalf("Save: %v", err)
+		}
 	}
 }
 

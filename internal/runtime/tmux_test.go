@@ -101,6 +101,49 @@ func TestStartReusesExistingSessionAndAddsOnlyMissingWindows(t *testing.T) {
 	}
 }
 
+// Every hasWindow probe costs a has-session plus a list-panes, and one
+// list-panes already describes every window in the session.
+func TestStartQueriesSessionStateOnce(t *testing.T) {
+	f := awexec.NewFake()
+	f.RespondOut("list-panes", "backend\t0\tclaude\n")
+	tm := NewTmux(f)
+
+	windows := []Window{
+		{Name: "backend", Dir: "/wt/backend"},
+		{Name: "frontend", Dir: "/wt/frontend"},
+		{Name: "infra", Dir: "/wt/infra"},
+	}
+	if err := tm.Start(ctx(), "aw-task", windows); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if n := strings.Count(strings.Join(f.Commands(), "\n"), "list-panes"); n != 1 {
+		t.Errorf("list-panes ran %d times, want 1: %v", n, f.Commands())
+	}
+}
+
+// tmux happily creates a second window with the same name, and the respawn that
+// follows would then land on the first one — killing a running agent.
+func TestOpenWindowRefusesAnExistingName(t *testing.T) {
+	f := awexec.NewFake()
+	f.RespondOut("list-panes", "backend\t0\tclaude\n")
+	tm := NewTmux(f)
+
+	err := tm.OpenWindow(ctx(), "aw-task", Window{Name: "backend", Dir: "/wt/backend"})
+	if err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("OpenWindow on a live window = %v, want refusal", err)
+	}
+	if f.Ran("new-window") || f.Ran("respawn-window") {
+		t.Errorf("refusal still touched the window: %v", f.Commands())
+	}
+
+	if err := tm.OpenWindow(ctx(), "aw-task", Window{Name: "frontend", Dir: "/wt/frontend"}); err != nil {
+		t.Fatalf("OpenWindow on a free name: %v", err)
+	}
+	if !f.Ran("new-window -d -t =aw-task -n frontend") {
+		t.Errorf("free name was not created: %v", f.Commands())
+	}
+}
+
 func TestStartRejectsEmptyWindowList(t *testing.T) {
 	tm := NewTmux(awexec.NewFake())
 	if err := tm.Start(ctx(), "aw-task", nil); err == nil {
@@ -108,9 +151,13 @@ func TestStartRejectsEmptyWindowList(t *testing.T) {
 	}
 }
 
-func TestStopInterruptsBeforeKilling(t *testing.T) {
+// A window target resolves to the window's *active* pane, so a split opened to
+// probe something would never see the interrupt and would be hard-killed
+// instead. Stop must address panes individually.
+func TestStopInterruptsEveryPaneBeforeKilling(t *testing.T) {
 	f := awexec.NewFake()
-	f.RespondOut("list-panes", "backend\t0\tclaude\nfrontend\t0\tcodex\n")
+	// Three panes: backend, backend's split, and frontend.
+	f.RespondOut("list-panes", "%0\t0\n%1\t0\n%2\t0\n")
 	tm := NewTmux(f)
 	tm.StopGrace = 0 // keep the test fast; ordering is what matters
 
@@ -120,11 +167,16 @@ func TestStopInterruptsBeforeKilling(t *testing.T) {
 	cmds := f.Commands()
 	joined := strings.Join(cmds, "\n")
 
-	if strings.Count(joined, "send-keys") != 2 {
-		t.Errorf("want C-c to each live window; got:\n%s", joined)
+	if strings.Count(joined, "send-keys") != 3 {
+		t.Errorf("want C-c to each live pane, splits included; got:\n%s", joined)
 	}
-	if !strings.Contains(joined, "send-keys -t =aw-task:=backend C-c") {
-		t.Errorf("missing interrupt for backend; got:\n%s", joined)
+	for _, pane := range []string{"%0", "%1", "%2"} {
+		if !strings.Contains(joined, "send-keys -t "+pane+" C-c") {
+			t.Errorf("missing interrupt for pane %s; got:\n%s", pane, joined)
+		}
+	}
+	if strings.Contains(joined, "send-keys -t =aw-task") {
+		t.Errorf("interrupt addressed a window instead of a pane; got:\n%s", joined)
 	}
 	if !strings.Contains(joined, "kill-session -t =aw-task") {
 		t.Errorf("missing kill-session; got:\n%s", joined)
@@ -159,7 +211,7 @@ func TestStopOnMissingSessionIsANoOp(t *testing.T) {
 
 func TestStopSkipsDeadPanes(t *testing.T) {
 	f := awexec.NewFake()
-	f.RespondOut("list-panes", "backend\t1\tclaude\nfrontend\t0\tcodex\n")
+	f.RespondOut("list-panes", "%0\t1\n%1\t0\n")
 	tm := NewTmux(f)
 	tm.StopGrace = 0
 
@@ -167,10 +219,10 @@ func TestStopSkipsDeadPanes(t *testing.T) {
 		t.Fatalf("Stop: %v", err)
 	}
 	joined := strings.Join(f.Commands(), "\n")
-	if strings.Contains(joined, "=aw-task:=backend C-c") {
+	if strings.Contains(joined, "-t %0 C-c") {
 		t.Errorf("interrupted an already-dead pane; got:\n%s", joined)
 	}
-	if !strings.Contains(joined, "=aw-task:=frontend C-c") {
+	if !strings.Contains(joined, "-t %1 C-c") {
 		t.Errorf("did not interrupt the live pane; got:\n%s", joined)
 	}
 }

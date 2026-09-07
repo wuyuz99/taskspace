@@ -87,7 +87,7 @@ func (a *App) newTaskListCmd() *cobra.Command {
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			tasks, err := a.Store.List()
-			if err != nil {
+			if err := a.listed(err); err != nil {
 				return err
 			}
 			if len(tasks) == 0 {

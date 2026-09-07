@@ -17,6 +17,32 @@ var ErrNotFound = errors.New("task not found")
 // ErrExists is returned when creating a task that already exists.
 var ErrExists = errors.New("task already exists")
 
+// SkippedError reports entries a listing could not read.
+//
+// Listings return it alongside everything they *could* read, so a single
+// corrupt or unreadable file degrades one row rather than making the whole
+// command fail. Callers that want the rows should report it as a warning.
+type SkippedError struct{ Errs []error }
+
+func (e *SkippedError) Error() string {
+	parts := make([]string, len(e.Errs))
+	for i, err := range e.Errs {
+		parts[i] = err.Error()
+	}
+	return "skipped unreadable entries: " + strings.Join(parts, "; ")
+}
+
+func (e *SkippedError) Unwrap() []error { return e.Errs }
+
+// orNil returns a pointer to a copy only when something was actually skipped,
+// so the happy path returns a genuinely nil error.
+func (e SkippedError) orNil() error {
+	if len(e.Errs) == 0 {
+		return nil
+	}
+	return &e
+}
+
 // Store persists tasks as one JSON file per task.
 //
 // One file per task rather than one global file: the premise of the tool is
@@ -164,7 +190,10 @@ func (s *Store) Save(t *Task) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close temp file for task %q: %w", t.Name, err)
 	}
-	if err := os.Chmod(tmpName, 0o644); err != nil {
+	// 0600, not 0644: a task record now carries the brief and handoff the user
+	// wrote, and CreatePrepared already publishes at 0600. Matching it here
+	// stops a record's mode from widening on its first update.
+	if err := os.Chmod(tmpName, 0o600); err != nil {
 		return fmt.Errorf("chmod task %q: %w", t.Name, err)
 	}
 	if err := os.Rename(tmpName, final); err != nil {
@@ -229,12 +258,14 @@ func (s *Store) List() ([]*Task, error) {
 	sort.Strings(names)
 
 	tasks := make([]*Task, 0, len(names))
+	var skipped SkippedError
 	for _, n := range names {
 		t, err := s.Load(n)
 		if err != nil {
-			return nil, err
+			skipped.Errs = append(skipped.Errs, err)
+			continue
 		}
 		tasks = append(tasks, t)
 	}
-	return tasks, nil
+	return tasks, skipped.orNil()
 }

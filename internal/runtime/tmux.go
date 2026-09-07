@@ -76,12 +76,14 @@ func (t *Tmux) Start(ctx context.Context, session string, windows []Window) erro
 		return err
 	}
 
-	exists, err := t.HasSession(ctx, session)
+	// One State call, not one per window: each hasWindow probe costs two tmux
+	// invocations, and the answer for every window is in the same list-panes.
+	st, err := t.State(ctx, session)
 	if err != nil {
 		return err
 	}
 
-	if !exists {
+	if !st.Exists {
 		first := windows[0]
 		args := []string{"new-session", "-d", "-s", session, "-n", WindowName(first.Name)}
 		if first.Dir != "" {
@@ -103,14 +105,10 @@ func (t *Tmux) Start(ctx context.Context, session string, windows []Window) erro
 	}
 
 	for _, w := range windows {
-		present, err := t.hasWindow(ctx, session, w.Name)
-		if err != nil {
-			return err
-		}
-		if present {
+		if _, present := st.Panes[WindowName(w.Name)]; present {
 			continue
 		}
-		if err := t.OpenWindow(ctx, session, w); err != nil {
+		if err := t.openWindow(ctx, session, w); err != nil {
 			return err
 		}
 	}
@@ -118,7 +116,25 @@ func (t *Tmux) Start(ctx context.Context, session string, windows []Window) erro
 }
 
 // OpenWindow implements Runtime.
+//
+// The existence check is not redundant with the caller's: tmux allows two
+// windows to share a name, so creating a duplicate and then respawning the
+// target would kill whatever the *first* window is running — an agent, most
+// likely. Refuse instead, and let restart be the way to relaunch a window.
 func (t *Tmux) OpenWindow(ctx context.Context, session string, w Window) error {
+	present, err := t.hasWindow(ctx, session, w.Name)
+	if err != nil {
+		return err
+	}
+	if present {
+		return fmt.Errorf("window %s already exists in %s; use restart to relaunch it", w.Name, session)
+	}
+	return t.openWindow(ctx, session, w)
+}
+
+// openWindow creates the window unconditionally. Callers must already know the
+// name is free.
+func (t *Tmux) openWindow(ctx context.Context, session string, w Window) error {
 	args := []string{"new-window", "-d", "-t", target(session), "-n", WindowName(w.Name)}
 	if w.Dir != "" {
 		args = append(args, "-c", w.Dir)
@@ -263,16 +279,16 @@ func (t *Tmux) Stop(ctx context.Context, session string) error {
 		return nil
 	}
 
-	st, err := t.State(ctx, session)
+	// Pane ids, not window targets: tmux resolves a window target to its active
+	// pane, so a split opened to probe something would never see the interrupt
+	// and would be hard-killed below.
+	panes, err := t.livePanes(ctx, session)
 	if err != nil {
 		return err
 	}
 	interrupted := false
-	for name, pane := range st.Panes {
-		if pane.Dead {
-			continue
-		}
-		if _, err := t.tmux(ctx, "send-keys", "-t", windowTarget(session, name), "C-c"); err == nil {
+	for _, pane := range panes {
+		if _, err := t.tmux(ctx, "send-keys", "-t", pane, "C-c"); err == nil {
 			interrupted = true
 		}
 	}
@@ -321,6 +337,36 @@ func (t *Tmux) Attach(ctx context.Context, session string) error {
 		return fmt.Errorf("attach to %s: %w", session, err)
 	}
 	return nil
+}
+
+// livePaneFormat lists individual panes rather than windows, for the one
+// caller that must reach every process in a session.
+const livePaneFormat = "#{pane_id}\t#{pane_dead}"
+
+// livePanes returns the pane ids of every pane whose command is still running.
+// Pane ids are unique across the tmux server, so they need no session prefix.
+func (t *Tmux) livePanes(ctx context.Context, session string) ([]string, error) {
+	res, err := t.tmux(ctx, "list-panes", "-s", "-t", target(session), "-F", livePaneFormat)
+	if err != nil {
+		if awexec.IsExit(err) {
+			// The session went away between the check and here.
+			return nil, nil
+		}
+		return nil, err
+	}
+	var ids []string
+	for _, raw := range strings.Split(res.Stdout, "\n") {
+		line := strings.TrimRight(raw, "\r")
+		if line == "" {
+			continue
+		}
+		id, dead, ok := strings.Cut(line, "\t")
+		if !ok || id == "" || dead == "1" {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
 }
 
 // stateFormat is a tmux format string. Formats are a stable interface; the
