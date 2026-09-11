@@ -27,6 +27,10 @@ type Task struct {
 	Title     string          `json:"title,omitempty"`
 	Ticket    string          `json:"ticket,omitempty"`
 	TicketURL string          `json:"ticket_url,omitempty"`
+	// Agent is the command for the task's root window, as argv. That window
+	// opens in the directory holding every worktree, where one agent can reach
+	// every repository. Empty means the user's shell.
+	Agent []string `json:"agent,omitempty"`
 
 	// Legacy fields, read once and cleared by Store.MigrateNotes. Records
 	// written before notes became files carried the Markdown inline. Nothing
@@ -65,6 +69,13 @@ func (r Repo) AgentLabel() string {
 	}
 	return filepath.Base(r.Agent[0])
 }
+
+// RootWindowName names the task's root window. Repository names must start with
+// a letter or digit, so no repository window can ever be called this.
+const RootWindowName = "_root"
+
+// AgentLabel renders the root window's agent for display.
+func (t *Task) AgentLabel() string { return Repo{Agent: t.Agent}.AgentLabel() }
 
 // New returns an empty task with the given name.
 func New(name string) *Task {

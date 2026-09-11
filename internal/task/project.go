@@ -13,6 +13,8 @@ import (
 type Project struct {
 	Name  string                 `json:"name"`
 	Repos map[string]ProjectRepo `json:"repos"`
+	// Agent is the task-root agent argv. Empty leaves the root window a shell.
+	Agent []string `json:"agent,omitempty"`
 }
 
 type ProjectRepo struct {
@@ -23,7 +25,7 @@ type ProjectRepo struct {
 }
 
 func ProjectFromTask(name string, t *Task) *Project {
-	p := &Project{Name: name, Repos: map[string]ProjectRepo{}}
+	p := &Project{Name: name, Repos: map[string]ProjectRepo{}, Agent: append([]string(nil), t.Agent...)}
 	for repoName, r := range t.Repos {
 		p.Repos[repoName] = ProjectRepo{Path: r.Path, Base: r.Base, Agent: append([]string(nil), r.Agent...), PostCreate: r.PostCreate}
 	}

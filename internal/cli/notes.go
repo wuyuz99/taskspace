@@ -76,10 +76,14 @@ func (a *App) applyBrief(cmd *cobra.Command, t *task.Task, brief string) error {
 
 func (a *App) newTaskUpdateCmd() *cobra.Command {
 	var d taskDetails
-	cmd := &cobra.Command{Use: "update NAME", Short: "Update a task's title, ticket or brief", Args: cobra.ExactArgs(1),
+	var agent agentOptions
+	cmd := &cobra.Command{Use: "update NAME", Short: "Update a task's title, ticket, brief or root agent", Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			brief, err := d.readBrief()
 			if err != nil {
+				return err
+			}
+			if err := agent.validate(cmd); err != nil {
 				return err
 			}
 			t, err := a.loadTask(args[0])
@@ -87,6 +91,7 @@ func (a *App) newTaskUpdateCmd() *cobra.Command {
 				return err
 			}
 			d.apply(cmd, t)
+			setAgent := agent.apply(cmd, t)
 			if err := a.Store.Save(t); err != nil {
 				return err
 			}
@@ -94,9 +99,13 @@ func (a *App) newTaskUpdateCmd() *cobra.Command {
 				return err
 			}
 			a.printf("updated task %s\n", t.Name)
+			if setAgent {
+				a.printf("  agent: %s (applies on window creation or explicit restart)\n", agentDisplay(task.Repo{Agent: t.Agent}))
+			}
 			return nil
 		}}
 	d.flags(cmd)
+	agent.flags(cmd)
 	return cmd
 }
 

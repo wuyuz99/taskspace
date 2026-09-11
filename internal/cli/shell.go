@@ -18,7 +18,8 @@ func (a *App) newShellCmd() *cobra.Command {
 		Long: "shell starts your shell in the worktree, with the terminal tab labelled.\n" +
 			"It is the ad-hoc 'let me poke at this by hand' command, so you never have\n" +
 			"to navigate to a worktree yourself.\n\n" +
-			"REPO may be omitted when the task has only one repository.",
+			"Without REPO, a task with one repository opens that worktree; any other\n" +
+			"task opens its root, the directory holding every worktree.",
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			t, err := a.loadTask(args[0])
@@ -32,6 +33,7 @@ func (a *App) newShellCmd() *cobra.Command {
 			if root && repoArg != "" {
 				return fmt.Errorf("--root cannot be combined with a repository")
 			}
+			root = root || defaultsToRoot(t, repoArg)
 			var r task.Repo
 			var name string
 			if root {
@@ -90,7 +92,9 @@ func (a *App) newPathCmd() *cobra.Command {
 		Use:   "path TASK [REPO]",
 		Short: "Print a worktree path",
 		Long: "path prints the worktree path and nothing else, so it composes:\n\n" +
-			"  cd \"$(aw path checkout-redesign backend)\"",
+			"  cd \"$(aw path checkout-redesign backend)\"\n\n" +
+			"Without REPO, a task with one repository prints that worktree; any other\n" +
+			"task prints its root, the directory holding every worktree.",
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			t, err := a.loadTask(args[0])
@@ -103,21 +107,15 @@ func (a *App) newPathCmd() *cobra.Command {
 			}
 			// Deliberately not worktreeDir: printing a path should work even
 			// before `aw start` has created it.
-			if root {
-				if repoArg != "" {
-					return fmt.Errorf("--root cannot be combined with a repository")
-				}
+			if root && repoArg != "" {
+				return fmt.Errorf("--root cannot be combined with a repository")
+			}
+			if root || defaultsToRoot(t, repoArg) {
 				a.printf("%s\n", a.Store.TaskDir(t.Name))
 				return nil
 			}
 			names := t.RepoNames()
-			if len(names) == 0 {
-				return fmt.Errorf("task %q has no repositories", t.Name)
-			}
 			if repoArg == "" {
-				if len(names) > 1 {
-					return fmt.Errorf("task %q has several repos (%s); name one", t.Name, joinNames(names))
-				}
 				repoArg = names[0]
 			}
 			r, ok := t.Repo(repoArg)

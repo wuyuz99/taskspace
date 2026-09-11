@@ -240,3 +240,38 @@ func TestUnqueryableRuntimeIsUnknownNotNoSession(t *testing.T) {
 		t.Errorf("Git = %q, want clean; a runtime failure must not hide git state", got.Repos[0].Git)
 	}
 }
+
+// The root window is judged by its own pane, never by a repository's.
+func TestRootWindowState(t *testing.T) {
+	tk := task.New("t")
+	tk.Agent = []string{"/usr/local/bin/claude", "--model", "opus"}
+	tk.SetRepo("backend", task.Repo{Worktree: filepath.Join(t.TempDir(), "missing")})
+
+	cases := []struct {
+		name string
+		rt   runtime.Runtime
+		want RuntimeState
+	}{
+		{"no session", noSession(), RuntimeNoSession},
+		{"running", session(map[string]runtime.PaneState{task.RootWindowName: {}, "backend": {Dead: true}}), RuntimeRunning},
+		{"dead", session(map[string]runtime.PaneState{task.RootWindowName: {Dead: true}, "backend": {}}), RuntimeDead},
+		{"session without it", session(map[string]runtime.PaneState{"backend": {}}), RuntimeNoWindow},
+		{"unqueryable", &fakeRuntime{err: errors.New("no server")}, RuntimeUnknown},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := New(awgit.New(awexec.Real()), c.rt).Task(context.Background(), tk)
+			if got.Root.Runtime != c.want {
+				t.Errorf("Root.Runtime = %q, want %q", got.Root.Runtime, c.want)
+			}
+			if got.Root.Agent != "claude" {
+				t.Errorf("Root.Agent = %q, want claude", got.Root.Agent)
+			}
+		})
+	}
+
+	tk.Agent = nil
+	if got := New(awgit.New(awexec.Real()), noSession()).Task(context.Background(), tk); got.Root.Agent != "shell" {
+		t.Errorf("Root.Agent = %q without an agent, want shell", got.Root.Agent)
+	}
+}

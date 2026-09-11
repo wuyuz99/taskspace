@@ -96,6 +96,7 @@ func Execute(ctx context.Context) int {
 
 	root.AddCommand(
 		app.newInitCmd(),
+		app.newConfigCmd(),
 		app.newTaskCmd(),
 		app.newProjectCmd(),
 		app.newRepoCmd(),
@@ -133,6 +134,7 @@ func (a *App) newInitCmd() *cobra.Command {
 			a.printf("state root:  %s\n", a.Store.Root())
 			a.printf("tasks:       %s\n", a.Store.TasksDir())
 			a.printf("worktrees:   %s\n", a.Store.WorktreesDir())
+			a.printf("config:      %s\n", a.Store.ConfigPath())
 			if os.Getenv("AW_ROOT") == "" {
 				a.printf("\nSet AW_ROOT to keep workspaces somewhere else.\n")
 			}

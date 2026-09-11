@@ -34,14 +34,17 @@ task -> repos -> worktrees -> shells or optional agents
 The **task** is the first-class object. You operate on `checkout-redesign`, not
 on nine separate resources.
 
-Use ordinary shells, launch an agent in selected repositories, or work from the
-task root with a tool that supports multiple repositories. `aw` prepares and
-resumes the workspace; it does not coordinate agents or schedule their work.
+Every task has a window at its root, the directory holding every worktree: run
+one agent there and it works across all the repositories, while a shell in each
+repository is on hand to review and commit. Agents can also run in selected
+repositories. `aw` prepares and resumes the workspace; it does not coordinate
+agents or schedule their work.
 
 ```
 checkout-redesign
-├── backend    agent/checkout-redesign   claude   running   dirty (3 files)
-├── frontend   agent/checkout-redesign   codex    running   clean, ahead 2
+├── (root)                               claude   running
+├── backend    agent/checkout-redesign   shell    running   dirty (3 files)
+├── frontend   agent/checkout-redesign   shell    running   clean, ahead 2
 └── infra      agent/checkout-redesign   shell    dead      clean
 ```
 
@@ -66,18 +69,18 @@ sudo install -m 0755 aw /usr/local/bin/aw     # or put it anywhere on PATH
 ## Quick start
 
 ```bash
-# one logical task spanning two repositories
-aw task create checkout-redesign
-aw repo add checkout-redesign ~/src/backend  --agent claude
-aw repo add checkout-redesign ~/src/frontend --agent codex
+# one logical task spanning two repositories, with one agent at its root
+aw task create checkout-redesign --agent claude
+aw repo add checkout-redesign ~/src/backend
+aw repo add checkout-redesign ~/src/frontend
 
-# create isolated worktrees and launch the agents
+# create isolated worktrees and launch the agent
 aw start checkout-redesign
 
 # or prepare, show task context and enter the session in one command
 aw open checkout-redesign
 
-# one tmux session, one named window per repo
+# one tmux session: the agent's _root window first, then a shell per repo
 aw attach checkout-redesign        # detach with Ctrl-b d
 
 # what is going on, across every task
@@ -97,6 +100,37 @@ aw stop checkout-redesign
 aw clean checkout-redesign
 ```
 
+### Set your agent once
+
+If you use the same agent for every task, make it the default:
+
+```bash
+aw config agent claude --model opus   # everything after the command is its argv
+aw task create checkout-redesign      # root agent: claude --model opus
+aw config                             # show defaults and where they are stored
+aw config agent --unset
+```
+
+A new task's root agent comes from, in order: `task create --agent` or `--shell`,
+then the `--project` recipe's agent, then this default, and otherwise your
+shell. The result is recorded on the task, as recipes are, so changing the
+default later leaves existing tasks alone; use `aw task update TASK --agent` for
+those. The default is stored in `$AW_ROOT/config.json`. It sets only the
+task-root agent; repository windows remain shells unless given their own
+`--agent`.
+
+### Run an agent per repository
+
+A repository can run its own agent instead of a shell:
+
+```bash
+aw repo add checkout-redesign ~/src/backend  --agent claude
+aw repo add checkout-redesign ~/src/frontend --agent codex
+```
+
+The `_root` window is still created, running a shell unless the task has an
+agent of its own.
+
 ### Work with ordinary shells
 
 For a manual workflow without persistent terminals or agent commands:
@@ -104,8 +138,9 @@ For a manual workflow without persistent terminals or agent commands:
 ```bash
 aw task create checkout-review --repo "backend=$HOME/src/backend" --repo "frontend=$HOME/src/frontend"
 aw start checkout-review --no-runtime
-aw shell checkout-review --root
-# backend/ and frontend/ are available in this shell; exit to return
+aw shell checkout-review
+# a task with several repositories opens at its root: backend/ and frontend/
+# are available in this shell; exit to return
 ```
 
 ## Reusable projects
@@ -120,8 +155,10 @@ aw task create PAY-156 --project payments --title "Add payment retry"
 aw open PAY-156
 ```
 
-Recipes live in `$AW_ROOT/projects/<name>.json`. They copy repository names and
-local source paths, base refs, agent argv, and setup hooks. Worktree paths and
+Recipes live in `$AW_ROOT/projects/<name>.json`. They copy the task-root agent,
+repository names and local source paths, base refs, agent argv, and setup hooks.
+`task create --project payments --agent codex` (or `--shell`) replaces the
+recipe's root agent for the new task. Worktree paths and
 branches are generated for the new task (`agent/PAY-156`); source task titles,
 tickets, briefs, and handoffs are not copied. No worktrees or agents are created
 until `start` or `open`.
@@ -134,7 +171,7 @@ to inspect commands and hooks before applying a recipe. Saving never executes th
 `task create --project payments --repo infra=/path/to/infra` can add repositories
 to the snapshot. Duplicate repository names or paths are rejected; they do not
 silently override recipe entries. Validation failures leave no partial task record.
-Use `repo update` to customize an inherited agent or hook. These recipes reference local checkouts; they
+Use `task update --agent` or `repo update` to customize an inherited agent or hook. These recipes reference local checkouts; they
 do not clone repositories or synchronize configuration across machines. Recorded
 base refs are reused; no fetch is performed. An empty base is resolved at creation.
 
@@ -145,8 +182,13 @@ aw repo update PAY-142 backend --agent codex
 aw repo update PAY-142 backend --post-create 'pnpm install'
 aw repo update PAY-142 backend --shell
 aw repo update PAY-142 backend --post-create=''
+aw task update PAY-142 --agent claude --agent=--model --agent opus
+aw task update PAY-142 --shell
 aw project save payments --from PAY-142 --replace
 ```
+
+`task update --agent` and `--shell` set the task-root window's command the same
+way `repo update` sets a repository's.
 
 Only supplied settings change. Repeat `--agent` for command arguments; `--shell`
 clears the agent command, and an empty `--post-create` clears the hook. Existing
@@ -195,6 +237,9 @@ reaches it with a relative path — which is the point. An agent working in
 cat ../.context/TASK.md
 ```
 
+The agent in the `_root` window starts one level up, so for it the same file is
+`.context/TASK.md`.
+
 `aw shell` and `post_create` hooks also get `AW_CONTEXT_DIR`. Nothing stops you
 editing, grepping, or diffing these files directly; `aw` only reads and writes
 the same two paths.
@@ -240,7 +285,8 @@ not implemented.
 ## Workspace structure
 
 **Task** — a logical unit of work. The thing you actually think in. It has a
-name, and it owns one entry per repository.
+name, an optional agent command for its root window, and one entry per
+repository.
 
 **Repo entry** — a source repository enrolled in a task, together with its
 branch (`agent/<task>` by default), the ref it was forked from, its worktree
@@ -257,8 +303,11 @@ $AW_ROOT/worktrees/checkout-redesign/
 
 Cross-repo relative paths (`../frontend`) keep working inside a task.
 
-**Session** — one tmux session per task (`aw@<encoded-task>`), one window per repo,
-named after the repo. Closing `aw` never stops an agent.
+**Session** — one tmux session per task (`aw@<encoded-task>`). Its first window,
+`_root`, opens in the task root and runs the task's agent, or your shell if it
+has none. Then comes one window per repo, named after the repo. No repository
+can be called `_root`: repository names start with a letter or digit. Closing
+`aw` never stops an agent.
 
 ### Enter the whole workspace
 
@@ -268,28 +317,35 @@ Existing windows are preserved. Dead windows get an explicit `aw restart` hint;
 opening does not restart them automatically. Setup hooks run only for newly
 created worktrees, as with `aw start`. Add at least one repository before opening.
 
+`aw start TASK` and `aw open TASK` create the `_root` window along with the
+repository windows. `aw start TASK REPO...` starts only the named repositories.
+A session started before root windows existed gains one, as its last window,
+on the next full `start` or `open`.
+
 ```bash
-aw shell PAY-142 --root
-cd "$(aw path PAY-142 --root)"
+aw shell PAY-142
+cd "$(aw path PAY-142)"
 ```
 
 The root contains the task's repository directories, useful for cross-repository
-inspection or launching your preferred agent there. `shell --root` creates the
-directory if necessary, even before repositories are added, but does not create
-worktrees or start a session. `path --root` only prints its path. Neither accepts
-a repository argument. Existing repository-specific shell/path commands still work.
-Shells expose `AW_TASK_DIR`, `AW_CONTEXT_DIR`, `AW_TASK`, `AW_WORKTREE` (the
-current directory), and `AW_REPO` (empty at the task root). The root shell has a
-task-only terminal label.
+inspection or launching your preferred agent there. Without a repository argument,
+`shell` and `path` use the root, unless the task has exactly one repository, in
+which case they use its worktree. `--root` asks for the root explicitly and cannot
+be combined with a repository. `shell` creates the root if necessary, even before
+repositories are added, but does not create worktrees or start a session. `path`
+only prints it. Shells expose `AW_TASK_DIR`, `AW_CONTEXT_DIR`, `AW_TASK`,
+`AW_WORKTREE` (the current directory), and `AW_REPO` (empty at the task root).
+The root shell has a task-only terminal label.
 
 ### Recover a stopped agent
 
 ```bash
 aw restart PAY-142 backend
+aw restart PAY-142 --root
 ```
 
-Restart relaunches the configured command only when every pane in that repository
-window is dead. A live agent or ad-hoc split causes refusal. Missing sessions or
+Restart relaunches the configured command only when every pane in that window
+is dead. A live agent or ad-hoc split causes refusal. Missing sessions or
 windows should be created with `aw start`. Restart replaces dead-window output,
 so inspect it first; it does not resume agent conversation history or rerun setup.
 Ordinary `start` continues to preserve existing windows, including dead ones.
@@ -315,6 +371,7 @@ task. Worktree paths, branches, and task records do not change.
 
 ```
 $AW_ROOT/                          default ~/.aw, override with AW_ROOT
+├── config.json                    user-wide defaults (the default root agent)
 ├── tasks/<name>.json              task identity and repository configuration
 ├── projects/<name>.json           reusable repository recipes
 └── worktrees/<task>/
@@ -401,10 +458,15 @@ especially when configuration was copied from another workspace.
 
 ```
 TASK               REPO      BRANCH                   AGENT   RUNTIME     GIT
-checkout-redesign  backend   agent/checkout-redesign  claude  running     dirty (3 files)
+checkout-redesign  (root)    -                        claude  running     -
+checkout-redesign  backend   agent/checkout-redesign  shell   running     dirty (3 files)
 checkout-redesign  frontend  agent/checkout-redesign  codex   dead        clean, ahead 2
+payments-fix       (root)    -                        shell   no-session  -
 payments-fix       backend   agent/payments-fix       codex   no-session  missing
 ```
+
+Each task's first row is its `_root` window. It has a runtime state but no git
+state of its own: whatever its agent changes shows up in the repositories' rows.
 
 - **RUNTIME** — `running`, `dead`, `no-window`, `no-session`, `unknown`
 - **GIT** — `clean`, `dirty (N files)`, `missing`, `error`, plus stash and
@@ -438,9 +500,11 @@ worktrees exist.
 | Command | What it does |
 | --- | --- |
 | `aw init` | Create/report state directories (never required) |
+| `aw config` / `aw config agent [CMD ARGS... / --unset]` | Show defaults; set the default task-root agent |
 | `aw project save NAME --from TASK [--replace]` | Save a reusable repository recipe |
 | `aw project list` / `aw project show NAME` | Inspect saved recipes |
-| `aw task create NAME [--repo name=path]` | Create a task |
+| `aw task create NAME [--repo name=path] [--agent CMD / --shell]` | Create a task, optionally with an agent at its root |
+| `aw task update NAME [--agent CMD / --shell] [--title ...]` | Update a task's root agent and details |
 | `aw task list` | List tasks |
 | `aw task show NAME` | Show a task's repos in detail |
 | `aw task rm NAME` | Delete the record; refuses while worktrees exist |
@@ -449,11 +513,11 @@ worktrees exist.
 | `aw repo update TASK REPO [--agent CMD / --shell] [--post-create SH]` | Update saved agent and setup settings |
 | `aw start TASK [REPO...]` | Create worktrees, launch the session |
 | `aw open TASK` | Prepare worktrees, show brief/handoff, and attach |
-| `aw restart TASK REPO` | Relaunch a dead repository window |
+| `aw restart TASK REPO` / `aw restart TASK --root` | Relaunch a dead repository or root window |
 | `aw stop TASK` | Interrupt agents, end the session, keep worktrees |
 | `aw attach TASK` | Attach (or `switch-client` when already in tmux) |
-| `aw shell TASK [REPO]` | Interactive shell in a worktree |
-| `aw path TASK [REPO]` | Print a worktree path, for `cd "$(...)"` |
+| `aw shell TASK [REPO / --root]` | Interactive shell in a worktree or the task root |
+| `aw path TASK [REPO / --root]` | Print a worktree or task-root path, for `cd "$(...)"` |
 | `aw exec TASK -- CMD` | Run a command in every worktree |
 | `aw status [TASK]` | Runtime and git state |
 | `aw clean TASK [--delete-branch] [--force]` | Remove worktrees, safely |
@@ -509,7 +573,9 @@ GOOS=linux GOARCH=amd64 go build -o aw-linux ./cmd/aw
 - **`.context/` holds two files.** `TASK.md` and `HANDOFF.md` exist; the
   `API_CONTRACT.md` and `STATUS.json` of the original sketch do not, and
   nothing writes the directory on your behalf.
-- **One config knob** (`AW_ROOT`). There is no config file.
+- **Little configuration.** `AW_ROOT` chooses the state directory, and
+  `$AW_ROOT/config.json` holds the default task-root agent. Nothing else is
+  configurable.
 - Existing sessions from the old `aw-...` naming scheme require manual inspection
   and stopping or renaming before starting their replacement.
 

@@ -46,6 +46,12 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 
 			changed := false
 			var windows []runtime.Window
+			// The root window comes first, so a fresh session opens on the agent
+			// that can see every repository. Naming repositories starts only those.
+			withRoot := len(args) == 1
+			if withRoot {
+				windows = append(windows, a.rootWindow(t))
+			}
 			for _, name := range names {
 				r := t.Repos[name]
 				res, err := a.Git.EnsureWorktree(ctx, r.Path, r.Worktree, r.Branch, r.Base)
@@ -90,6 +96,13 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 			if noRuntime {
 				return nil
 			}
+			if withRoot {
+				// tmux cannot open a window in a directory that does not exist.
+				if err := os.MkdirAll(a.Store.TaskDir(t.Name), 0755); err != nil {
+					return err
+				}
+				a.printf("%-12s %s at %s\n", "(root)", t.AgentLabel(), a.Store.TaskDir(t.Name))
+			}
 			if err := a.Runtime.Available(ctx); err != nil {
 				a.warnf("worktrees are ready, but the runtime is unavailable: %v\n", err)
 				return err
@@ -106,6 +119,9 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 				if err != nil {
 					a.warnf("could not inspect agent state: %v\n", err)
 				} else {
+					if pane, ok := st.Pane(a.Runtime.WindowName(task.RootWindowName)); ok && pane.Dead {
+						a.warnf("the root window has exited; inspect its output, then run: aw restart %s --root\n", t.Name)
+					}
 					for _, name := range names {
 						if pane, ok := st.Pane(a.Runtime.WindowName(name)); ok && pane.Dead {
 							a.warnf("%s has exited; inspect its output, then run: aw restart %s %s\n", name, t.Name, name)
@@ -194,23 +210,44 @@ func (a *App) newStopCmd() *cobra.Command {
 }
 
 func (a *App) newRestartCmd() *cobra.Command {
-	return &cobra.Command{Use: "restart TASK REPO", Short: "Relaunch a dead agent or shell",
-		Long: "Restart a dead repository window using its configured command. Refuses live panes. Replaces old pane output; inspect it first. Does not resume agent conversation history or rerun setup hooks.",
-		Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+	var root bool
+	cmd := &cobra.Command{Use: "restart TASK [REPO | --root]", Short: "Relaunch a dead agent or shell",
+		Long: "Restart a dead repository window, or with --root the task-root window, using its configured command. Refuses live panes. Replaces old pane output; inspect it first. Does not resume agent conversation history or rerun setup hooks.",
+		Args: cobra.RangeArgs(1, 2), RunE: func(cmd *cobra.Command, args []string) error {
+			switch {
+			case root && len(args) == 2:
+				return fmt.Errorf("--root cannot be combined with a repository")
+			case !root && len(args) == 1:
+				return fmt.Errorf("name a repository, or use --root for the task-root window")
+			}
 			t, err := a.loadTask(args[0])
 			if err != nil {
 				return err
 			}
-			r, name, err := a.worktreeDir(t, args[1])
-			if err != nil {
+			var w runtime.Window
+			label := t.Name
+			if root {
+				w = a.rootWindow(t)
+				if info, err := os.Stat(w.Dir); err != nil || !info.IsDir() {
+					return fmt.Errorf("task directory %s is missing; run: aw start %s", w.Dir, t.Name)
+				}
+				label += " root window"
+			} else {
+				r, name, err := a.worktreeDir(t, args[1])
+				if err != nil {
+					return err
+				}
+				w = runtime.Window{Name: name, Dir: r.Worktree, Command: r.Agent}
+				label += "/" + name
+			}
+			if err := a.Runtime.Restart(cmd.Context(), a.Runtime.SessionName(t.Name), w); err != nil {
 				return err
 			}
-			if err := a.Runtime.Restart(cmd.Context(), a.Runtime.SessionName(t.Name), runtime.Window{Name: name, Dir: r.Worktree, Command: r.Agent}); err != nil {
-				return err
-			}
-			a.printf("relaunched %s/%s; use aw status %s to check its state\n", t.Name, name, t.Name)
+			a.printf("relaunched %s; use aw status %s to check its state\n", label, t.Name)
 			return nil
 		}}
+	cmd.Flags().BoolVar(&root, "root", false, "restart the task-root window")
+	return cmd
 }
 
 func (a *App) newAttachCmd() *cobra.Command {

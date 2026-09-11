@@ -66,9 +66,17 @@ type TaskStatus struct {
 	Task    string
 	Session string
 	Running bool
-	Repos   []RepoStatus
+	// Root is the task-root window, which has a process but no worktree.
+	Root  RootStatus
+	Repos []RepoStatus
 	// RuntimeErr is set when the runtime could not be queried at all.
 	RuntimeErr error
+}
+
+// RootStatus is the `(root)` row of `aw status`.
+type RootStatus struct {
+	Agent   string
+	Runtime RuntimeState
 }
 
 // Aggregator collects status across git and the runtime.
@@ -107,6 +115,11 @@ func (a *Aggregator) Task(ctx context.Context, t *task.Task) TaskStatus {
 		}
 	}
 
+	out.Root = RootStatus{
+		Agent:   t.AgentLabel(),
+		Runtime: a.windowState(sess, task.RootWindowName, runtimeUnknown),
+	}
+
 	names := t.RepoNames()
 	rows := make([]RepoStatus, len(names))
 
@@ -132,23 +145,8 @@ func (a *Aggregator) repoStatus(ctx context.Context, taskName, repoName string, 
 		Repo:    repoName,
 		Branch:  r.Branch,
 		Agent:   r.AgentLabel(),
-		Runtime: RuntimeNoSession,
+		Runtime: a.windowState(sess, repoName, runtimeUnknown),
 		Git:     GitClean,
-	}
-
-	switch {
-	case runtimeUnknown:
-		row.Runtime = RuntimeUnknown
-	case !sess.Exists:
-		row.Runtime = RuntimeNoSession
-	default:
-		if pane, ok := sess.Pane(a.Runtime.WindowName(repoName)); !ok {
-			row.Runtime = RuntimeNoWindow
-		} else if pane.Dead {
-			row.Runtime = RuntimeDead
-		} else {
-			row.Runtime = RuntimeRunning
-		}
 	}
 
 	st, err := a.Git.WorktreeStatus(ctx, r.Worktree)
@@ -170,6 +168,25 @@ func (a *Aggregator) repoStatus(ctx context.Context, taskName, repoName string, 
 		}
 	}
 	return row
+}
+
+// windowState is what the session says about one window.
+func (a *Aggregator) windowState(sess runtime.SessionState, window string, runtimeUnknown bool) RuntimeState {
+	switch {
+	case runtimeUnknown:
+		return RuntimeUnknown
+	case !sess.Exists:
+		return RuntimeNoSession
+	}
+	pane, ok := sess.Pane(a.Runtime.WindowName(window))
+	switch {
+	case !ok:
+		return RuntimeNoWindow
+	case pane.Dead:
+		return RuntimeDead
+	default:
+		return RuntimeRunning
+	}
 }
 
 // All reports the status of every task, sorted by name.

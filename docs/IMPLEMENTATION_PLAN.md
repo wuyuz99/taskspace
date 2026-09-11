@@ -8,6 +8,37 @@ rationale. If you are a new contributor, read this first.
 
 Status: **v0.1, pre-release.** Nothing here is stable.
 
+### Implementation update — 2026-09-10 (the task root is a window)
+
+The observed workflow is one agent at the task root, where it can edit every
+repository, with a shell in each repository for reviewing and committing. The
+root was reachable (`shell --root`) but not managed: an agent started there was
+invisible to `status` and `restart`. So the root became part of the model rather
+than an add-on:
+
+- `Task.Agent` is the root window's argv, parallel to `Repo.Agent`; empty is a
+  shell. `task create/update --agent/--shell` set it; recipes carry it, and an
+  explicit flag overrides the recipe.
+- Every session gets a `_root` window, created first so a fresh session attaches
+  to it. The name cannot collide: repository names start with a letter or digit.
+- `start TASK REPO...` leaves the root out. `restart TASK --root` relaunches it
+  under the same dead-only rules. `status` leads each task with a `(root)` row
+  that has runtime state but no git state.
+- `shell`/`path` without a repository use the root unless the task has exactly
+  one repository, replacing the "name one" error.
+
+The root is not a pseudo-repository: it has no branch or worktree, so `clean`,
+`exec` and git status have nothing to act on there.
+
+With a root agent on every task, most people would type the same `--agent` on
+every `task create`. `$AW_ROOT/config.json` now holds a default (`aw config
+agent CMD ARGS...`), which supersedes "`AW_ROOT` is the only knob" below. It is
+resolved at creation, after `--agent/--shell` and the recipe, and recorded on
+the task like a recipe snapshot, so `task show` states exactly what runs and
+editing the default never changes an existing task. It sets the root agent
+only; repository windows stay shells for review. The argv is stored as a JSON
+array, not an `AW_AGENT` string, so arguments need no shell-style splitting.
+
 ### Implementation update — 2026-09-07 (notes are files)
 
 The brief and the handoff moved out of `tasks/<name>.json` into

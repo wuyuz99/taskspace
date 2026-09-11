@@ -270,3 +270,40 @@ func mustWrite(t *testing.T, path, content string) {
 		t.Fatalf("write %s: %v", path, err)
 	}
 }
+
+// Records written before tasks had a root agent must load and save unchanged.
+func TestTaskAgentIsOptionalInRecords(t *testing.T) {
+	s := newTestStore(t)
+	if err := os.MkdirAll(s.TasksDir(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := `{"name":"old","repos":{"backend":{"path":"/src/backend","branch":"agent/old","worktree":"/w","agent":["codex"]}}}`
+	if err := os.WriteFile(filepath.Join(s.TasksDir(), "old.json"), []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tk, err := s.Load("old")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tk.Agent != nil || tk.AgentLabel() != "shell" {
+		t.Fatalf("Agent = %q, label %q", tk.Agent, tk.AgentLabel())
+	}
+	if err := s.Save(tk); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(s.TasksDir(), "old.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(b), `"agent"`) != 1 {
+		t.Fatalf("task-level agent written for a task without one:\n%s", b)
+	}
+
+	tk.Agent = []string{"claude"}
+	if err := s.Save(tk); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.Load("old"); err != nil || len(got.Agent) != 1 || got.Agent[0] != "claude" {
+		t.Fatalf("round trip: %v %v", got, err)
+	}
+}

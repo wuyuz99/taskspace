@@ -105,6 +105,26 @@ check "backend running"    "backend.*running"  "$out"
 check "frontend running"   "frontend.*running" "$out"
 check "clean worktrees"    "clean"             "$out"
 
+say "the root window opens first, at the task root"
+out="$(tmux list-windows -t '=aw@test-feature' -F '#{window_name} #{pane_current_path}' 2>&1)"
+check "root window first" "^_root $AW_ROOT/worktrees/test-feature\$" "$(head -n1 <<<"$out")"
+out="$($AW status test-feature 2>&1)"
+check "root row running" "test-feature  *(root)  *-  *shell  *running" "$out"
+
+say "aw restart --root relaunches a dead root window"
+tmux send-keys -t '=aw@test-feature:=_root' 'exit' Enter
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  $AW status test-feature 2>&1 | grep -q "(root).*dead" && break
+  sleep 0.2
+done
+out="$($AW status test-feature 2>&1)"
+check "root row dead after exit" "(root).*dead" "$out"
+check "repos unaffected" "frontend.*running" "$out"
+out="$($AW restart test-feature --root 2>&1)"
+check "relaunched" "relaunched test-feature root window" "$out"
+out="$($AW status test-feature 2>&1)"
+check "root row running again" "(root).*running" "$out"
+
 say "aw status reports dirty and running independently"
 echo "work in progress" > "$AW_ROOT/worktrees/test-feature/backend/wip.txt"
 out="$($AW status test-feature 2>&1)"

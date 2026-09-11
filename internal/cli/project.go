@@ -58,6 +58,7 @@ func (a *App) newProjectCmd() *cobra.Command {
 				return err
 			}
 			a.printf("project: %s\n", p.Name)
+			a.printf("agent:   %s (task root)\n", agentDisplay(task.Repo{Agent: p.Agent}))
 			for _, name := range p.RepoNames() {
 				r := p.Repos[name]
 				base := r.Base

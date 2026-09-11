@@ -23,6 +23,7 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 	var repos []string
 	var project string
 	var details taskDetails
+	var agent agentOptions
 
 	cmd := &cobra.Command{
 		Use:   "create NAME",
@@ -31,6 +32,9 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			brief, err := details.readBrief()
 			if err != nil {
+				return err
+			}
+			if err := agent.validate(cmd); err != nil {
 				return err
 			}
 			name := args[0]
@@ -42,10 +46,17 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 			}
 			t := task.New(name)
 			details.apply(cmd, t)
+			// The root agent comes from --agent/--shell, else the recipe, else
+			// the user's default. Whichever wins is recorded on the task.
+			agentFrom := ""
 			if cmd.Flags().Changed("project") {
 				p, err := a.Store.LoadProject(project)
 				if err != nil {
 					return err
+				}
+				t.Agent = append([]string(nil), p.Agent...)
+				if len(p.Agent) > 0 {
+					agentFrom = "project " + p.Name
 				}
 				for _, repoName := range p.RepoNames() {
 					r := p.Repos[repoName]
@@ -65,6 +76,19 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 					return err
 				}
 			}
+			switch {
+			case agent.apply(cmd, t):
+				agentFrom = ""
+			case len(t.Agent) == 0:
+				cfg, err := a.Store.LoadConfig()
+				if err != nil {
+					return err
+				}
+				if len(cfg.Agent) > 0 {
+					t.Agent = append([]string(nil), cfg.Agent...)
+					agentFrom = "aw config"
+				}
+			}
 			if err := a.Store.CreatePrepared(t); err != nil {
 				return err
 			}
@@ -74,6 +98,13 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 				return err
 			}
 			a.printf("created task %s\n", name)
+			if len(t.Agent) > 0 {
+				from := ""
+				if agentFrom != "" {
+					from = ", from " + agentFrom
+				}
+				a.printf("  agent: %s (task root%s)\n", shellJoin(t.Agent), from)
+			}
 			return nil
 		},
 	}
@@ -81,6 +112,7 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 		"attach a repository as name=path (repeatable)")
 	cmd.Flags().StringVar(&project, "project", "", "snapshot a saved project recipe into this task")
 	details.flags(cmd)
+	agent.flags(cmd)
 	return cmd
 }
 
@@ -130,6 +162,7 @@ func (a *App) newTaskShowCmd() *cobra.Command {
 			a.printf("session:  %s\n", a.Runtime.SessionName(t.Name))
 			a.printf("workspace: %s\n", a.Store.TaskDir(t.Name))
 			a.printf("context:   %s\n", a.Store.ContextDir(t.Name))
+			a.printf("agent:     %s (window %s, at the workspace root)\n", agentDisplay(task.Repo{Agent: t.Agent}), task.RootWindowName)
 			a.printTaskContext(t)
 			if len(t.Repos) == 0 {
 				a.printf("\nno repositories yet; add one with:\n  aw repo add %s PATH\n", t.Name)

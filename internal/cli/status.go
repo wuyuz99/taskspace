@@ -16,7 +16,9 @@ func (a *App) newStatusCmd() *cobra.Command {
 		Long: "status reports two independent things per repository: whether its agent\n" +
 			"is running, and what git thinks of its worktree. They are separate\n" +
 			"columns because a worktree can be dirty and running at the same time —\n" +
-			"that is the normal state of an agent doing its job.",
+			"that is the normal state of an agent doing its job.\n\n" +
+			"Each task's first row, (root), is the window at the task root. It has a\n" +
+			"runtime state but no git state: its changes appear in the repositories.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var tasks []*task.Task
@@ -48,11 +50,9 @@ func (a *App) newStatusCmd() *cobra.Command {
 
 			empty := true
 			for _, ts := range results {
-				if len(ts.Repos) == 0 {
-					fmt.Fprintf(tw, "%s\t-\t-\t-\t%s\t-\n", ts.Task, runtimeLabel(ts))
-					empty = false
-					continue
-				}
+				// The root window has a process but no worktree, so it has no
+				// branch or git state of its own; its repositories follow it.
+				fmt.Fprintf(tw, "%s\t(root)\t-\t%s\t%s\t-\n", ts.Task, ts.Root.Agent, ts.Root.Runtime)
 				for _, r := range ts.Repos {
 					empty = false
 					fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
@@ -109,13 +109,6 @@ func gitSummary(r status.RepoStatus) string {
 		s += fmt.Sprintf(", behind %d", r.Detail.Behind)
 	}
 	return s
-}
-
-func runtimeLabel(ts status.TaskStatus) string {
-	if ts.Running {
-		return string(status.RuntimeRunning)
-	}
-	return string(status.RuntimeNoSession)
 }
 
 func dash(s string) string {
