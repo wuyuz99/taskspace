@@ -130,6 +130,105 @@ func TestEnsureWorktreeAttachesToExistingBranchWithoutReforking(t *testing.T) {
 	}
 }
 
+// Forking from origin/main must not make origin/main the upstream: `git push`
+// would refuse, or with push.default=upstream push the task's work to main.
+func TestEnsureWorktreeForkedBranchHasNoUpstream(t *testing.T) {
+	g := testGit(t)
+	repo, _ := initRepoWithRemote(t)
+	wt := filepath.Join(t.TempDir(), "task", "backend")
+
+	res, err := g.EnsureWorktree(ctx(), repo, wt, "agent/test", "")
+	if err != nil {
+		t.Fatalf("EnsureWorktree: %v", err)
+	}
+	if res.Base != "origin/main" || res.Tracking != "" {
+		t.Errorf("Base, Tracking = %q, %q; want origin/main, none", res.Base, res.Tracking)
+	}
+	if up := upstream(t, repo, "agent/test"); up != "" {
+		t.Errorf("new branch tracks %s; a task branch must start with no upstream", up)
+	}
+}
+
+// A branch that exists only on the remote, pushed after the last fetch, is the
+// branch the user meant. Creating a same-named branch from base would silently
+// leave its commits out.
+func TestEnsureWorktreeFetchesAndTracksRemoteOnlyBranch(t *testing.T) {
+	g := testGit(t)
+	repo, remote := initRepoWithRemote(t)
+	pushFromElsewhere(t, remote, "feature/x", "theirs.txt")
+
+	wt := filepath.Join(t.TempDir(), "task", "backend")
+	res, err := g.EnsureWorktree(ctx(), repo, wt, "feature/x", "origin/main")
+	if err != nil {
+		t.Fatalf("EnsureWorktree: %v", err)
+	}
+	if res.FetchErr != nil {
+		t.Fatalf("FetchErr = %v", res.FetchErr)
+	}
+	if res.Tracking != "origin/feature/x" || res.Base != "" {
+		t.Errorf("Tracking, Base = %q, %q; want origin/feature/x, none", res.Tracking, res.Base)
+	}
+	if _, err := os.Stat(filepath.Join(wt, "theirs.txt")); err != nil {
+		t.Errorf("worktree lacks the remote branch's commit: %v", err)
+	}
+	if up := upstream(t, repo, "feature/x"); up != "origin/feature/x" {
+		t.Errorf("upstream = %q, want origin/feature/x", up)
+	}
+}
+
+// Offline is not an error: the worktree is made from the refs already present.
+func TestEnsureWorktreeSurvivesFetchFailure(t *testing.T) {
+	g := testGit(t)
+	repo := initRepo(t)
+	runGit(t, repo, "remote", "add", "origin", filepath.Join(t.TempDir(), "gone"))
+
+	wt := filepath.Join(t.TempDir(), "task", "backend")
+	res, err := g.EnsureWorktree(ctx(), repo, wt, "agent/test", "")
+	if err != nil {
+		t.Fatalf("EnsureWorktree: %v", err)
+	}
+	if res.FetchErr == nil {
+		t.Error("FetchErr = nil for an unreachable remote")
+	}
+	if !res.Created || res.Base != "main" {
+		t.Errorf("Created, Base = %v, %q; want true, main", res.Created, res.Base)
+	}
+}
+
+func TestRemoteBranchPrefersOriginAndRefusesToGuess(t *testing.T) {
+	g := testGit(t)
+	repo, remote := initRepoWithRemote(t)
+	pushFromElsewhere(t, remote, "shared", "a.txt")
+	runGit(t, repo, "remote", "add", "fork", remote)
+	runGit(t, repo, "remote", "add", "mirror", remote)
+	runGit(t, repo, "fetch", "-q", "--all")
+
+	if got, err := g.RemoteBranch(ctx(), repo, "shared"); err != nil || got != "origin/shared" {
+		t.Errorf("RemoteBranch with origin = %q, %v; want origin/shared", got, err)
+	}
+	runGit(t, repo, "remote", "remove", "origin")
+	if _, err := g.RemoteBranch(ctx(), repo, "shared"); err == nil || !strings.Contains(err.Error(), "several remotes") {
+		t.Errorf("RemoteBranch across fork and mirror = %v, want a refusal naming both", err)
+	}
+	if got, err := g.RemoteBranch(ctx(), repo, "absent"); err != nil || got != "" {
+		t.Errorf("RemoteBranch(absent) = %q, %v; want none", got, err)
+	}
+}
+
+func TestResolveRefFallsBackToRemoteBranch(t *testing.T) {
+	g := testGit(t)
+	repo, remote := initRepoWithRemote(t)
+	pushFromElsewhere(t, remote, "develop", "d.txt")
+	runGit(t, repo, "fetch", "-q", "origin")
+
+	cases := map[string]string{"main": "main", "develop": "origin/develop", "origin/develop": "origin/develop", "nope": ""}
+	for in, want := range cases {
+		if got, err := g.ResolveRef(ctx(), repo, in); err != nil || got != want {
+			t.Errorf("ResolveRef(%q) = %q, %v; want %q", in, got, err, want)
+		}
+	}
+}
+
 func TestEnsureWorktreeRefusesNonEmptyDirectory(t *testing.T) {
 	g := testGit(t)
 	repo := initRepo(t)

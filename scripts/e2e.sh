@@ -130,6 +130,28 @@ echo "work in progress" > "$AW_ROOT/worktrees/test-feature/backend/wip.txt"
 out="$($AW status test-feature 2>&1)"
 check "dirty while running" "backend.*running.*dirty" "$out"
 
+say "aw window adds windows to the running session"
+out="$($AW window test-feature backend -d -- sleep 600 2>&1)"
+check "command window opened" "opened _backend-sleep" "$out"
+out="$($AW window test-feature --name staging -d 2>&1)"
+check "named shell opened" "opened _staging" "$out"
+out="$(tmux list-windows -t '=aw@test-feature' -F '#{window_name} #{pane_current_path}' 2>&1)"
+check "command window in backend" "^_backend-sleep $AW_ROOT/worktrees/test-feature/backend\$" "$out"
+check "spare shell at the root"   "^_staging $AW_ROOT/worktrees/test-feature\$" "$out"
+check "repository window kept"    "^backend $AW_ROOT/worktrees/test-feature/backend\$" "$out"
+out="$($AW window test-feature --name staging -d 2>&1)"
+check "a taken name is refused" "already exists" "$out"
+tmux send-keys -t '=aw@test-feature:=_staging' 'exit' Enter
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  tmux list-windows -t '=aw@test-feature' -F '#{window_name}' | grep -q '^_staging$' || break
+  sleep 0.2
+done
+if tmux list-windows -t '=aw@test-feature' -F '#{window_name}' | grep -q '^_staging$'; then
+  fail "an exited spare shell left its window behind"
+else
+  pass "an exited spare shell closes its window"
+fi
+
 say "aw exec runs in every worktree"
 out="$($AW exec test-feature -- git status --short 2>&1)"
 check "visits backend"     "=== backend"  "$out"
@@ -197,6 +219,48 @@ out="$($AW task rm test-feature 2>&1)"
 check "task removed" "removed task test-feature" "$out"
 out="$($AW status 2>&1)"
 check "no tasks left" "no tasks yet" "$out"
+
+say "setup: a remote with a colleague's branch this clone never fetched"
+git init -q --bare -b main "$WORK/remote.git"
+git -C "$WORK/src/frontend" remote add origin "$WORK/remote.git"
+git -C "$WORK/src/frontend" push -q -u origin main
+git -C "$WORK/src/frontend" remote set-head origin -a >/dev/null
+git clone -q "$WORK/remote.git" "$WORK/colleague"
+git -C "$WORK/colleague" checkout -q -b feature/x
+echo theirs > "$WORK/colleague/theirs.txt"
+git -C "$WORK/colleague" add -A
+git -C "$WORK/colleague" -c user.email=t@example.invalid -c user.name=colleague commit -qm "their work"
+git -C "$WORK/colleague" push -q origin feature/x
+
+say "registered repositories and REPO@BRANCH"
+out="$($AW config repo web "$WORK/src/frontend" 2>&1)"
+check "registered" "registered web" "$out"
+out="$($AW task create review-x web@feature/x 2>&1)"
+check "fetched and found the remote branch" "feature/x (will track origin/feature/x)" "$out"
+out="$($AW start review-x --no-runtime 2>&1)"
+check "tracks the remote branch" "created worktree on feature/x (tracking origin/feature/x)" "$out"
+[ -f "$AW_ROOT/worktrees/review-x/web/theirs.txt" ] \
+  && pass "worktree holds the colleague's commit" || fail "worktree was forked without the remote work"
+
+say "a new task branch has no upstream until pushed"
+out="$($AW task create new-y web 2>&1)"
+check "new branch from origin/main" "agent/new-y (new, from origin/main)" "$out"
+$AW start new-y --no-runtime >/dev/null 2>&1
+wt="$AW_ROOT/worktrees/new-y/web"
+if git -C "$wt" rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1; then
+  fail "new branch tracks $(git -C "$wt" rev-parse --abbrev-ref '@{upstream}')"
+else
+  pass "new branch has no upstream"
+fi
+echo change > "$wt/change.txt"
+git -C "$wt" add -A
+git -C "$wt" -c user.email=t@example.invalid -c user.name=aw commit -qm change
+out="$($AW status new-y 2>&1)"
+check "unpushed commits reported" "web.*1 commit not pushed" "$out"
+out="$(git -C "$wt" push -u origin HEAD 2>&1)" \
+  && pass "git push -u origin HEAD pushes the task branch" || fail "push failed: $out"
+out="$($AW status new-y 2>&1)"
+check "nothing unpushed after the push" "web  *agent/new-y  *shell  *no-session  *clean\$" "$out"
 
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then

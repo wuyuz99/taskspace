@@ -34,6 +34,9 @@ func (s *stubRuntime) Stop(context.Context, string) error {
 	return nil
 }
 func (s *stubRuntime) Attach(context.Context, string) error { return nil }
+func (s *stubRuntime) Focus(context.Context, string, string) (bool, error) {
+	return false, nil
+}
 func (s *stubRuntime) State(context.Context, string) (runtime.SessionState, error) {
 	return runtime.SessionState{Panes: map[string]runtime.PaneState{}}, nil
 }

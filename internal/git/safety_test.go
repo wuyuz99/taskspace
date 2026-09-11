@@ -37,6 +37,56 @@ func TestCanDiscardMergedBranch(t *testing.T) {
 	}
 }
 
+// A squash merge leaves none of the branch's commits on base, and the hosting
+// service usually deletes the remote branch, so only the squash test sees it.
+func TestCanDiscardSquashMergedBranch(t *testing.T) {
+	g := testGit(t)
+	repo := initRepo(t)
+
+	runGit(t, repo, "checkout", "-q", "-b", "agent/test")
+	for _, f := range []string{"one.txt", "two.txt"} {
+		writeFile(t, filepath.Join(repo, f), f+"\n")
+		runGit(t, repo, "add", f)
+		runGit(t, repo, "commit", "-m", "add "+f)
+	}
+	runGit(t, repo, "checkout", "-q", "main")
+	// Unrelated work lands on main first, as it does on a busy base branch.
+	writeFile(t, filepath.Join(repo, "other.txt"), "someone else\n")
+	runGit(t, repo, "add", "other.txt")
+	runGit(t, repo, "commit", "-m", "other work")
+
+	d, err := g.CanDiscardBranch(ctx(), repo, "agent/test", "main")
+	if err != nil {
+		t.Fatalf("CanDiscardBranch: %v", err)
+	}
+	if d.Safe() {
+		t.Fatalf("Safe() before the squash merge: %s", d.Reason())
+	}
+
+	runGit(t, repo, "merge", "--squash", "agent/test")
+	runGit(t, repo, "commit", "-m", "Squashed: agent/test")
+	d, err = g.CanDiscardBranch(ctx(), repo, "agent/test", "main")
+	if err != nil {
+		t.Fatalf("CanDiscardBranch: %v", err)
+	}
+	if d.Merged || !d.Squashed || !d.Safe() {
+		t.Errorf("Merged, Squashed = %v, %v; want false, true (%s)", d.Merged, d.Squashed, d.Reason())
+	}
+	if !strings.Contains(d.Reason(), "squash-merged into main") {
+		t.Errorf("Reason() = %q", d.Reason())
+	}
+
+	// More work after the squash is unique again.
+	runGit(t, repo, "checkout", "-q", "agent/test")
+	writeFile(t, filepath.Join(repo, "three.txt"), "later\n")
+	runGit(t, repo, "add", "three.txt")
+	runGit(t, repo, "commit", "-m", "add three.txt")
+	runGit(t, repo, "checkout", "-q", "main")
+	if d, err = g.CanDiscardBranch(ctx(), repo, "agent/test", "main"); err != nil || d.Safe() {
+		t.Errorf("work added after the squash counted as merged: %v, %s", err, d.Reason())
+	}
+}
+
 func TestCanDiscardPushedButUnmergedBranch(t *testing.T) {
 	g := testGit(t)
 	repo, _ := initRepoWithRemote(t)

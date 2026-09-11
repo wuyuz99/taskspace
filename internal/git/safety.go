@@ -3,6 +3,7 @@ package git
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	awexec "github.com/aw-tool/aw/internal/exec"
 )
@@ -13,6 +14,7 @@ type Discardability struct {
 	Base   string
 
 	Merged   bool   // an ancestor of the base branch
+	Squashed bool   // its combined change is a single commit on the base branch
 	Pushed   bool   // has an upstream with nothing unpushed
 	Upstream string // "" when the branch has no upstream
 
@@ -21,13 +23,15 @@ type Discardability struct {
 }
 
 // Safe reports whether the branch's work exists somewhere else.
-func (d Discardability) Safe() bool { return d.Merged || d.Pushed }
+func (d Discardability) Safe() bool { return d.Merged || d.Squashed || d.Pushed }
 
 // Reason explains the verdict in one line, for CLI output.
 func (d Discardability) Reason() string {
 	switch {
 	case d.Merged:
 		return fmt.Sprintf("merged into %s", d.Base)
+	case d.Squashed:
+		return fmt.Sprintf("squash-merged into %s", d.Base)
 	case d.Pushed:
 		return fmt.Sprintf("pushed to %s", d.Upstream)
 	case d.Upstream != "":
@@ -69,6 +73,11 @@ func (g *Git) CanDiscardBranch(ctx context.Context, repo, branch, base string) (
 				return d, err
 			}
 			d.Merged = merged
+			if !merged {
+				if d.Squashed, err = g.squashMerged(ctx, repo, branch, base); err != nil {
+					return d, err
+				}
+			}
 		}
 	}
 
@@ -91,6 +100,44 @@ func (g *Git) CanDiscardBranch(ctx context.Context, repo, branch, base string) (
 		d.Pushed = n == 0
 	}
 	return d, nil
+}
+
+// squashMerged reports whether base holds a commit making exactly the change
+// the branch makes, which is what a squash merge leaves behind. The branch's
+// own commits are then never ancestors of base, and a hosting service usually
+// deletes the remote branch too, so neither other test can see the work landed.
+//
+// The branch's cumulative change is written as one commit on its merge base,
+// and `git cherry` looks for a commit with the same patch-id on base. The probe
+// commit is unreferenced and left for git's garbage collection. A squash that
+// needed conflict resolution produces a different patch and is not recognised,
+// which errs toward keeping the branch.
+func (g *Git) squashMerged(ctx context.Context, repo, branch, base string) (bool, error) {
+	res, err := g.git(ctx, repo, "merge-base", base, branch)
+	if err != nil {
+		if awexec.IsExit(err) {
+			return false, nil // unrelated histories
+		}
+		return false, err
+	}
+	mergeBase := res.Out()
+	res, err = g.git(ctx, repo, "rev-parse", branch+"^{tree}")
+	if err != nil {
+		return false, err
+	}
+	// commit-tree needs an identity, and the user may not have configured one.
+	// It also honours commit.gpgSign, which would prompt for a passphrase to
+	// sign a probe nobody will ever see.
+	res, err = g.git(ctx, repo, "-c", "user.name=aw", "-c", "user.email=aw@localhost",
+		"commit-tree", "--no-gpg-sign", res.Out(), "-p", mergeBase, "-m", "aw squash-merge probe")
+	if err != nil {
+		return false, fmt.Errorf("check whether %s was squash-merged: %w", branch, err)
+	}
+	res, err = g.git(ctx, repo, "cherry", base, res.Out())
+	if err != nil {
+		return false, fmt.Errorf("check whether %s was squash-merged: %w", branch, err)
+	}
+	return strings.HasPrefix(res.Out(), "- "), nil
 }
 
 // upstreamOf returns the configured upstream of a branch, or "".

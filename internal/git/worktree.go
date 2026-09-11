@@ -147,6 +147,12 @@ type EnsureResult struct {
 	Base    string
 	Created bool // false when an existing worktree was reused
 	Pruned  bool // a stale registration was cleaned up first
+	// Tracking is the remote branch a new local branch was created from and
+	// set to track, such as "origin/feature/x". Empty otherwise.
+	Tracking string
+	// FetchErr is why refreshing the remotes failed. The worktree was still
+	// created, from the refs already present; callers report it as a warning.
+	FetchErr error
 }
 
 // EnsureWorktree makes path a worktree of repo on branch, creating it if
@@ -158,7 +164,12 @@ type EnsureResult struct {
 //	registered but gone         prune, then recreate
 //	branch checked out elsewhere hard error naming the other worktree
 //	branch exists, not checked out attach a worktree to it, do not re-fork
-//	nothing exists              create branch from base
+//	branch exists on a remote   create it tracking the remote branch
+//	nothing exists              create branch from base, with no upstream
+//
+// Before concluding that a branch is new, the remotes are fetched: a branch
+// pushed since the last fetch is exactly the one the user asked for, and
+// forking a same-named branch from base would silently leave that work out.
 //
 // base is only consulted when the branch has to be created; reusing an
 // existing branch never silently re-forks it.
@@ -217,6 +228,21 @@ func (g *Git) EnsureWorktree(ctx context.Context, repo, path, branch, base strin
 		return out, nil
 	}
 
+	_, out.FetchErr = g.FetchRemotes(ctx, repo, base)
+	remote, err := g.RemoteBranch(ctx, repo, branch)
+	if err != nil {
+		return out, err
+	}
+	if remote != "" {
+		if _, err := g.git(ctx, repo, "worktree", "add", "--track", "-b", branch, path, remote); err != nil {
+			return out, fmt.Errorf("add worktree for %s tracking %s: %w", branch, remote, err)
+		}
+		out.Created = true
+		out.Base = ""
+		out.Tracking = remote
+		return out, nil
+	}
+
 	if base == "" {
 		base, err = g.ResolveBase(ctx, repo)
 		if err != nil {
@@ -224,7 +250,12 @@ func (g *Git) EnsureWorktree(ctx context.Context, repo, path, branch, base strin
 		}
 		out.Base = base
 	}
-	if _, err := g.git(ctx, repo, "worktree", "add", "-b", branch, path, base); err != nil {
+	// --no-track, because the branch is new work rather than a copy of base.
+	// With git's default branch.autoSetupMerge, forking from origin/main makes
+	// origin/main the upstream: `git push` then refuses (push.default=simple)
+	// or pushes to main (push.default=upstream), and "ahead" counts commits
+	// ahead of main instead of commits not yet pushed.
+	if _, err := g.git(ctx, repo, "worktree", "add", "--no-track", "-b", branch, path, base); err != nil {
 		return out, fmt.Errorf("create worktree %s on new branch %s from %s: %w", path, branch, base, err)
 	}
 	out.Created = true

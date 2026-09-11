@@ -34,6 +34,9 @@ func (f *fakeRuntime) OpenWindow(context.Context, string, runtime.Window) error 
 }
 func (f *fakeRuntime) Stop(context.Context, string) error   { return nil }
 func (f *fakeRuntime) Attach(context.Context, string) error { return nil }
+func (f *fakeRuntime) Focus(context.Context, string, string) (bool, error) {
+	return false, nil
+}
 func (f *fakeRuntime) State(context.Context, string) (runtime.SessionState, error) {
 	return f.state, f.err
 }

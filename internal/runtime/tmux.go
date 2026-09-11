@@ -144,7 +144,11 @@ func (t *Tmux) openWindow(ctx context.Context, session string, w Window) error {
 	if _, err := t.tmux(ctx, args...); err != nil {
 		return fmt.Errorf("create tmux window %s in %s: %w", w.Name, session, err)
 	}
-	if err := t.setRemainOnExit(ctx, session, w.Name); err != nil {
+	if w.Transient {
+		if err := t.fixName(ctx, session, w.Name); err != nil {
+			return err
+		}
+	} else if err := t.setRemainOnExit(ctx, session, w.Name); err != nil {
 		return err
 	}
 	return t.launchFresh(ctx, session, w)
@@ -228,7 +232,7 @@ func (t *Tmux) checkLegacySession(ctx context.Context, session string) error {
 // window rather than globally so aw never changes the behaviour of the user's
 // other tmux sessions.
 func (t *Tmux) setRemainOnExit(ctx context.Context, session, window string) error {
-	if _, err := t.tmux(ctx, "set-option", "-t", windowTarget(session, WindowName(window)), "-w", "automatic-rename", "off"); err != nil {
+	if err := t.fixName(ctx, session, window); err != nil {
 		return err
 	}
 	_, err := t.tmux(ctx, "set-option", "-t", windowTarget(session, WindowName(window)), "-w", "remain-on-exit", "on")
@@ -236,6 +240,28 @@ func (t *Tmux) setRemainOnExit(ctx context.Context, session, window string) erro
 		return fmt.Errorf("set remain-on-exit on %s:%s: %w", session, window, err)
 	}
 	return nil
+}
+
+// fixName stops tmux renaming the window after its running command: every
+// later target addresses the window by the name aw gave it.
+func (t *Tmux) fixName(ctx context.Context, session, window string) error {
+	_, err := t.tmux(ctx, "set-option", "-t", windowTarget(session, WindowName(window)), "-w", "automatic-rename", "off")
+	return err
+}
+
+// Focus implements Runtime.
+//
+// Only a client inside tmux can be pointed at the window; from a plain
+// terminal there is nothing to switch, and attaching would take the terminal
+// over, which is not what asking for a window means.
+func (t *Tmux) Focus(ctx context.Context, session, window string) (bool, error) {
+	if os.Getenv("TMUX") == "" {
+		return false, nil
+	}
+	if _, err := t.tmux(ctx, "switch-client", "-t", windowTarget(session, WindowName(window))); err != nil {
+		return false, fmt.Errorf("switch to %s in %s: %w", window, session, err)
+	}
+	return true, nil
 }
 
 // launchArgv renders the command for a window. tmux takes the command as

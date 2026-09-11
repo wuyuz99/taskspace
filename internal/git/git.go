@@ -176,6 +176,119 @@ func (g *Git) RefExists(ctx context.Context, repo, ref string) (bool, error) {
 	return g.ok(ctx, repo, "rev-parse", "--verify", "--quiet", ref)
 }
 
+// ResolveRef turns a ref the user typed into one that resolves, or "".
+//
+// A ref that resolves as written is kept as written, so a local branch the user
+// named is the one used. A bare branch name that exists only on a remote — the
+// usual case for "branch off develop" in a clone that never checked develop
+// out — becomes that remote-tracking ref, origin first.
+func (g *Git) ResolveRef(ctx context.Context, repo, ref string) (string, error) {
+	ok, err := g.RefExists(ctx, repo, ref)
+	if err != nil {
+		return "", err
+	}
+	if ok {
+		return ref, nil
+	}
+	return g.RemoteBranch(ctx, repo, ref)
+}
+
+// CheckBranchName reports why name cannot be a branch, or nil if it can.
+func (g *Git) CheckBranchName(ctx context.Context, name string) error {
+	if _, err := g.git(ctx, "", "check-ref-format", "--branch", name); err != nil {
+		if awexec.IsExit(err) {
+			return fmt.Errorf("%q is not a valid branch name", name)
+		}
+		return err
+	}
+	return nil
+}
+
+// Remotes lists the repository's configured remotes, sorted as git prints them.
+func (g *Git) Remotes(ctx context.Context, repo string) ([]string, error) {
+	res, err := g.git(ctx, repo, "remote")
+	if err != nil {
+		return nil, fmt.Errorf("list remotes of %s: %w", repo, err)
+	}
+	return strings.Fields(res.Stdout), nil
+}
+
+// RemoteBranch returns the remote-tracking ref for branch, such as
+// "origin/feature/x", or "" when no remote has it.
+//
+// origin wins when it has the branch. Otherwise exactly one remote must: with
+// two candidates, picking one would be a guess about whose work to build on.
+func (g *Git) RemoteBranch(ctx context.Context, repo, branch string) (string, error) {
+	remotes, err := g.Remotes(ctx, repo)
+	if err != nil {
+		return "", err
+	}
+	var found []string
+	for _, r := range remotes {
+		ok, err := g.ok(ctx, repo, "show-ref", "--verify", "--quiet", "refs/remotes/"+r+"/"+branch)
+		if err != nil {
+			return "", err
+		}
+		if !ok {
+			continue
+		}
+		if r == "origin" {
+			return r + "/" + branch, nil
+		}
+		found = append(found, r+"/"+branch)
+	}
+	switch len(found) {
+	case 0:
+		return "", nil
+	case 1:
+		return found[0], nil
+	}
+	return "", fmt.Errorf("branch %q exists on several remotes (%s); name one, such as %s",
+		branch, strings.Join(found, ", "), found[0])
+}
+
+// FetchRemotes fetches the remotes a new branch could come from: origin, the
+// remote that base belongs to, or the only remote there is. It returns the
+// remotes it fetched and the first failure.
+//
+// Callers treat a failure as a warning. A worktree created from slightly stale
+// refs is still correct git; refusing to work offline is not.
+func (g *Git) FetchRemotes(ctx context.Context, repo, base string) ([]string, error) {
+	remotes, err := g.Remotes(ctx, repo)
+	if err != nil {
+		return nil, err
+	}
+	var want []string
+	for _, r := range remotes {
+		if r == "origin" || strings.HasPrefix(base, r+"/") {
+			want = append(want, r)
+		}
+	}
+	if len(want) == 0 && len(remotes) == 1 {
+		want = remotes
+	}
+	var first error
+	for _, r := range want {
+		if _, err := g.git(ctx, repo, "fetch", "--quiet", r); err != nil && first == nil {
+			first = fmt.Errorf("fetch %s: %w", r, err)
+		}
+	}
+	return want, first
+}
+
+// CountCommits counts the commits reachable from to but not from from.
+func (g *Git) CountCommits(ctx context.Context, dir, from, to string) (int, error) {
+	res, err := g.git(ctx, dir, "rev-list", "--count", from+".."+to)
+	if err != nil {
+		return 0, fmt.Errorf("count commits %s..%s: %w", from, to, err)
+	}
+	n := 0
+	if _, err := fmt.Sscanf(res.Out(), "%d", &n); err != nil {
+		return 0, fmt.Errorf("parse commit count %s..%s: %q", from, to, res.Out())
+	}
+	return n, nil
+}
+
 // BranchExists reports whether a local branch exists.
 func (g *Git) BranchExists(ctx context.Context, repo, branch string) (bool, error) {
 	return g.ok(ctx, repo, "show-ref", "--verify", "--quiet", "refs/heads/"+branch)

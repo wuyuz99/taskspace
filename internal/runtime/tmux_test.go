@@ -144,6 +144,41 @@ func TestOpenWindowRefusesAnExistingName(t *testing.T) {
 	}
 }
 
+// A shell the user exits has nothing worth keeping on screen; an agent that
+// crashes does. Only the latter keeps its pane after exit.
+func TestTransientWindowClosesOnExit(t *testing.T) {
+	f := awexec.NewFake()
+	tm := NewTmux(f)
+	if err := tm.OpenWindow(ctx(), "aw-task", Window{Name: "_staging", Dir: "/wt", Transient: true}); err != nil {
+		t.Fatalf("OpenWindow: %v", err)
+	}
+	if f.Ran("remain-on-exit") {
+		t.Errorf("transient window kept on exit: %v", f.Commands())
+	}
+	if !f.Ran("automatic-rename off") {
+		t.Errorf("transient window can be renamed away from its target: %v", f.Commands())
+	}
+	if err := tm.OpenWindow(ctx(), "aw-task", Window{Name: "_logs", Dir: "/wt", Command: []string{"tail", "-f", "log"}}); err != nil {
+		t.Fatalf("OpenWindow: %v", err)
+	}
+	if !f.Ran("-t =aw-task:=_logs -w remain-on-exit on") {
+		t.Errorf("command window not kept on exit: %v", f.Commands())
+	}
+}
+
+func TestFocusOnlyFromInsideTmux(t *testing.T) {
+	f := awexec.NewFake()
+	tm := NewTmux(f)
+	t.Setenv("TMUX", "")
+	if ok, err := tm.Focus(ctx(), "aw-task", "_staging"); ok || err != nil || f.Ran("switch-client") {
+		t.Errorf("Focus outside tmux = %v, %v; commands %v", ok, err, f.Commands())
+	}
+	t.Setenv("TMUX", "/tmp/tmux-1000/default,1,0")
+	if ok, err := tm.Focus(ctx(), "aw-task", "_staging"); !ok || err != nil || !f.Ran("switch-client -t =aw-task:=_staging") {
+		t.Errorf("Focus inside tmux = %v, %v; commands %v", ok, err, f.Commands())
+	}
+}
+
 func TestStartRejectsEmptyWindowList(t *testing.T) {
 	tm := NewTmux(awexec.NewFake())
 	if err := tm.Start(ctx(), "aw-task", nil); err == nil {

@@ -76,6 +76,31 @@ func initRepoWithRemote(t *testing.T) (repo, remote string) {
 	return repo, remote
 }
 
+// pushFromElsewhere commits file on a new branch in a separate clone of remote
+// and pushes it, the way a colleague would: repo has never fetched it.
+func pushFromElsewhere(t *testing.T, remote, branch, file string) {
+	t.Helper()
+	other := t.TempDir()
+	runGit(t, other, "clone", "-q", remote, ".")
+	runGit(t, other, "checkout", "-q", "-b", branch)
+	writeFile(t, filepath.Join(other, file), "their work\n")
+	runGit(t, other, "add", file)
+	runGit(t, other, "commit", "-m", "work on "+branch)
+	runGit(t, other, "push", "-q", "origin", branch)
+}
+
+// upstream returns the branch's upstream, or "" when it has none.
+func upstream(t *testing.T, repo, branch string) string {
+	t.Helper()
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", branch+"@{upstream}")
+	cmd.Dir = repo
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

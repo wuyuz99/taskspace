@@ -106,6 +106,7 @@ func Execute(ctx context.Context) int {
 		app.newStopCmd(),
 		app.newAttachCmd(),
 		app.newShellCmd(),
+		app.newWindowCmd(),
 		app.newPathCmd(),
 		app.newExecCmd(),
 		app.newStatusCmd(),

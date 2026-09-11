@@ -103,7 +103,7 @@ func TestOpenEmptyTaskExplainsNextStep(t *testing.T) {
 	if _, err := h.app.Store.Create("empty"); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.exec(t, h.app.newOpenCmd(), "empty"); err == nil || !strings.Contains(err.Error(), "aw repo add empty PATH") {
+	if err := h.exec(t, h.app.newOpenCmd(), "empty"); err == nil || !strings.Contains(err.Error(), "aw repo add empty REPO") {
 		t.Fatalf("error: %v", err)
 	}
 }

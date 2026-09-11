@@ -26,9 +26,14 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 	var agent agentOptions
 
 	cmd := &cobra.Command{
-		Use:   "create NAME",
+		Use:   "create NAME [REPO...]",
 		Short: "Create a task",
-		Args:  cobra.ExactArgs(1),
+		Long: "create records a task and the repositories it spans. Each REPO is a name\n" +
+			"registered with `aw config repo` or a path, optionally with a branch and\n" +
+			"a base, as for `aw repo add`:\n\n" +
+			"  aw task create PAY-142 backend frontend@feature/x infra:develop\n\n" +
+			"No worktree is created until `aw start` or `aw open`.",
+		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			brief, err := details.readBrief()
 			if err != nil {
@@ -46,6 +51,19 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 			}
 			t := task.New(name)
 			details.apply(cmd, t)
+			// Loaded only when something needs it, so a task that names its
+			// agent and no repositories can be created with a broken config.
+			var cfg *task.Config
+			config := func() (*task.Config, error) {
+				if cfg == nil {
+					c, err := a.Store.LoadConfig()
+					if err != nil {
+						return nil, err
+					}
+					cfg = c
+				}
+				return cfg, nil
+			}
 			// The root agent comes from --agent/--shell, else the recipe, else
 			// the user's default. Whichever wins is recorded on the task.
 			agentFrom := ""
@@ -60,19 +78,23 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 				}
 				for _, repoName := range p.RepoNames() {
 					r := p.Repos[repoName]
-					if err := a.addRepo(cmd.Context(), t, repoName, r.Path, addRepoOptions{Base: r.Base, Agent: r.Agent, PostCreate: r.PostCreate}); err != nil {
+					c, err := config()
+					if err != nil {
+						return err
+					}
+					if err := a.addRepo(cmd.Context(), t, c, r.Path, addRepoOptions{Name: repoName, Base: r.Base, Agent: r.Agent, PostCreate: r.PostCreate}); err != nil {
 						return err
 					}
 				}
 			}
 
-			// --repo name=path is sugar for a following `aw repo add`.
-			for _, spec := range repos {
-				repoName, path, err := parseRepoSpec(spec)
+			// Each REPO is sugar for a following `aw repo add`.
+			for _, spec := range append(repos, args[1:]...) {
+				c, err := config()
 				if err != nil {
 					return err
 				}
-				if err := a.addRepo(cmd.Context(), t, repoName, path, addRepoOptions{}); err != nil {
+				if err := a.addRepoSpec(cmd.Context(), t, c, spec, addRepoOptions{}); err != nil {
 					return err
 				}
 			}
@@ -80,7 +102,7 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 			case agent.apply(cmd, t):
 				agentFrom = ""
 			case len(t.Agent) == 0:
-				cfg, err := a.Store.LoadConfig()
+				cfg, err := config()
 				if err != nil {
 					return err
 				}
@@ -109,7 +131,7 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringArrayVar(&repos, "repo", nil,
-		"attach a repository as name=path (repeatable)")
+		"attach a repository, the same as a REPO argument (repeatable)")
 	cmd.Flags().StringVar(&project, "project", "", "snapshot a saved project recipe into this task")
 	details.flags(cmd)
 	agent.flags(cmd)
@@ -165,7 +187,7 @@ func (a *App) newTaskShowCmd() *cobra.Command {
 			a.printf("agent:     %s (window %s, at the workspace root)\n", agentDisplay(task.Repo{Agent: t.Agent}), task.RootWindowName)
 			a.printTaskContext(t)
 			if len(t.Repos) == 0 {
-				a.printf("\nno repositories yet; add one with:\n  aw repo add %s PATH\n", t.Name)
+				a.printf("\nno repositories yet; add one with:\n  aw repo add %s REPO\n", t.Name)
 				return nil
 			}
 

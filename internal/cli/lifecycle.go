@@ -41,7 +41,7 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 				return err
 			}
 			if len(names) == 0 {
-				return fmt.Errorf("task %q has no repositories; add one with: aw repo add %s PATH", t.Name, t.Name)
+				return fmt.Errorf("task %q has no repositories; add one with: aw repo add %s REPO", t.Name, t.Name)
 			}
 
 			changed := false
@@ -58,9 +58,14 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("%s: %w", name, err)
 				}
+				if res.FetchErr != nil {
+					a.warnf("%-12s could not fetch, using the refs already here: %v\n", name, res.FetchErr)
+				}
 				switch {
+				case res.Tracking != "":
+					a.printf("%-12s created worktree on %s (tracking %s)\n", name, r.Branch, res.Tracking)
 				case res.Created && res.Base != "":
-					a.printf("%-12s created worktree on %s (from %s)\n", name, r.Branch, res.Base)
+					a.printf("%-12s created worktree on new branch %s (from %s)\n", name, r.Branch, res.Base)
 				case res.Created:
 					a.printf("%-12s created worktree on existing branch %s\n", name, r.Branch)
 				default:

@@ -108,6 +108,9 @@ func gitSummary(r status.RepoStatus) string {
 	if r.Detail.Behind > 0 {
 		s += fmt.Sprintf(", behind %d", r.Detail.Behind)
 	}
+	if r.Unpushed > 0 {
+		s += fmt.Sprintf(", %d commit%s not pushed", r.Unpushed, plural(r.Unpushed))
+	}
 	return s
 }
 

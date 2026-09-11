@@ -50,9 +50,10 @@ checkout-redesign
 
 ## Requirements
 
-- A **Unix-like OS** — Linux, macOS, or BSD. **Windows is not supported.**
+- A **Unix-like OS** — Linux or macOS (BSD likely works, untested). **Windows
+  is not supported**; use WSL.
 - `git`
-- `tmux`
+- `tmux` (on macOS: `brew install tmux`)
 - Go 1.23+ to build
 
 Agents (Claude Code, Codex, anything else) are optional external programs. `aw`
@@ -69,19 +70,27 @@ sudo install -m 0755 aw /usr/local/bin/aw     # or put it anywhere on PATH
 ## Quick start
 
 ```bash
-# one logical task spanning two repositories, with one agent at its root
-aw task create checkout-redesign --agent claude
-aw repo add checkout-redesign ~/src/backend
-aw repo add checkout-redesign ~/src/frontend
+# once: your agent, and the repositories you work in
+aw config agent claude
+aw config repo backend  ~/src/backend
+aw config repo frontend ~/src/frontend
+aw config repo infra    ~/src/infra
 
-# create isolated worktrees and launch the agent
-aw start checkout-redesign
+# one logical task spanning the repositories it needs: a new branch in
+# backend, a colleague's existing branch in frontend, and a new branch in
+# infra forked from develop
+aw task create checkout-redesign backend frontend@feature/cart infra:develop
 
-# or prepare, show task context and enter the session in one command
+# create the worktrees, show the task context and enter its session
 aw open checkout-redesign
 
 # one tmux session: the agent's _root window first, then a shell per repo
 aw attach checkout-redesign        # detach with Ctrl-b d
+
+# more windows in the same session, as the work needs them
+aw window checkout-redesign backend --agent             # an agent in backend only
+aw window checkout-redesign --name staging              # a spare shell at the root
+aw window checkout-redesign infra -- kubectl port-forward svc/api 8080:80
 
 # what is going on, across every task
 aw status
@@ -91,13 +100,53 @@ aw shell checkout-redesign backend
 cd "$(aw path checkout-redesign frontend)"
 
 # do the same thing in every worktree
-aw exec checkout-redesign -- git push
+aw exec checkout-redesign -- git push -u origin HEAD
 
 # stop the agents; nothing on disk is touched
 aw stop checkout-redesign
 
 # tear the worktrees down, safely
 aw clean checkout-redesign
+```
+
+Repositories can also be given as paths (`aw task create T ~/src/backend`), and
+added later with `aw repo add TASK REPO`.
+
+### Choose branches
+
+Each repository in a task is written `REPO[@BRANCH][:BASE]`, where `REPO` is a
+name registered with `aw config repo` or a path:
+
+| You write | Branch | Created from |
+| --- | --- | --- |
+| `backend` | `agent/TASK` | `origin/HEAD` (else `main`/`master`) |
+| `backend:develop` | `agent/TASK` | `develop`, or `origin/develop` if there is no local one |
+| `backend@feature/x` | `feature/x` | an existing branch is used as it is |
+| `backend@fix-12:release/2.1` | `fix-12` | `release/2.1` |
+| `api=~/src/backend@x` | `x`, in a repo named `api` | |
+
+A named branch that exists locally is checked out as it is. One that exists
+only on a remote — a colleague's, or your own from another machine — is
+checked out as a local branch tracking it. Only when neither exists is it
+created from the base. `repo add` says which of the three will happen, and
+fetches first when you named a branch or base the clone has not seen.
+`start` fetches again just before creating a branch, so a branch pushed in
+between is still found; if the fetch fails you get a warning and a worktree
+made from the refs you already have.
+
+New branches start **with no upstream**. git would otherwise make
+`origin/main` the upstream of a branch forked from it, and then `git push`
+refuses — or, with `push.default=upstream`, pushes the task's work to main.
+Push with `git push -u origin HEAD`. Until then `aw status` counts the commits
+that are not on the base as "not pushed".
+
+The `agent/` prefix is configurable. Branches are recorded when a repository is
+added, so changing it leaves existing tasks alone:
+
+```bash
+aw config branch-prefix isaac/     # isaac/PAY-142
+aw config branch-prefix ''         # PAY-142
+aw config branch-prefix --unset    # back to agent/PAY-142
 ```
 
 ### Set your agent once
@@ -119,6 +168,35 @@ those. The default is stored in `$AW_ROOT/config.json`. It sets only the
 task-root agent; repository windows remain shells unless given their own
 `--agent`.
 
+### Open more windows as you go
+
+`aw window` adds a window to a running task session without touching the
+windows already there — an agent in one repository while the root agent keeps
+working, a spare shell, or a long-running command against staging:
+
+```bash
+aw window PAY-142 backend --agent       # the task's agent, in backend's worktree
+aw window PAY-142 --name staging        # your shell, at the task root
+aw window PAY-142 infra -- ./scripts/tail-staging-logs
+aw window PAY-142 backend -d -- make watch   # open it without switching to it
+```
+
+Without `REPO`, a task with one repository opens that worktree and any other
+task opens its root, as with `shell`. `--agent` runs the task's root agent, or
+for a task whose root runs a shell, the default from `aw config agent`.
+
+Extra windows are named with a leading `_` — `_backend-claude`,
+`_staging` — so they never take a repository's window name, and a name already
+in use is refused rather than duplicated. A shell window closes when you exit
+it; a command's window stays open after the command exits, so its output can
+still be read. Inside tmux you are switched to the new window. Extra windows are
+not part of the task record: `start` and `open` do not recreate them, and `stop`
+ends them with the rest of the session.
+
+`aw shell` is the other way to get a terminal: a plain subshell in the terminal
+you are already in, labelled and with `AW_*` variables set, whether or not the
+session is running.
+
 ### Run an agent per repository
 
 A repository can run its own agent instead of a shell:
@@ -129,14 +207,15 @@ aw repo add checkout-redesign ~/src/frontend --agent codex
 ```
 
 The `_root` window is still created, running a shell unless the task has an
-agent of its own.
+agent of its own. For an agent in a repository only now and then, `aw window
+TASK REPO --agent` keeps the repository's shell window as it is.
 
 ### Work with ordinary shells
 
 For a manual workflow without persistent terminals or agent commands:
 
 ```bash
-aw task create checkout-review --repo "backend=$HOME/src/backend" --repo "frontend=$HOME/src/frontend"
+aw task create checkout-review "backend=$HOME/src/backend" "frontend=$HOME/src/frontend"
 aw start checkout-review --no-runtime
 aw shell checkout-review
 # a task with several repositories opens at its root: backend/ and frontend/
@@ -168,8 +247,8 @@ Each task snapshots the recipe. To update the recipe for future tasks, run
 Saving over an existing recipe without `--replace` is refused. Use `project show`
 to inspect commands and hooks before applying a recipe. Saving never executes them.
 
-`task create --project payments --repo infra=/path/to/infra` can add repositories
-to the snapshot. Duplicate repository names or paths are rejected; they do not
+`task create PAY-156 --project payments infra` can add repositories to the
+snapshot. Duplicate repository names or paths are rejected; they do not
 silently override recipe entries. Validation failures leave no partial task record.
 Use `task update --agent` or `repo update` to customize an inherited agent or hook. These recipes reference local checkouts; they
 do not clone repositories or synchronize configuration across machines. Recorded
@@ -371,7 +450,7 @@ task. Worktree paths, branches, and task records do not change.
 
 ```
 $AW_ROOT/                          default ~/.aw, override with AW_ROOT
-├── config.json                    user-wide defaults (the default root agent)
+├── config.json                    user-wide defaults: root agent, registered repos, branch prefix
 ├── tasks/<name>.json              task identity and repository configuration
 ├── projects/<name>.json           reusable repository recipes
 └── worktrees/<task>/
@@ -470,7 +549,8 @@ state of its own: whatever its agent changes shows up in the repositories' rows.
 
 - **RUNTIME** — `running`, `dead`, `no-window`, `no-session`, `unknown`
 - **GIT** — `clean`, `dirty (N files)`, `missing`, `error`, plus stash and
-  ahead/behind counts
+  ahead/behind counts against the upstream, or for a branch not yet pushed,
+  the commits that are not on its base (`2 commits not pushed`)
 
 They are separate columns because a worktree can be dirty *and* running at the
 same time — that is the normal state of an agent doing its job. `aw` reports
@@ -491,6 +571,13 @@ upstream*. Both halves matter: without the upstream test a pushed-but-unmerged
 branch looks unique forever, and without the merge test a merged local-only
 branch could never be cleaned.
 
+A **squash merge** counts as merged: none of the branch's commits reach the
+base, and the hosting service has often deleted the remote branch too, so
+`clean` also looks for a single commit on the base that makes exactly the
+branch's combined change. A squash that needed conflict resolution changes
+that patch and is not recognised, so the branch is kept. The base is compared
+as your clone last fetched it; `git fetch` first if the merge just happened.
+
 `aw clean` and `aw task rm` are deliberately different. `clean` tears down
 worktrees and keeps the record; `task rm` deletes the record and refuses while
 worktrees exist.
@@ -501,14 +588,16 @@ worktrees exist.
 | --- | --- |
 | `aw init` | Create/report state directories (never required) |
 | `aw config` / `aw config agent [CMD ARGS... / --unset]` | Show defaults; set the default task-root agent |
+| `aw config repo [NAME [PATH] / NAME --unset]` | Register source repositories by name |
+| `aw config branch-prefix [PREFIX / --unset]` | Set the prefix of new task branches (default `agent/`) |
 | `aw project save NAME --from TASK [--replace]` | Save a reusable repository recipe |
 | `aw project list` / `aw project show NAME` | Inspect saved recipes |
-| `aw task create NAME [--repo name=path] [--agent CMD / --shell]` | Create a task, optionally with an agent at its root |
+| `aw task create NAME [REPO...] [--agent CMD / --shell]` | Create a task; each REPO is `REPO[@BRANCH][:BASE]` |
 | `aw task update NAME [--agent CMD / --shell] [--title ...]` | Update a task's root agent and details |
 | `aw task list` | List tasks |
 | `aw task show NAME` | Show a task's repos in detail |
 | `aw task rm NAME` | Delete the record; refuses while worktrees exist |
-| `aw repo add TASK PATH [--name --branch --base --agent --post-create]` | Attach a repository |
+| `aw repo add TASK REPO [--name --branch --base --agent --post-create]` | Attach a repository, by registered name or path |
 | `aw repo rm TASK REPO` | Detach a repository (leaves the worktree) |
 | `aw repo update TASK REPO [--agent CMD / --shell] [--post-create SH]` | Update saved agent and setup settings |
 | `aw start TASK [REPO...]` | Create worktrees, launch the session |
@@ -516,6 +605,7 @@ worktrees exist.
 | `aw restart TASK REPO` / `aw restart TASK --root` | Relaunch a dead repository or root window |
 | `aw stop TASK` | Interrupt agents, end the session, keep worktrees |
 | `aw attach TASK` | Attach (or `switch-client` when already in tmux) |
+| `aw window TASK [REPO / --root] [--agent / -- CMD]` | Open another window in the running session |
 | `aw shell TASK [REPO / --root]` | Interactive shell in a worktree or the task root |
 | `aw path TASK [REPO / --root]` | Print a worktree or task-root path, for `cd "$(...)"` |
 | `aw exec TASK -- CMD` | Run a command in every worktree |
@@ -561,9 +651,11 @@ GOOS=linux GOARCH=amd64 go build -o aw-linux ./cmd/aw
 - **Unix only.** tmux is required; there is no Windows path.
 - **Submodules** are detected and reported, but not recursed into.
 - **No notifications.** `internal/status` is the single place one would attach.
-- **`aw shell` opens a plain subshell**, not a tmux window in the task session.
-  Predictable from any context, but it does not join the session, and it is a
-  known deviation from the original design note — see `docs/REVIEW_BACKLOG.md`.
+- **Extra windows are not remembered.** `aw window` adds to the running
+  session only; after `stop`, `start` recreates the root and repository
+  windows, not the extras.
+- **Agent windows get no `AW_*` variables.** Shells from `aw shell` and hooks
+  do; tmux windows, including `aw window`, start from tmux's environment.
 - **Briefs and handoffs render with control characters stripped.** The stored
   Markdown keeps every byte; what reaches the terminal cannot move the cursor or
   retitle the tab, because a brief is usually pasted in from somewhere else.
@@ -574,8 +666,8 @@ GOOS=linux GOARCH=amd64 go build -o aw-linux ./cmd/aw
   `API_CONTRACT.md` and `STATUS.json` of the original sketch do not, and
   nothing writes the directory on your behalf.
 - **Little configuration.** `AW_ROOT` chooses the state directory, and
-  `$AW_ROOT/config.json` holds the default task-root agent. Nothing else is
-  configurable.
+  `$AW_ROOT/config.json` holds the default task-root agent, the registered
+  repositories and the branch prefix. Nothing else is configurable.
 - Existing sessions from the old `aw-...` naming scheme require manual inspection
   and stopping or renaming before starting their replacement.
 

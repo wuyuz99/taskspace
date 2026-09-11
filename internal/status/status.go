@@ -57,6 +57,10 @@ type RepoStatus struct {
 
 	// Detail carries the observed git numbers. Zero when Git is Missing or Error.
 	Detail awgit.Status
+	// Unpushed counts the commits on a branch with no upstream that are not on
+	// its base: work that exists only on this machine. Detail's ahead/behind
+	// need an upstream, which a new task branch does not have until pushed.
+	Unpushed int
 	// Err is the error behind GitError, if any.
 	Err error
 }
@@ -165,6 +169,13 @@ func (a *Aggregator) repoStatus(ctx context.Context, taskName, repoName string, 
 		}
 		if st.Branch != "" {
 			row.Branch = st.Branch
+		}
+		if st.Upstream == "" && st.Branch != "" && r.Base != "" {
+			// A base that no longer resolves leaves the count unknown, which
+			// is shown as nothing rather than as an error on a healthy repo.
+			if n, err := a.Git.CountCommits(ctx, r.Worktree, r.Base, "HEAD"); err == nil {
+				row.Unpushed = n
+			}
 		}
 	}
 	return row

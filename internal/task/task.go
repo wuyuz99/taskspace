@@ -107,8 +107,9 @@ func (t *Task) SetRepo(name string, r Repo) {
 	t.Repos[name] = r
 }
 
-// DefaultBranch is the branch convention for a task.
-func DefaultBranch(taskName string) string { return "agent/" + taskName }
+// DefaultBranch is the branch convention for a task when the config sets no
+// prefix of its own.
+func DefaultBranch(taskName string) string { return DefaultBranchPrefix + taskName }
 
 // nameRe restricts names to characters that are safe in a path segment and a
 // git branch name.

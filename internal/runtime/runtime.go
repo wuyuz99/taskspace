@@ -18,6 +18,10 @@ type Window struct {
 	Dir  string
 	// Command is the agent argv. Empty means the user's interactive shell.
 	Command []string
+	// Transient windows close when their process exits. Managed windows stay
+	// open, dead, so a crashed agent's last output can still be read; an
+	// ad-hoc shell the user typed `exit` into has nothing left to show.
+	Transient bool
 }
 
 // PaneState is what we can actually observe about a running window.
@@ -64,6 +68,9 @@ type Runtime interface {
 	Stop(ctx context.Context, session string) error
 	// Attach hands the terminal over to the session.
 	Attach(ctx context.Context, session string) error
+	// Focus shows a window to the user when aw runs inside a client that can
+	// display it, and reports whether it did.
+	Focus(ctx context.Context, session, window string) (bool, error)
 	// State reports what is observably running.
 	State(ctx context.Context, session string) (SessionState, error)
 }
