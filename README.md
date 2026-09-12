@@ -62,7 +62,7 @@ does not implement or bundle one, and the test suite does not need any.
 ## Install
 
 ```bash
-git clone <this repo> && cd aw
+git clone https://github.com/wuyuz99/taskspace.git && cd taskspace
 go build -o aw ./cmd/aw
 sudo install -m 0755 aw /usr/local/bin/aw     # or put it anywhere on PATH
 ```
@@ -144,7 +144,7 @@ The `agent/` prefix is configurable. Branches are recorded when a repository is
 added, so changing it leaves existing tasks alone:
 
 ```bash
-aw config branch-prefix isaac/     # isaac/PAY-142
+aw config branch-prefix me/        # me/PAY-142
 aw config branch-prefix ''         # PAY-142
 aw config branch-prefix --unset    # back to agent/PAY-142
 ```
@@ -690,4 +690,4 @@ agent coordination is not part of the current workspace workflow.
 
 ## License
 
-Not yet chosen.
+MIT — see [LICENSE](LICENSE).

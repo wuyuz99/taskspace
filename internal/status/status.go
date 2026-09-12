@@ -11,9 +11,9 @@ import (
 	"sort"
 	"sync"
 
-	awgit "github.com/aw-tool/aw/internal/git"
-	"github.com/aw-tool/aw/internal/runtime"
-	"github.com/aw-tool/aw/internal/task"
+	awgit "github.com/wuyuz99/taskspace/internal/git"
+	"github.com/wuyuz99/taskspace/internal/runtime"
+	"github.com/wuyuz99/taskspace/internal/task"
 )
 
 // RuntimeState is what we can observe about a window's process.

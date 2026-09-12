@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/aw-tool/aw/internal/runtime"
-	"github.com/aw-tool/aw/internal/task"
 	"github.com/spf13/cobra"
+	"github.com/wuyuz99/taskspace/internal/runtime"
+	"github.com/wuyuz99/taskspace/internal/task"
 )
 
 // agentOptions are the task-root agent flags shared by task create and update.

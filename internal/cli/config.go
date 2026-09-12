@@ -6,8 +6,8 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/aw-tool/aw/internal/task"
 	"github.com/spf13/cobra"
+	"github.com/wuyuz99/taskspace/internal/task"
 )
 
 func (a *App) newConfigCmd() *cobra.Command {
@@ -121,7 +121,7 @@ func (a *App) newConfigBranchPrefixCmd() *cobra.Command {
 		Short: "Show or set the prefix of new task branches",
 		Long: "A repository added to a task without a branch of its own gets\n" +
 			"PREFIX + TASK, by default agent/TASK:\n\n" +
-			"  aw config branch-prefix isaac/     # isaac/PAY-142\n" +
+			"  aw config branch-prefix me/        # me/PAY-142\n" +
 			"  aw config branch-prefix ''         # PAY-142\n\n" +
 			"Branches are recorded when a repository is added, so changing the prefix\n" +
 			"leaves existing tasks alone.",

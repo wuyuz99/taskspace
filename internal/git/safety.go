@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	awexec "github.com/aw-tool/aw/internal/exec"
+	awexec "github.com/wuyuz99/taskspace/internal/exec"
 )
 
 // Discardability answers "can this branch be deleted without losing work?"

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aw-tool/aw/internal/task"
+	"github.com/wuyuz99/taskspace/internal/task"
 )
 
 // The editor opens the note file itself, so a rewrite of the task record while

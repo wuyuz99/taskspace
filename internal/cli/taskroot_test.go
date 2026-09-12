@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aw-tool/aw/internal/runtime"
-	"github.com/aw-tool/aw/internal/task"
+	"github.com/wuyuz99/taskspace/internal/runtime"
+	"github.com/wuyuz99/taskspace/internal/task"
 )
 
 type restartRuntime struct {

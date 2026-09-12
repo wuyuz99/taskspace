@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	awexec "github.com/aw-tool/aw/internal/exec"
+	awexec "github.com/wuyuz99/taskspace/internal/exec"
 )
 
 // These tests drive real git against real temporary repositories. Mocking git

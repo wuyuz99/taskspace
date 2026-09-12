@@ -3,8 +3,8 @@
 > Worktrees are per-repository. Features aren't.
 
 This document records what we are building and, more importantly, *why* each
-decision was made. `task.md` holds the requirements; this holds the engineering
-rationale. If you are a new contributor, read this first.
+decision was made: the engineering rationale behind the original requirements.
+If you are a new contributor, read this first.
 
 Status: **v0.1, pre-release.** Nothing here is stable.
 
@@ -157,8 +157,8 @@ type Repo struct {
 }
 ```
 
-An agent is `[]string`. There is deliberately no `AgentAdapter` interface — see
-`task.md`. `exec.LookPath(argv[0])` is the whole of "detection", and a
+An agent is `[]string`. There is deliberately no `AgentAdapter` interface.
+`exec.LookPath(argv[0])` is the whole of "detection", and a
 four-method interface over two trivial implementations is the speculative
 architecture we are trying to avoid.
 
@@ -426,12 +426,10 @@ WSL. End-to-end runs use a `GOOS=linux` build of the binary in the same way.
 - Single configuration knob (`AW_ROOT`); no config file system yet.
 - Session names collapse `.` to `-`, so tasks named `a.b` and `a-b` would map to
   one session. Accepted over banning dots from task names.
-- The module path `github.com/aw-tool/aw` is a placeholder pending a decision on
-  where this repository lives.
 
 ### Deviation: `aw shell` opens a subshell
 
-`task.md` specifies that `aw shell` should open a new tmux window in the task's
+The original requirements specify that `aw shell` should open a new tmux window in the task's
 session when the runtime is up, and fall back to a subshell otherwise. It opens
 a plain subshell in the worktree, always.
 

@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/aw-tool/aw/internal/task"
+	"github.com/wuyuz99/taskspace/internal/task"
 )
 
 // editTaskNote opens the note in the user's editor.

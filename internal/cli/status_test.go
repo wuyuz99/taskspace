@@ -3,8 +3,8 @@ package cli
 import (
 	"testing"
 
-	awgit "github.com/aw-tool/aw/internal/git"
-	"github.com/aw-tool/aw/internal/status"
+	awgit "github.com/wuyuz99/taskspace/internal/git"
+	"github.com/wuyuz99/taskspace/internal/status"
 )
 
 func TestGitSummary(t *testing.T) {

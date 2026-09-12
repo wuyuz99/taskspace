@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aw-tool/aw/internal/task"
+	"github.com/wuyuz99/taskspace/internal/task"
 )
 
 func TestTaskNotesWithoutTicketURL(t *testing.T) {

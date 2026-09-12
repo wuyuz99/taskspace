@@ -9,11 +9,11 @@ import (
 	"strings"
 	"testing"
 
-	awexec "github.com/aw-tool/aw/internal/exec"
-	awgit "github.com/aw-tool/aw/internal/git"
-	"github.com/aw-tool/aw/internal/runtime"
-	"github.com/aw-tool/aw/internal/task"
 	"github.com/spf13/cobra"
+	awexec "github.com/wuyuz99/taskspace/internal/exec"
+	awgit "github.com/wuyuz99/taskspace/internal/git"
+	"github.com/wuyuz99/taskspace/internal/runtime"
+	"github.com/wuyuz99/taskspace/internal/task"
 )
 
 // stubRuntime stands in for tmux so the safety-critical CLI paths can be tested

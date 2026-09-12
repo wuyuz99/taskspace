@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	awexec "github.com/aw-tool/aw/internal/exec"
-	awgit "github.com/aw-tool/aw/internal/git"
-	"github.com/aw-tool/aw/internal/runtime"
-	"github.com/aw-tool/aw/internal/task"
+	awexec "github.com/wuyuz99/taskspace/internal/exec"
+	awgit "github.com/wuyuz99/taskspace/internal/git"
+	"github.com/wuyuz99/taskspace/internal/runtime"
+	"github.com/wuyuz99/taskspace/internal/task"
 )
 
 // fakeRuntime lets status tests describe a session without needing tmux.

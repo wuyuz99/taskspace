@@ -6,8 +6,8 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/aw-tool/aw/internal/task"
 	"github.com/spf13/cobra"
+	"github.com/wuyuz99/taskspace/internal/task"
 )
 
 func (a *App) newProjectCmd() *cobra.Command {

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aw-tool/aw/internal/task"
+	"github.com/wuyuz99/taskspace/internal/task"
 )
 
 func TestProjectRecipeSnapshotsConfigurationOnly(t *testing.T) {

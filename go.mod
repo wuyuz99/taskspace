@@ -1,4 +1,4 @@
-module github.com/aw-tool/aw
+module github.com/wuyuz99/taskspace
 
 go 1.23.4
 

@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/aw-tool/aw/internal/task"
 	"github.com/spf13/cobra"
+	"github.com/wuyuz99/taskspace/internal/task"
 )
 
 // notes reads a task's brief and handoff, moving a legacy record's inline

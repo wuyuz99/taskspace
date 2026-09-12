@@ -6,9 +6,9 @@ import (
 	"os"
 	"strings"
 
-	awgit "github.com/aw-tool/aw/internal/git"
-	"github.com/aw-tool/aw/internal/task"
 	"github.com/spf13/cobra"
+	awgit "github.com/wuyuz99/taskspace/internal/git"
+	"github.com/wuyuz99/taskspace/internal/task"
 )
 
 // cleanPlan is what clean intends to do to one repository.
