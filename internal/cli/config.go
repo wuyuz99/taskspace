@@ -47,9 +47,13 @@ func (a *App) newConfigRepoCmd() *cobra.Command {
 			"instead of a path:\n\n" +
 			"  aw config repo backend ~/src/backend\n" +
 			"  aw task create PAY-142 backend frontend@feature/x infra:develop\n\n" +
-			"Without arguments, lists the registered repositories. Tasks record the\n" +
-			"path when a repository is added, so moving or unregistering one later\n" +
-			"leaves existing tasks alone.",
+			"There are no add, list or rm subcommands; the arguments say which:\n\n" +
+			"  aw config repo                  list the registered repositories\n" +
+			"  aw config repo backend          print backend's path\n" +
+			"  aw config repo backend PATH     register backend, or move it to PATH\n" +
+			"  aw config repo backend --unset  forget backend\n\n" +
+			"Tasks record the path when a repository is added, so moving or\n" +
+			"unregistering one later leaves existing tasks alone.",
 		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, err := a.Store.LoadConfig()
@@ -69,6 +73,9 @@ func (a *App) newConfigRepoCmd() *cobra.Command {
 			case len(args) == 1 && !unset:
 				p, ok := c.Repos[args[0]]
 				if !ok {
+					if hint, verb := configRepoVerbs[args[0]]; verb {
+						return fmt.Errorf("aw config repo has no %q subcommand; %s", args[0], hint)
+					}
 					return fmt.Errorf("no repository registered as %q%s", args[0], registeredHint(c))
 				}
 				a.printf("%s\n", p)
@@ -76,6 +83,11 @@ func (a *App) newConfigRepoCmd() *cobra.Command {
 			}
 
 			name := args[0]
+			// `aw config repo add ~/src/api` reads as a subcommand, and would
+			// otherwise quietly register a repository called "add".
+			if hint, verb := configRepoVerbs[name]; verb && !unset {
+				return fmt.Errorf("%q cannot be a repository name, because it reads as a subcommand; %s", name, hint)
+			}
 			if unset {
 				if _, ok := c.Repos[name]; !ok {
 					return fmt.Errorf("no repository registered as %q%s", name, registeredHint(c))
@@ -156,6 +168,17 @@ func (a *App) newConfigBranchPrefixCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&unset, "unset", false, "restore the default prefix, agent/")
 	return cmd
+}
+
+// configRepoVerbs are the subcommands people expect `aw config repo` to have,
+// each with what to type instead.
+var configRepoVerbs = map[string]string{
+	"add":    "register one with: aw config repo NAME PATH",
+	"set":    "register one with: aw config repo NAME PATH",
+	"list":   "list them with: aw config repo",
+	"ls":     "list them with: aw config repo",
+	"rm":     "forget one with: aw config repo NAME --unset",
+	"remove": "forget one with: aw config repo NAME --unset",
 }
 
 func (a *App) printRepoCatalog(c *task.Config) {

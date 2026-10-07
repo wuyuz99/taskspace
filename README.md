@@ -594,8 +594,8 @@ worktrees exist.
 | `aw project list` / `aw project show NAME` | Inspect saved recipes |
 | `aw task create NAME [REPO...] [--agent CMD / --shell]` | Create a task; each REPO is `REPO[@BRANCH][:BASE]` |
 | `aw task update NAME [--agent CMD / --shell] [--title ...]` | Update a task's root agent and details |
-| `aw task list` | List tasks |
-| `aw task show NAME` | Show a task's repos in detail |
+| `aw task list [--json]` | List tasks |
+| `aw task show NAME [--json]` | Show a task's repos in detail |
 | `aw task rm NAME` | Delete the record; refuses while worktrees exist |
 | `aw repo add TASK REPO [--name --branch --base --agent --post-create]` | Attach a repository, by registered name or path |
 | `aw repo rm TASK REPO` | Detach a repository (leaves the worktree) |
@@ -609,7 +609,7 @@ worktrees exist.
 | `aw shell TASK [REPO / --root]` | Interactive shell in a worktree or the task root |
 | `aw path TASK [REPO / --root]` | Print a worktree or task-root path, for `cd "$(...)"` |
 | `aw exec TASK -- CMD` | Run a command in every worktree |
-| `aw status [TASK]` | Runtime and git state |
+| `aw status [TASK] [--json]` | Runtime and git state |
 | `aw clean TASK [--delete-branch] [--force]` | Remove worktrees, safely |
 
 `--no-title` (or `AW_NO_TITLE=1`) suppresses terminal tab titling.

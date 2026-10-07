@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -25,6 +26,14 @@ func expandHome(path string) string {
 }
 
 func joinNames(names []string) string { return strings.Join(names, ", ") }
+
+// printJSON writes v for a --json flag. The field names are a contract with
+// whatever is parsing them, unlike the tables, which are free to change.
+func (a *App) printJSON(v any) error {
+	enc := json.NewEncoder(a.Out)
+	enc.SetIndent("", "  ")
+	return enc.Encode(v)
+}
 
 // shellJoin renders an argv for display, quoting only what needs it.
 func shellJoin(argv []string) string {

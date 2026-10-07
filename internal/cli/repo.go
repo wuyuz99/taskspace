@@ -27,8 +27,13 @@ func (a *App) newRepoUpdateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update TASK REPO",
 		Short: "Update saved agent and setup settings",
-		Long:  "Update the saved command or post-create hook. Running windows are untouched. Agent settings apply when a window is created or explicitly restarted; hooks run only when a worktree is newly created.",
-		Args:  cobra.ExactArgs(2),
+		Long: "update replaces the repository's saved agent command or post-create hook.\n" +
+			"Running windows are untouched: agent settings apply when a window is\n" +
+			"created or explicitly restarted, and hooks run only when a worktree is\n" +
+			"newly created.\n\n" +
+			"  aw repo update PAY-142 backend --agent codex --agent=--resume\n" +
+			"  aw repo update PAY-142 backend --shell --post-create=''",
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			setAgent, setHook := cmd.Flags().Changed("agent"), cmd.Flags().Changed("post-create")
 			if setAgent && shell {
@@ -71,7 +76,7 @@ func (a *App) newRepoUpdateCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringArrayVar(&agent, "agent", nil, "replace agent argv; repeat for arguments")
+	cmd.Flags().StringArrayVar(&agent, "agent", nil, "replace the agent command, one flag per word")
 	cmd.Flags().BoolVar(&shell, "shell", false, "clear the agent command and use the default shell")
 	cmd.Flags().StringVar(&hook, "post-create", "", "replace the setup hook; an empty value clears it")
 	return cmd
@@ -101,6 +106,13 @@ func (a *App) newRepoAddCmd() *cobra.Command {
 			"remote is checked out tracking it; otherwise it is created from the base,\n" +
 			"which defaults to origin/HEAD. The repo name defaults to the registered\n" +
 			"name or the directory's base name; --name overrides it.\n\n" +
+			"The repository's window runs a shell unless --agent names a command, one\n" +
+			"flag per word:\n\n" +
+			"  aw repo add PAY-142 backend --agent claude --agent=--model --agent opus\n\n" +
+			"--post-create is run once by `sh -c` in the new worktree, which has no\n" +
+			".env, node_modules or venv of its own. It is given AW_TASK, AW_REPO,\n" +
+			"AW_REPO_PATH (the source repository), AW_WORKTREE, AW_TASK_DIR and\n" +
+			"AW_CONTEXT_DIR. A failing hook is reported and the worktree is kept.\n\n" +
 			"Nothing is created on disk here — `aw start` makes the worktrees.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -121,9 +133,9 @@ func (a *App) newRepoAddCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.Name, "name", "", "repo name (default: the registered name or the directory's base name)")
 	cmd.Flags().StringVar(&opts.Branch, "branch", "", "branch to use, the same as REPO@BRANCH (default: agent/TASK)")
 	cmd.Flags().StringVar(&opts.Base, "base", "", "ref to branch from, the same as REPO:BASE (default: origin/HEAD, then the local default branch)")
-	cmd.Flags().StringArrayVar(&opts.Agent, "agent", nil, "agent command to run in this worktree, repeat for arguments")
+	cmd.Flags().StringArrayVar(&opts.Agent, "agent", nil, "agent command to run in this worktree, one flag per word")
 	cmd.Flags().StringVar(&opts.PostCreate, "post-create", "",
-		"shell command run once in a new worktree, e.g. 'cp ../../.env . && pnpm install'")
+		`shell command run once in a new worktree, e.g. 'cp "$AW_REPO_PATH/.env" . && pnpm install'`)
 	return cmd
 }
 

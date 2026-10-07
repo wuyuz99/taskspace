@@ -86,7 +86,32 @@ func Execute(ctx context.Context) int {
 		Short: "Manage multi-repo, multi-worktree coding-agent tasks",
 		Long: "aw manages multi-repo, multi-worktree coding-agent tasks.\n\n" +
 			"Worktrees are per-repository. Features aren't. A task is the first-class\n" +
-			"object: it spans repositories, each with its own branch, worktree and agent.",
+			"object: it spans repositories, each with its own branch, worktree and agent.\n\n" +
+			"Requires git, and tmux for sessions (Linux, macOS or WSL). Without tmux\n" +
+			"everything but the session still works: use `aw start TASK --no-runtime`.\n\n" +
+			"A typical task:\n\n" +
+			"  aw config repo backend ~/src/backend     register a repository, once\n" +
+			"  aw task create PAY-142 backend frontend  record the task; nothing on disk yet\n" +
+			"  aw start PAY-142                         create worktrees, start the session\n" +
+			"  aw status PAY-142                        what is running, what is dirty\n" +
+			"  aw attach PAY-142                        enter the session\n" +
+			"  aw stop PAY-142                          end the session, keep the worktrees\n" +
+			"  aw clean PAY-142                         remove the worktrees, if nothing is lost\n" +
+			"  aw task rm PAY-142                       delete the record and its notes\n\n" +
+			"`aw open TASK` is start and attach in one step.\n\n" +
+			"State lives in $AW_ROOT, by default ~/.aw:\n\n" +
+			"  tasks/TASK.json                     the task record\n" +
+			"  worktrees/TASK/                     the task root, where the root agent runs\n" +
+			"  worktrees/TASK/REPO/                one worktree per repository\n" +
+			"  worktrees/TASK/.context/TASK.md     the brief: what the task is\n" +
+			"  worktrees/TASK/.context/HANDOFF.md  the handoff: where the work stands\n\n" +
+			"For scripts and agents: open, attach, shell and `task brief --edit` take\n" +
+			"over the terminal and need a TTY, and window switches to the new window\n" +
+			"unless given --detach. Every other command runs to completion, prints its\n" +
+			"result on stdout and warnings on stderr, and exits non-zero on failure.\n" +
+			"status, task list and task show take --json. An agent working in a\n" +
+			"worktree finds its instructions in ../.context/TASK.md and records\n" +
+			"progress with `aw task handoff TASK --file FILE`.",
 		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -126,7 +151,7 @@ func (a *App) newInitCmd() *cobra.Command {
 		Short: "Create the aw state directories and report where they live",
 		Long: "init creates the state directories. It is never required — every command\n" +
 			"creates what it needs — but it is a convenient way to see where aw keeps\n" +
-			"its files, and to override that with AW_ROOT.",
+			"its files. They default to ~/.aw; set AW_ROOT to keep them elsewhere.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := a.Store.Init(); err != nil {

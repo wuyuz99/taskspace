@@ -28,7 +28,13 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 		Short: "Create the task's worktrees and launch its agents",
 		Long: "start creates any missing worktrees and brings up the task's session.\n" +
 			"It is safe to re-run: existing worktrees are reused and running agents\n" +
-			"are left alone.",
+			"are left alone.\n\n" +
+			"The session is a detached tmux session with the task-root window first,\n" +
+			"then one window per repository, each running its agent or a shell. start\n" +
+			"returns as soon as they are up; it does not wait for the agents and needs\n" +
+			"no terminal. Naming REPOs starts only those, without the root window.\n\n" +
+			"Without tmux, start still creates the worktrees and then fails;\n" +
+			"--no-runtime creates them and stops there, successfully.",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -143,7 +149,12 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 	if open {
 		cmd.Use = "open TASK"
 		cmd.Short = "Prepare a workspace, show its context and enter its session"
-		cmd.Long = "open creates missing worktrees and session windows, shows the task brief and handoff, then attaches. Existing windows are preserved, including dead agents; use restart explicitly to relaunch them."
+		cmd.Long = "open creates missing worktrees and session windows, shows the task brief\n" +
+			"and handoff, then attaches: `aw start` and `aw attach` in one step.\n" +
+			"Existing windows are preserved, including dead agents; use restart\n" +
+			"explicitly to relaunch them.\n\n" +
+			"open takes over the terminal until you detach, so it needs a TTY. From a\n" +
+			"script, use `aw start TASK` and read `aw status TASK` instead."
 		cmd.Args = cobra.ExactArgs(1)
 	} else {
 		cmd.Flags().BoolVar(&noRuntime, "no-runtime", false,
@@ -217,7 +228,11 @@ func (a *App) newStopCmd() *cobra.Command {
 func (a *App) newRestartCmd() *cobra.Command {
 	var root bool
 	cmd := &cobra.Command{Use: "restart TASK [REPO | --root]", Short: "Relaunch a dead agent or shell",
-		Long: "Restart a dead repository window, or with --root the task-root window, using its configured command. Refuses live panes. Replaces old pane output; inspect it first. Does not resume agent conversation history or rerun setup hooks.",
+		Long: "restart relaunches a dead repository window, or with --root the task-root\n" +
+			"window, using its configured command. A window is dead when `aw status`\n" +
+			"shows it as such: its command has exited.\n\n" +
+			"It refuses live panes. It replaces the old pane's output, so inspect that\n" +
+			"first. It does not resume agent conversation history or rerun setup hooks.",
 		Args: cobra.RangeArgs(1, 2), RunE: func(cmd *cobra.Command, args []string) error {
 			switch {
 			case root && len(args) == 2:
@@ -259,7 +274,12 @@ func (a *App) newAttachCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "attach TASK",
 		Short: "Attach to the task's session",
-		Args:  cobra.ExactArgs(1),
+		Long: "attach prints the task's brief and handoff, then hands the terminal to the\n" +
+			"task's tmux session; inside tmux it switches the current client instead.\n" +
+			"Detach with the tmux prefix and d, which leaves everything running.\n\n" +
+			"The session must already be up (`aw start TASK`), and attach needs a TTY.\n" +
+			"To look at a task without one, use `aw status TASK`.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			t, err := a.loadTask(args[0])
 			if err != nil {

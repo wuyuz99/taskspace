@@ -9,8 +9,88 @@ import (
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
+// statusJSON is one task in `aw status --json`.
+type statusJSON struct {
+	Task         string           `json:"task"`
+	Session      string           `json:"session"`
+	Running      bool             `json:"running"`
+	RuntimeError string           `json:"runtime_error,omitempty"`
+	Root         statusRootJSON   `json:"root"`
+	Repos        []statusRepoJSON `json:"repos"`
+}
+
+type statusRootJSON struct {
+	Agent   string `json:"agent"`
+	Runtime string `json:"runtime"`
+}
+
+type statusRepoJSON struct {
+	Repo       string `json:"repo"`
+	Branch     string `json:"branch"`
+	Worktree   string `json:"worktree"`
+	Agent      string `json:"agent"`
+	Runtime    string `json:"runtime"`
+	Git        string `json:"git"`
+	Upstream   string `json:"upstream,omitempty"`
+	Staged     int    `json:"staged"`
+	Modified   int    `json:"modified"`
+	Untracked  int    `json:"untracked"`
+	Conflicted int    `json:"conflicted"`
+	Stashes    int    `json:"stashes"`
+	Ahead      int    `json:"ahead"`
+	Behind     int    `json:"behind"`
+	Unpushed   int    `json:"unpushed"`
+	Error      string `json:"error,omitempty"`
+}
+
+func (a *App) printStatusJSON(tasks []*task.Task, results []status.TaskStatus) error {
+	byName := make(map[string]*task.Task, len(tasks))
+	for _, t := range tasks {
+		byName[t.Name] = t
+	}
+	out := make([]statusJSON, 0, len(results))
+	for _, ts := range results {
+		row := statusJSON{
+			Task:    ts.Task,
+			Session: ts.Session,
+			Running: ts.Running,
+			Root:    statusRootJSON{Agent: ts.Root.Agent, Runtime: string(ts.Root.Runtime)},
+			Repos:   make([]statusRepoJSON, 0, len(ts.Repos)),
+		}
+		if ts.RuntimeErr != nil {
+			row.RuntimeError = ts.RuntimeErr.Error()
+		}
+		for _, r := range ts.Repos {
+			repo := statusRepoJSON{
+				Repo:       r.Repo,
+				Branch:     r.Branch,
+				Worktree:   byName[ts.Task].Repos[r.Repo].Worktree,
+				Agent:      r.Agent,
+				Runtime:    string(r.Runtime),
+				Git:        string(r.Git),
+				Upstream:   r.Detail.Upstream,
+				Staged:     r.Detail.Staged,
+				Modified:   r.Detail.Modified,
+				Untracked:  r.Detail.Untracked,
+				Conflicted: r.Detail.Conflicted,
+				Stashes:    r.Detail.Stashes,
+				Ahead:      r.Detail.Ahead,
+				Behind:     r.Detail.Behind,
+				Unpushed:   r.Unpushed,
+			}
+			if r.Err != nil {
+				repo.Error = r.Err.Error()
+			}
+			row.Repos = append(row.Repos, repo)
+		}
+		out = append(out, row)
+	}
+	return a.printJSON(out)
+}
+
 func (a *App) newStatusCmd() *cobra.Command {
-	return &cobra.Command{
+	var asJSON bool
+	cmd := &cobra.Command{
 		Use:   "status [TASK]",
 		Short: "Show task, worktree and runtime state",
 		Long: "status reports two independent things per repository: whether its agent\n" +
@@ -18,7 +98,19 @@ func (a *App) newStatusCmd() *cobra.Command {
 			"columns because a worktree can be dirty and running at the same time —\n" +
 			"that is the normal state of an agent doing its job.\n\n" +
 			"Each task's first row, (root), is the window at the task root. It has a\n" +
-			"runtime state but no git state: its changes appear in the repositories.",
+			"runtime state but no git state: its changes appear in the repositories.\n\n" +
+			"RUNTIME is one of:\n\n" +
+			"  running     the window's command is alive\n" +
+			"  dead        the window is there but its command has exited; see aw restart\n" +
+			"  no-window   the session is up without a window for this row\n" +
+			"  no-session  nothing is running for the task; see aw start\n" +
+			"  unknown     tmux could not be queried; the reason is printed below\n\n" +
+			"GIT is missing (no worktree yet; see aw start), error, clean or dirty,\n" +
+			"followed by stashes, commits ahead of and behind the upstream, and commits\n" +
+			"not pushed anywhere.\n\n" +
+			"Without TASK, every task is shown. --json prints the same observations\n" +
+			"as an array of tasks, with the counts as separate fields; there a\n" +
+			"worktree holding only a stash is dirty, as it is to aw clean.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var tasks []*task.Task
@@ -37,13 +129,16 @@ func (a *App) newStatusCmd() *cobra.Command {
 				tasks = all
 			}
 
-			if len(tasks) == 0 {
+			if len(tasks) == 0 && !asJSON {
 				a.printf("no tasks yet; create one with: aw task create NAME\n")
 				return nil
 			}
 
 			agg := status.New(a.Git, a.Runtime)
 			results := agg.All(cmd.Context(), tasks)
+			if asJSON {
+				return a.printStatusJSON(tasks, results)
+			}
 
 			tw := tabwriter.NewWriter(a.Out, 0, 0, 2, ' ', 0)
 			fmt.Fprintln(tw, "TASK\tREPO\tBRANCH\tAGENT\tRUNTIME\tGIT")
@@ -81,6 +176,8 @@ func (a *App) newStatusCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print machine-readable JSON instead of the table")
+	return cmd
 }
 
 // gitSummary renders the GIT column.

@@ -11,10 +11,20 @@ import (
 )
 
 func (a *App) newProjectCmd() *cobra.Command {
-	cmd := &cobra.Command{Use: "project", Short: "Save and inspect reusable workspace recipes"}
+	cmd := &cobra.Command{Use: "project", Short: "Save and inspect reusable workspace recipes",
+		Long: "A project is a recipe for tasks that span the same repositories: the\n" +
+			"task-root agent, and for each repository its path, base, agent and setup\n" +
+			"hook. It holds no task name, branch, ticket or notes.\n\n" +
+			"  aw project save shop --from PAY-142     keep PAY-142's setup as a recipe\n" +
+			"  aw task create PAY-143 --project shop   a new task with the same setup\n\n" +
+			"A recipe is copied into a task when the task is created, so changing or\n" +
+			"replacing one never changes an existing task."}
 	var from string
 	var replace bool
 	save := &cobra.Command{Use: "save NAME --from TASK", Short: "Save a task's reusable repository configuration",
+		Long: "save records the task's root agent and, for each of its repositories, the\n" +
+			"path, base, agent and setup hook, as the recipe NAME. Branches are not\n" +
+			"saved: a task created from the recipe gets its own.",
 		Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 			if from == "" {
 				return fmt.Errorf("specify a source task with --from TASK")

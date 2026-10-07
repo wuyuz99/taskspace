@@ -121,10 +121,21 @@ func (a *App) newTaskNoteCmd(handoff bool) *cobra.Command {
 	if handoff {
 		noteFile = task.HandoffFile
 	}
+	purpose := "The brief is the task's instructions: what is to be done, and why. It is\n" +
+		"written for whoever picks the task up, person or agent."
+	if handoff {
+		purpose = "The handoff is where the work stands: what is done, what is next, what\n" +
+			"to watch for. Whoever stops working on the task, person or agent, leaves\n" +
+			"it for whoever continues. `aw task list` shows its first line."
+	}
 	cmd := &cobra.Command{Use: name + " NAME [TEXT]", Short: "Show or replace the task's " + name,
-		Long: "With no text or flags, print the stored Markdown. TEXT or --file replaces it; --clear removes it.\n\n" +
+		Long: purpose + "\n\n" +
+			"With no text or flags, print the stored Markdown. TEXT or --file replaces\n" +
+			"it; --clear removes it. --edit opens an editor and needs a TTY.\n\n" +
 			"The note is a Markdown file in the task's .context directory, beside its\n" +
-			"worktrees, so anything working in one reaches it as ../.context/" + noteFile + ".\n" +
+			"worktrees, so anything working in one reaches it as ../.context/" + noteFile + ",\n" +
+			"and the root agent as .context/" + noteFile + ". Editing the file directly is\n" +
+			"the same as replacing it here.\n\n" +
 			"Notes survive aw clean and are deleted with the task record.",
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {

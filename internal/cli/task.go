@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/wuyuz99/taskspace/internal/task"
@@ -13,6 +14,10 @@ func (a *App) newTaskCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "task",
 		Short: "Create, list, inspect and remove tasks",
+		Long: "A task is one piece of work and the repositories it spans. Its record\n" +
+			"holds a name, an optional title and ticket, the agent for its root window\n" +
+			"and its repositories; its brief and handoff are Markdown notes beside its\n" +
+			"worktrees. Elsewhere aw calls a task's directory its workspace.",
 	}
 	cmd.AddCommand(a.newTaskCreateCmd(), a.newTaskListCmd(), a.newTaskShowCmd(), a.newTaskRmCmd())
 	cmd.AddCommand(a.newTaskUpdateCmd(), a.newTaskNoteCmd(false), a.newTaskNoteCmd(true))
@@ -32,6 +37,13 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 			"registered with `aw config repo` or a path, optionally with a branch and\n" +
 			"a base, as for `aw repo add`:\n\n" +
 			"  aw task create PAY-142 backend frontend@feature/x infra:develop\n\n" +
+			"NAME starts with a letter or digit and holds only letters, digits, '.',\n" +
+			"'_' and '-'. It names the task's directory, session and default branch.\n\n" +
+			"The task-root window runs the agent from `aw config agent`, or a shell.\n" +
+			"--agent overrides it, one flag per word of the command:\n\n" +
+			"  aw task create PAY-142 backend --agent claude --agent=--model --agent opus\n\n" +
+			"--brief-file stores the task's instructions where its agents will look\n" +
+			"for them; see `aw task brief --help`.\n\n" +
 			"No worktree is created until `aw start` or `aw open`.",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -138,16 +150,86 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 	return cmd
 }
 
+// taskJSON is a task in `aw task list --json` and `aw task show --json`.
+type taskJSON struct {
+	Name             string         `json:"name"`
+	Title            string         `json:"title,omitempty"`
+	Ticket           string         `json:"ticket,omitempty"`
+	TicketURL        string         `json:"ticket_url,omitempty"`
+	Session          string         `json:"session"`
+	Dir              string         `json:"dir"`
+	ContextDir       string         `json:"context_dir"`
+	Agent            []string       `json:"agent"`
+	Brief            string         `json:"brief,omitempty"`
+	Handoff          string         `json:"handoff,omitempty"`
+	HandoffUpdatedAt *time.Time     `json:"handoff_updated_at,omitempty"`
+	Repos            []taskRepoJSON `json:"repos"`
+}
+
+type taskRepoJSON struct {
+	Name       string   `json:"name"`
+	Path       string   `json:"path"`
+	Branch     string   `json:"branch"`
+	Base       string   `json:"base,omitempty"`
+	Worktree   string   `json:"worktree"`
+	Agent      []string `json:"agent"`
+	PostCreate string   `json:"post_create,omitempty"`
+}
+
+// describeTask renders a task's record and notes. An empty agent is the shell.
+func (a *App) describeTask(t *task.Task) taskJSON {
+	out := taskJSON{
+		Name:       t.Name,
+		Title:      t.Title,
+		Ticket:     t.Ticket,
+		TicketURL:  t.TicketURL,
+		Session:    a.Runtime.SessionName(t.Name),
+		Dir:        a.Store.TaskDir(t.Name),
+		ContextDir: a.Store.ContextDir(t.Name),
+		Agent:      append([]string{}, t.Agent...),
+		Repos:      make([]taskRepoJSON, 0, len(t.Repos)),
+	}
+	brief, handoff, err := a.notes(t)
+	if err != nil {
+		a.warnf("aw: %s: %v\n", t.Name, err)
+	}
+	out.Brief, out.Handoff = brief.Text, handoff.Text
+	if !handoff.UpdatedAt.IsZero() {
+		at := handoff.UpdatedAt.UTC()
+		out.HandoffUpdatedAt = &at
+	}
+	for _, name := range t.RepoNames() {
+		r := t.Repos[name]
+		out.Repos = append(out.Repos, taskRepoJSON{
+			Name: name, Path: r.Path, Branch: r.Branch, Base: r.Base, Worktree: r.Worktree,
+			Agent: append([]string{}, r.Agent...), PostCreate: r.PostCreate,
+		})
+	}
+	return out
+}
+
 func (a *App) newTaskListCmd() *cobra.Command {
-	return &cobra.Command{
+	var asJSON bool
+	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
 		Short:   "List tasks",
-		Args:    cobra.NoArgs,
+		Long: "list prints one row per task: its ticket and title, the first line of\n" +
+			"its handoff with the time that was written, and its repositories.\n" +
+			"It reads only the records; `aw status` adds what is running and dirty.\n\n" +
+			"--json prints an array of the objects `aw task show --json` prints.",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			tasks, err := a.Store.List()
 			if err := a.listed(err); err != nil {
 				return err
+			}
+			if asJSON {
+				out := make([]taskJSON, 0, len(tasks))
+				for _, t := range tasks {
+					out = append(out, a.describeTask(t))
+				}
+				return a.printJSON(out)
 			}
 			if len(tasks) == 0 {
 				a.printf("no tasks yet; create one with: aw task create NAME\n")
@@ -155,7 +237,7 @@ func (a *App) newTaskListCmd() *cobra.Command {
 			}
 
 			tw := tabwriter.NewWriter(a.Out, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(tw, "WORKSPACE\tTICKET\tTITLE\tLOCAL SUMMARY\tUPDATED (UTC)\tREPOS")
+			fmt.Fprintln(tw, "TASK\tTICKET\tTITLE\tHANDOFF\tUPDATED (UTC)\tREPOS")
 			for _, t := range tasks {
 				_, handoff, err := a.notes(t)
 				if err != nil {
@@ -167,17 +249,29 @@ func (a *App) newTaskListCmd() *cobra.Command {
 			return tw.Flush()
 		},
 	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print machine-readable JSON instead of the table")
+	return cmd
 }
 
 func (a *App) newTaskShowCmd() *cobra.Command {
-	return &cobra.Command{
+	var asJSON bool
+	cmd := &cobra.Command{
 		Use:   "show NAME",
 		Short: "Show a task's repositories in detail",
-		Args:  cobra.ExactArgs(1),
+		Long: "show prints everything recorded about a task: its session name, its\n" +
+			"directory and .context directory, its root agent, title, ticket, brief\n" +
+			"and handoff, and for each repository the source path, branch, base,\n" +
+			"worktree path, agent and setup hook.\n\n" +
+			"It reads only the record, so the paths are shown whether or not the\n" +
+			"worktrees exist yet; `aw status NAME` reports what is on disk and running.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			t, err := a.loadTask(args[0])
 			if err != nil {
 				return err
+			}
+			if asJSON {
+				return a.printJSON(a.describeTask(t))
 			}
 
 			a.printf("task:     %s\n", t.Name)
@@ -208,6 +302,8 @@ func (a *App) newTaskShowCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print machine-readable JSON instead of text")
+	return cmd
 }
 
 func (a *App) newTaskRmCmd() *cobra.Command {
