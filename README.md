@@ -456,6 +456,7 @@ $AW_ROOT/                          default ~/.aw, override with AW_ROOT
 └── worktrees/<task>/
     ├── .context/TASK.md           the brief, readable from any worktree
     ├── .context/HANDOFF.md        the handoff
+    ├── .context/signals/          what each window's agent last reported
     └── <repo>/                    the worktrees
 ```
 
@@ -727,9 +728,9 @@ GOOS=linux GOARCH=amd64 go build -o aw-linux ./cmd/aw
 - **Stash attribution is a heuristic.** git keeps one stash stack per
   repository, so stashes are matched by the branch recorded in their message.
   It errs toward reporting a stash, which is the safe direction.
-- **`.context/` holds two files.** `TASK.md` and `HANDOFF.md` exist; the
-  `API_CONTRACT.md` and `STATUS.json` of the original sketch do not, and
-  nothing writes the directory on your behalf.
+- **`.context/` holds two notes and the signals.** `TASK.md`, `HANDOFF.md`
+  and `signals/` exist; the `API_CONTRACT.md` and `STATUS.json` of the
+  original sketch do not, and nothing writes notes on your behalf.
 - **Little configuration.** `AW_ROOT` chooses the state directory, and
   `$AW_ROOT/config.json` holds the default task-root agent, the registered
   repositories and the branch prefix. Nothing else is configurable.
