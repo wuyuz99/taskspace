@@ -1,8 +1,12 @@
 package cli
 
 import (
+	"bytes"
 	"fmt"
+	"io"
+	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/wuyuz99/taskspace/internal/status"
@@ -20,8 +24,9 @@ type statusJSON struct {
 }
 
 type statusRootJSON struct {
-	Agent   string `json:"agent"`
-	Runtime string `json:"runtime"`
+	Agent   string       `json:"agent"`
+	Runtime string       `json:"runtime"`
+	Signal  *task.Signal `json:"signal,omitempty"`
 }
 
 type statusRepoJSON struct {
@@ -41,6 +46,8 @@ type statusRepoJSON struct {
 	Behind     int    `json:"behind"`
 	Unpushed   int    `json:"unpushed"`
 	Error      string `json:"error,omitempty"`
+	// Signal is what the agent last reported with `aw signal`.
+	Signal *task.Signal `json:"signal,omitempty"`
 }
 
 func (a *App) printStatusJSON(tasks []*task.Task, results []status.TaskStatus) error {
@@ -54,7 +61,7 @@ func (a *App) printStatusJSON(tasks []*task.Task, results []status.TaskStatus) e
 			Task:    ts.Task,
 			Session: ts.Session,
 			Running: ts.Running,
-			Root:    statusRootJSON{Agent: ts.Root.Agent, Runtime: string(ts.Root.Runtime)},
+			Root:    statusRootJSON{Agent: ts.Root.Agent, Runtime: string(ts.Root.Runtime), Signal: ts.Root.Signal},
 			Repos:   make([]statusRepoJSON, 0, len(ts.Repos)),
 		}
 		if ts.RuntimeErr != nil {
@@ -77,6 +84,7 @@ func (a *App) printStatusJSON(tasks []*task.Task, results []status.TaskStatus) e
 				Ahead:      r.Detail.Ahead,
 				Behind:     r.Detail.Behind,
 				Unpushed:   r.Unpushed,
+				Signal:     r.Signal,
 			}
 			if r.Err != nil {
 				repo.Error = r.Err.Error()
@@ -88,8 +96,33 @@ func (a *App) printStatusJSON(tasks []*task.Task, results []status.TaskStatus) e
 	return a.printJSON(out)
 }
 
+// aggregator is the one place a status query is assembled, so every view of a
+// task sees the same signals.
+func (a *App) aggregator() *status.Aggregator {
+	agg := status.New(a.Git, a.Runtime)
+	agg.Signals = a.Store
+	return agg
+}
+
+// statusTasks resolves the optional TASK argument to the tasks to report on.
+func (a *App) statusTasks(args []string) ([]*task.Task, error) {
+	if len(args) == 1 {
+		t, err := a.loadTask(args[0])
+		if err != nil {
+			return nil, err
+		}
+		return []*task.Task{t}, nil
+	}
+	all, err := a.Store.List()
+	if err := a.listed(err); err != nil {
+		return nil, err
+	}
+	return all, nil
+}
+
 func (a *App) newStatusCmd() *cobra.Command {
-	var asJSON bool
+	var asJSON, watch bool
+	var interval time.Duration
 	cmd := &cobra.Command{
 		Use:   "status [TASK]",
 		Short: "Show task, worktree and runtime state",
@@ -108,76 +141,143 @@ func (a *App) newStatusCmd() *cobra.Command {
 			"GIT is missing (no worktree yet; see aw start), error, clean or dirty,\n" +
 			"followed by stashes, commits ahead of and behind the upstream, and commits\n" +
 			"not pushed anywhere.\n\n" +
-			"Without TASK, every task is shown. --json prints the same observations\n" +
-			"as an array of tasks, with the counts as separate fields; there a\n" +
-			"worktree holding only a stash is dirty, as it is to aw clean.",
+			"A SIGNAL column appears once an agent has reported on itself with\n" +
+			"`aw signal`: working, blocked, done or failed, and how long ago. It is\n" +
+			"the agent's word, not something aw observed.\n\n" +
+			"Without TASK, every task is shown. --watch redraws the table until\n" +
+			"interrupted; `aw dash` is the interactive version. --json prints the\n" +
+			"same observations as an array of tasks, with the counts as separate\n" +
+			"fields; there a worktree holding only a stash is dirty, as it is to\n" +
+			"aw clean.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var tasks []*task.Task
-
-			if len(args) == 1 {
-				t, err := a.loadTask(args[0])
+			if watch && asJSON {
+				return fmt.Errorf("choose either --watch or --json")
+			}
+			if watch && interval < 200*time.Millisecond {
+				return fmt.Errorf("--interval must be at least 200ms")
+			}
+			ctx := cmd.Context()
+			for {
+				// Tasks are re-read on every pass, so a watch picks up tasks
+				// created and removed while it runs.
+				tasks, err := a.statusTasks(args)
 				if err != nil {
 					return err
 				}
-				tasks = []*task.Task{t}
-			} else {
-				all, err := a.Store.List()
-				if err := a.listed(err); err != nil {
+				results := a.aggregator().All(ctx, tasks)
+				if asJSON {
+					return a.printStatusJSON(tasks, results)
+				}
+				if !watch {
+					printStatusTable(a.Out, a.Err, results)
+					return nil
+				}
+
+				// Drawn into a buffer and written at once, so the screen is
+				// never seen half cleared.
+				var frame bytes.Buffer
+				if isTerminal(a.Out) {
+					frame.WriteString("\033[H\033[2J")
+				}
+				fmt.Fprintf(&frame, "aw status at %s, every %s; Ctrl-C to stop\n\n", time.Now().Format("15:04:05"), interval)
+				printStatusTable(&frame, &frame, results)
+				if _, err := a.Out.Write(frame.Bytes()); err != nil {
 					return err
 				}
-				tasks = all
-			}
-
-			if len(tasks) == 0 && !asJSON {
-				a.printf("no tasks yet; create one with: aw task create NAME\n")
-				return nil
-			}
-
-			agg := status.New(a.Git, a.Runtime)
-			results := agg.All(cmd.Context(), tasks)
-			if asJSON {
-				return a.printStatusJSON(tasks, results)
-			}
-
-			tw := tabwriter.NewWriter(a.Out, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(tw, "TASK\tREPO\tBRANCH\tAGENT\tRUNTIME\tGIT")
-
-			empty := true
-			for _, ts := range results {
-				// The root window has a process but no worktree, so it has no
-				// branch or git state of its own; its repositories follow it.
-				fmt.Fprintf(tw, "%s\t(root)\t-\t%s\t%s\t-\n", ts.Task, ts.Root.Agent, ts.Root.Runtime)
-				for _, r := range ts.Repos {
-					empty = false
-					fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
-						r.Task, r.Repo, dash(r.Branch), r.Agent, r.Runtime, gitSummary(r))
+				select {
+				case <-ctx.Done():
+					return nil
+				case <-time.After(interval):
 				}
 			}
-			if err := tw.Flush(); err != nil {
-				return err
-			}
-			if empty {
-				a.printf("no repositories attached yet\n")
-			}
-
-			// Surface the reason behind any "error" or "unknown" cell; a bare
-			// label is not actionable.
-			for _, ts := range results {
-				if ts.RuntimeErr != nil {
-					a.warnf("\n%s: runtime could not be queried: %v\n", ts.Task, ts.RuntimeErr)
-				}
-				for _, r := range ts.Repos {
-					if r.Err != nil {
-						a.warnf("\n%s/%s: %v\n", r.Task, r.Repo, r.Err)
-					}
-				}
-			}
-			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print machine-readable JSON instead of the table")
+	cmd.Flags().BoolVarP(&watch, "watch", "w", false, "redraw the table until interrupted")
+	cmd.Flags().DurationVar(&interval, "interval", 2*time.Second, "time between redraws with --watch")
 	return cmd
+}
+
+// printStatusTable renders the table, then the reason behind any "error" or
+// "unknown" cell: a bare label is not actionable.
+func printStatusTable(out, errOut io.Writer, results []status.TaskStatus) {
+	if len(results) == 0 {
+		fmt.Fprintf(out, "no tasks yet; create one with: aw task create NAME\n")
+		return
+	}
+
+	// The column is there only when an agent has said something, so a setup
+	// with no signals reads as it always has.
+	signals := false
+	for _, ts := range results {
+		signals = signals || ts.Root.Signal != nil
+		for _, r := range ts.Repos {
+			signals = signals || r.Signal != nil
+		}
+	}
+	now := time.Now()
+	row := func(tw io.Writer, sig *task.Signal, cells ...string) {
+		if signals {
+			cells = append(cells, signalSummary(sig, now))
+		}
+		fmt.Fprintln(tw, strings.Join(cells, "\t"))
+	}
+
+	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	header := "TASK\tREPO\tBRANCH\tAGENT\tRUNTIME\tGIT"
+	if signals {
+		header += "\tSIGNAL"
+	}
+	fmt.Fprintln(tw, header)
+
+	empty := true
+	for _, ts := range results {
+		// The root window has a process but no worktree, so it has no
+		// branch or git state of its own; its repositories follow it.
+		row(tw, ts.Root.Signal, ts.Task, "(root)", "-", ts.Root.Agent, string(ts.Root.Runtime), "-")
+		for _, r := range ts.Repos {
+			empty = false
+			row(tw, r.Signal, r.Task, r.Repo, dash(r.Branch), r.Agent, string(r.Runtime), gitSummary(r))
+		}
+	}
+	tw.Flush()
+	if empty {
+		fmt.Fprintf(out, "no repositories attached yet\n")
+	}
+
+	for _, ts := range results {
+		if ts.RuntimeErr != nil {
+			fmt.Fprintf(errOut, "\n%s: runtime could not be queried: %v\n", ts.Task, ts.RuntimeErr)
+		}
+		for _, r := range ts.Repos {
+			if r.Err != nil {
+				fmt.Fprintf(errOut, "\n%s/%s: %v\n", r.Task, r.Repo, r.Err)
+			}
+		}
+	}
+}
+
+// signalSummary renders the SIGNAL column: the state and how long it has stood.
+func signalSummary(s *task.Signal, now time.Time) string {
+	if s == nil {
+		return "-"
+	}
+	return string(s.State) + " " + age(now.Sub(s.At))
+}
+
+// age renders a duration to one unit, which is all a glance needs.
+func age(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", max(int(d.Seconds()), 0))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 48*time.Hour:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd", int(d.Hours()/24))
+	}
 }
 
 // gitSummary renders the GIT column.

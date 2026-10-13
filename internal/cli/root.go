@@ -98,20 +98,22 @@ func Execute(ctx context.Context) int {
 			"  aw stop PAY-142                          end the session, keep the worktrees\n" +
 			"  aw clean PAY-142                         remove the worktrees, if nothing is lost\n" +
 			"  aw task rm PAY-142                       delete the record and its notes\n\n" +
-			"`aw open TASK` is start and attach in one step.\n\n" +
+			"`aw open TASK` is start and attach in one step, and `aw dash` watches\n" +
+			"every task at once.\n\n" +
 			"State lives in $AW_ROOT, by default ~/.aw:\n\n" +
 			"  tasks/TASK.json                     the task record\n" +
 			"  worktrees/TASK/                     the task root, where the root agent runs\n" +
 			"  worktrees/TASK/REPO/                one worktree per repository\n" +
 			"  worktrees/TASK/.context/TASK.md     the brief: what the task is\n" +
 			"  worktrees/TASK/.context/HANDOFF.md  the handoff: where the work stands\n\n" +
-			"For scripts and agents: open, attach, shell and `task brief --edit` take\n" +
-			"over the terminal and need a TTY, and window switches to the new window\n" +
-			"unless given --detach. Every other command runs to completion, prints its\n" +
-			"result on stdout and warnings on stderr, and exits non-zero on failure.\n" +
-			"status, task list and task show take --json. An agent working in a\n" +
-			"worktree finds its instructions in ../.context/TASK.md and records\n" +
-			"progress with `aw task handoff TASK --file FILE`.",
+			"For scripts and agents: open, attach, shell, dash and `task brief --edit`\n" +
+			"take over the terminal and need a TTY, and window switches to the new\n" +
+			"window unless given --detach. Every other command runs to completion,\n" +
+			"prints its result on stdout and warnings on stderr, and exits non-zero on\n" +
+			"failure. status, task list and task show take --json. An agent working\n" +
+			"in a worktree finds its instructions in ../.context/TASK.md, records\n" +
+			"progress with `aw task handoff TASK --file FILE`, and says when it is\n" +
+			"blocked or done with `aw signal`.",
 		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -135,6 +137,8 @@ func Execute(ctx context.Context) int {
 		app.newPathCmd(),
 		app.newExecCmd(),
 		app.newStatusCmd(),
+		app.newDashCmd(),
+		app.newSignalCmd(),
 		app.newCleanCmd(),
 	)
 

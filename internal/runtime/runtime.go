@@ -71,6 +71,8 @@ type Runtime interface {
 	// Focus shows a window to the user when aw runs inside a client that can
 	// display it, and reports whether it did.
 	Focus(ctx context.Context, session, window string) (bool, error)
+	// Select makes a window the one a later Attach lands on.
+	Select(ctx context.Context, session, window string) error
 	// State reports what is observably running.
 	State(ctx context.Context, session string) (SessionState, error)
 }

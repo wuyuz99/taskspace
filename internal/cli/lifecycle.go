@@ -120,6 +120,13 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 			}
 
 			session := a.Runtime.SessionName(t.Name)
+			// Signals left by a session that is gone describe agents that are
+			// no longer there.
+			if running, err := a.Runtime.HasSession(ctx, session); err == nil && !running {
+				if err := a.Store.ClearSignals(t.Name); err != nil {
+					a.warnf("aw: %v\n", err)
+				}
+			}
 			if err := a.Runtime.Start(ctx, session, windows); err != nil {
 				return err
 			}
@@ -213,11 +220,15 @@ func (a *App) newStopCmd() *cobra.Command {
 				return err
 			}
 			if !running {
+				_ = a.Store.ClearSignals(t.Name)
 				a.printf("nothing running for %s\n", t.Name)
 				return nil
 			}
 			if err := a.Runtime.Stop(cmd.Context(), session); err != nil {
 				return err
+			}
+			if err := a.Store.ClearSignals(t.Name); err != nil {
+				a.warnf("aw: %v\n", err)
 			}
 			a.printf("stopped %s; worktrees left in place\n", t.Name)
 			return nil
@@ -262,6 +273,10 @@ func (a *App) newRestartCmd() *cobra.Command {
 			}
 			if err := a.Runtime.Restart(cmd.Context(), a.Runtime.SessionName(t.Name), w); err != nil {
 				return err
+			}
+			// The relaunched agent has said nothing yet.
+			if err := a.Store.ClearSignal(t.Name, w.Name); err != nil {
+				a.warnf("aw: %v\n", err)
 			}
 			a.printf("relaunched %s; use aw status %s to check its state\n", label, t.Name)
 			return nil

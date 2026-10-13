@@ -61,6 +61,9 @@ type RepoStatus struct {
 	// its base: work that exists only on this machine. Detail's ahead/behind
 	// need an upstream, which a new task branch does not have until pushed.
 	Unpushed int
+	// Signal is what the window's agent last reported, if anything. It is the
+	// agent's word, shown beside Runtime and never folded into it.
+	Signal *task.Signal
 	// Err is the error behind GitError, if any.
 	Err error
 }
@@ -81,12 +84,20 @@ type TaskStatus struct {
 type RootStatus struct {
 	Agent   string
 	Runtime RuntimeState
+	Signal  *task.Signal
+}
+
+// SignalReader supplies what agents have reported about themselves.
+type SignalReader interface {
+	ReadSignals(taskName string) (map[string]task.Signal, error)
 }
 
 // Aggregator collects status across git and the runtime.
 type Aggregator struct {
 	Git     *awgit.Git
 	Runtime runtime.Runtime
+	// Signals is optional; without it no row carries a signal.
+	Signals SignalReader
 }
 
 // New returns an Aggregator.
@@ -119,9 +130,23 @@ func (a *Aggregator) Task(ctx context.Context, t *task.Task) TaskStatus {
 		}
 	}
 
+	// Unreadable signals are treated as none: they are a courtesy from the
+	// agent, and status must still report what it can observe.
+	var signals map[string]task.Signal
+	if a.Signals != nil {
+		signals, _ = a.Signals.ReadSignals(t.Name)
+	}
+	signal := func(window string) *task.Signal {
+		if s, ok := signals[window]; ok {
+			return &s
+		}
+		return nil
+	}
+
 	out.Root = RootStatus{
 		Agent:   t.AgentLabel(),
 		Runtime: a.windowState(sess, task.RootWindowName, runtimeUnknown),
+		Signal:  signal(task.RootWindowName),
 	}
 
 	names := t.RepoNames()
@@ -135,6 +160,7 @@ func (a *Aggregator) Task(ctx context.Context, t *task.Task) TaskStatus {
 		go func() {
 			defer wg.Done()
 			rows[i] = a.repoStatus(ctx, t.Name, name, repo, sess, runtimeUnknown)
+			rows[i].Signal = signal(name)
 		}()
 	}
 	wg.Wait()

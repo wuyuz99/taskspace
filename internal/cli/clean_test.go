@@ -6,6 +6,7 @@ import (
 	"os"
 	osexec "os/exec"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"testing"
 
@@ -33,7 +34,8 @@ func (s *stubRuntime) Stop(context.Context, string) error {
 	s.stopped = true
 	return nil
 }
-func (s *stubRuntime) Attach(context.Context, string) error { return nil }
+func (s *stubRuntime) Attach(context.Context, string) error         { return nil }
+func (s *stubRuntime) Select(context.Context, string, string) error { return nil }
 func (s *stubRuntime) Focus(context.Context, string, string) (bool, error) {
 	return false, nil
 }
@@ -287,6 +289,9 @@ func TestPathPrintsOnlyThePath(t *testing.T) {
 // out of the worktree: that depth depends on where AW_ROOT is, so such a hook
 // silently breaks for anyone who moves their state directory.
 func TestPostCreateHookGetsRepoPathInEnvironment(t *testing.T) {
+	if goruntime.GOOS == "windows" {
+		t.Skip("Unix shell test")
+	}
 	h := newHarness(t)
 	if _, err := h.app.Store.Create("hook-task"); err != nil {
 		t.Fatal(err)

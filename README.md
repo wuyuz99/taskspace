@@ -554,8 +554,71 @@ state of its own: whatever its agent changes shows up in the repositories' rows.
 
 They are separate columns because a worktree can be dirty *and* running at the
 same time — that is the normal state of an agent doing its job. `aw` reports
-only what it can observe; it will not claim an agent is "waiting for input",
-because tmux cannot tell it that.
+only what it can observe; it will not guess that an agent is "waiting for
+input", because tmux cannot tell it that.
+
+`aw status --watch` redraws the table every two seconds (`--interval`), and
+`--json` prints the same observations for a script.
+
+### Signals
+
+Only the agent knows whether it is busy, waiting on you, or finished, so it
+says so itself:
+
+```bash
+aw signal blocked 'totals endpoint: round per line or per order?'
+aw signal done
+```
+
+The states are `working`, `blocked`, `done` and `failed`. Run inside a task,
+`aw signal` works out which window it is from the current directory, so it
+needs no arguments in an agent's hooks. For Claude Code, in the worktree's
+`.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "aw signal working" }] }],
+    "Notification":     [{ "hooks": [{ "type": "command", "command": "aw signal blocked" }] }],
+    "Stop":             [{ "hooks": [{ "type": "command", "command": "aw signal done" }] }]
+  }
+}
+```
+
+Once any window has a signal, `aw status` grows a `SIGNAL` column (`blocked 3m`),
+and `--json` carries the state, message and time. A signal is the agent's word,
+shown beside `RUNTIME` and never instead of it. It is one file,
+`.context/signals/REPO.json` (`_root.json` for the root window), so an agent
+without `aw` on its `PATH` can write `{"state": "blocked", "message": "..."}`
+there directly. `aw stop`, `aw clean` and a fresh `aw start` clear a task's
+signals; `aw restart` clears the window's own.
+
+### Dashboard
+
+`aw dash` is the same information, live and full-screen, for supervising
+several agents at once:
+
+```
+aw dash  2 tasks · 1 blocked · 1 dead  22:53:17
+
+  TASK               REPO      AGENT   RUNTIME     SIGNAL       GIT
+  checkout-redesign  (root)    claude  running     working 40s  -
+                     backend   claude  running     done 12m     dirty (3 files)
+>                    frontend  codex   running     blocked 3m   clean, ahead 2
+  payments-fix       (root)    shell   no-session  -            -
+                     backend   codex   dead        -            missing
+
+checkout-redesign/frontend  agent/checkout-redesign
+  /home/me/.aw/worktrees/checkout-redesign/frontend
+  signal   blocked, 3m ago: totals endpoint: round per line or per order?
+  handoff  API done, tests pass.
+
+enter attach · s start · r restart · x stop · c clear signal · q quit
+```
+
+`enter` attaches to the selected window and detaching brings you back; inside
+tmux it switches the client instead and the dashboard keeps running in its own
+window. Every key runs the command you would have typed.
 
 ## Safety
 
@@ -609,7 +672,9 @@ worktrees exist.
 | `aw shell TASK [REPO / --root]` | Interactive shell in a worktree or the task root |
 | `aw path TASK [REPO / --root]` | Print a worktree or task-root path, for `cd "$(...)"` |
 | `aw exec TASK -- CMD` | Run a command in every worktree |
-| `aw status [TASK] [--json]` | Runtime and git state |
+| `aw status [TASK] [--json / --watch]` | Runtime, git and signal state |
+| `aw dash` | Live full-screen view of every task; attach, start, restart, stop |
+| `aw signal STATE [MESSAGE] [--task --repo / --root]` | Report an agent as `working`, `blocked`, `done` or `failed` |
 | `aw clean TASK [--delete-branch] [--force]` | Remove worktrees, safely |
 
 `--no-title` (or `AW_NO_TITLE=1`) suppresses terminal tab titling.
@@ -679,14 +744,13 @@ agent coordination is not part of the current workspace workflow.
 - Richer cross-repo task context beyond the brief and handoff — a shared
   API contract or status file agents write to, so they can coordinate without
   sharing a context window
-- Richer agent status (`working`, `waiting_for_input`, `blocked`) via adapters
-  that can actually determine it
+- Agent status that is observed rather than reported: adapters that can tell
+  an agent is waiting without it running `aw signal`
 - Agent-to-agent dependencies — "frontend waits for the backend API contract"
 - `aw run TASK "prompt"` to coordinate agents across repositories
 - Notifications when an agent finishes or blocks
 - GitHub/PR integration: PRs, CI status, merge readiness
 - More runtimes — zellij, plain subprocess, remote
-- A TUI
 
 ## License
 

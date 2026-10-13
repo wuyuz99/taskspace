@@ -264,6 +264,14 @@ func (t *Tmux) Focus(ctx context.Context, session, window string) (bool, error) 
 	return true, nil
 }
 
+// Select implements Runtime.
+func (t *Tmux) Select(ctx context.Context, session, window string) error {
+	if _, err := t.tmux(ctx, "select-window", "-t", windowTarget(session, WindowName(window))); err != nil {
+		return fmt.Errorf("select %s in %s: %w", window, session, err)
+	}
+	return nil
+}
+
 // launchArgv renders the command for a window. tmux takes the command as
 // trailing arguments; an empty Command means an interactive shell.
 func (t *Tmux) launchArgv(w Window) []string {

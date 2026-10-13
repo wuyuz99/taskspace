@@ -92,6 +92,10 @@ func (a *App) newCleanCmd() *cobra.Command {
 				a.printf("%-12s deleted branch %s (%s)\n", p.Name, p.Repo.Branch, p.Discard.Reason())
 			}
 
+			if err := a.Store.ClearSignals(t.Name); err != nil {
+				a.warnf("aw: %v\n", err)
+			}
+
 			// Tidy the now-empty workspace directory, but never recursively:
 			// this fails, deliberately, while the task's .context notes are
 			// still there. Worktrees are disposable; the brief that describes

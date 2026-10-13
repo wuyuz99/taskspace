@@ -179,6 +179,13 @@ func TestFocusOnlyFromInsideTmux(t *testing.T) {
 	}
 }
 
+func TestSelectTargetsTheWindow(t *testing.T) {
+	f := awexec.NewFake()
+	if err := NewTmux(f).Select(ctx(), "aw-task", "api.v1"); err != nil || !f.Ran("select-window -t =aw-task:=api~2ev1") {
+		t.Errorf("Select = %v; commands %v", err, f.Commands())
+	}
+}
+
 func TestStartRejectsEmptyWindowList(t *testing.T) {
 	tm := NewTmux(awexec.NewFake())
 	if err := tm.Start(ctx(), "aw-task", nil); err == nil {
