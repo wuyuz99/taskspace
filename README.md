@@ -54,7 +54,7 @@ checkout-redesign
   is not supported**; use WSL.
 - `git`
 - `tmux` (on macOS: `brew install tmux`)
-- Go 1.23+ to build
+- Go 1.26+ to build
 
 Agents (Claude Code, Codex, anything else) are optional external programs. `aw`
 does not implement or bundle one, and the test suite does not need any.
