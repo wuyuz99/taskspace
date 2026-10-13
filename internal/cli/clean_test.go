@@ -163,6 +163,60 @@ func TestCleanRefusesDirtyWorktree(t *testing.T) {
 	}
 }
 
+func TestCleanVerifiesDetachedHead(t *testing.T) {
+	for _, mode := range []string{"unreferenced", "branch", "tag", "remote", "force", "delete-task-branch"} {
+		t.Run(mode, func(t *testing.T) {
+			h := newHarness(t)
+			tk := h.startedTask(t, "detached")
+			r := tk.Repos[tk.RepoNames()[0]]
+			run := func(args ...string) string {
+				t.Helper()
+				cmd := osexec.Command("git", args...)
+				cmd.Dir = r.Worktree
+				cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=aw", "GIT_AUTHOR_EMAIL=t@example.invalid", "GIT_COMMITTER_NAME=aw", "GIT_COMMITTER_EMAIL=t@example.invalid")
+				out, err := cmd.CombinedOutput()
+				if err != nil {
+					t.Fatalf("git %v: %v\n%s", args, err, out)
+				}
+				return strings.TrimSpace(string(out))
+			}
+			run("checkout", "--detach")
+			run("commit", "--allow-empty", "-m", "detached work")
+			head := run("rev-parse", "HEAD")
+			args := []string{tk.Name}
+			switch mode {
+			case "branch":
+				run("branch", "saved")
+			case "tag":
+				run("tag", "saved")
+			case "remote":
+				run("update-ref", "refs/remotes/origin/saved", head)
+			case "force":
+				args = append(args, "--force")
+			case "delete-task-branch":
+				run("branch", "-f", r.Branch, "HEAD")
+				args = append(args, "--delete-branch")
+			}
+			err := h.exec(t, h.app.newCleanCmd(), args...)
+			if mode == "unreferenced" || mode == "delete-task-branch" {
+				if err == nil || !strings.Contains(err.Error(), "detached HEAD") {
+					t.Fatalf("clean = %v, want detached HEAD refusal", err)
+				}
+				if got := run("rev-parse", "HEAD"); got != head {
+					t.Fatalf("refused cleanup changed HEAD: %s", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("clean: %v", err)
+			}
+			if _, err := os.Stat(r.Worktree); !os.IsNotExist(err) {
+				t.Fatalf("worktree still present: %v", err)
+			}
+		})
+	}
+}
+
 func TestCleanRefusesOnAStashAlone(t *testing.T) {
 	h := newHarness(t)
 	tk := h.startedTask(t, "stash-task")

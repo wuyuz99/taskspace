@@ -130,6 +130,19 @@ func (a *App) inspectForClean(ctx context.Context, t *task.Task, wantBranchInfo 
 		p.Present = st.Exists
 
 		if st.Exists {
+			if st.Branch == "" {
+				excludedBranch := ""
+				if wantBranchInfo {
+					excludedBranch = r.Branch
+				}
+				safe, err := a.Git.HeadReferenced(ctx, r.Worktree, excludedBranch)
+				if err != nil {
+					return nil, fmt.Errorf("%s: %w", name, err)
+				}
+				if !safe {
+					p.Blockers = append(p.Blockers, fmt.Sprintf("  %s: detached HEAD has commits not protected by a surviving branch or tag; create a branch at HEAD before cleaning", name))
+				}
+			}
 			if n := st.DirtyCount(); n > 0 {
 				p.Blockers = append(p.Blockers,
 					fmt.Sprintf("  %s: %d uncommitted change%s in %s", name, n, plural(n), r.Worktree))

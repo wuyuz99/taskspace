@@ -25,6 +25,22 @@ type Discardability struct {
 // Safe reports whether the branch's work exists somewhere else.
 func (d Discardability) Safe() bool { return d.Merged || d.Squashed || d.Pushed }
 
+// HeadReferenced reports whether HEAD is reachable from a branch, tag, or
+// remote-tracking ref that will survive cleanup. Reflogs and other worktree
+// HEADs are not durable protection for a detached commit.
+func (g *Git) HeadReferenced(ctx context.Context, worktree, excludedBranch string) (bool, error) {
+	res, err := g.git(ctx, worktree, "for-each-ref", "--contains=HEAD", "--format=%(refname)", "refs/heads/", "refs/tags/", "refs/remotes/")
+	if err != nil {
+		return false, fmt.Errorf("verify detached HEAD in %s: %w", worktree, err)
+	}
+	for _, ref := range strings.Fields(res.Stdout) {
+		if ref != "refs/heads/"+excludedBranch {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // Reason explains the verdict in one line, for CLI output.
 func (d Discardability) Reason() string {
 	switch {

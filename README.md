@@ -629,6 +629,11 @@ The rule is: **refusing beats losing code.**
 files, a stash on its branch, or a lock. It tells you which files, in which
 repo, and how to proceed.
 
+For a detached HEAD, cleanup also verifies that its commits are reachable from
+a surviving branch, tag, or remote-tracking ref. Otherwise it refuses: create a
+branch at HEAD to preserve the work before cleaning. `--force` overrides this
+protection, as it does for uncommitted changes.
+
 Branches are **never deleted by default**. With `--delete-branch`, a branch is
 removed only when its work is *merged into the base branch* or *pushed to an
 upstream*. Both halves matter: without the upstream test a pushed-but-unmerged
