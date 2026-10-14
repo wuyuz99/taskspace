@@ -235,6 +235,8 @@ func TestDash(t *testing.T) {
 	}
 
 	m := newDashModel(context.Background(), h.app, time.Second)
+	// Wide enough that the detail line keeps a long temp path whole.
+	m = drive(t, m, tea.WindowSizeMsg{Width: 400, Height: 40})
 	m = drive(t, m, dashDataMsg(h.app.dashLoad(context.Background())))
 	if len(m.data.Rows) != 2 || m.data.Rows[0].Runtime != status.RuntimeDead || m.data.Rows[1].Signal == nil {
 		t.Fatalf("rows: %+v", m.data.Rows)

@@ -126,10 +126,23 @@ func canonical(p string) string {
 	if err != nil {
 		abs = p
 	}
-	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
-		abs = resolved
+	abs = filepath.Clean(abs)
+	// Resolve the deepest directory that still exists. git records worktree
+	// paths with symlinks resolved (on macOS /var is /private/var), and a
+	// worktree deleted by hand cannot be resolved itself, so without its
+	// parents it would never match its own stale registration.
+	rest := ""
+	for dir := abs; ; {
+		if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+			return filepath.Join(resolved, rest)
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return abs
+		}
+		rest = filepath.Join(filepath.Base(dir), rest)
+		dir = parent
 	}
-	return filepath.Clean(abs)
 }
 
 // Prune drops worktree records whose directories have disappeared.

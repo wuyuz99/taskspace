@@ -59,6 +59,32 @@ func TestEnsureWorktreeIsIdempotent(t *testing.T) {
 	}
 }
 
+// A state root reached through a symlink, as every temp and home path on
+// macOS is, must still match the registration git recorded once the
+// worktree directory itself is gone.
+func TestEnsureWorktreeRecreatesThroughSymlink(t *testing.T) {
+	g := testGit(t)
+	repo := initRepo(t)
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(t.TempDir(), link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	wt := filepath.Join(link, "task", "backend")
+	if _, err := g.EnsureWorktree(ctx(), repo, wt, "agent/test", ""); err != nil {
+		t.Fatalf("EnsureWorktree: %v", err)
+	}
+	if err := os.RemoveAll(wt); err != nil {
+		t.Fatalf("RemoveAll: %v", err)
+	}
+	res, err := g.EnsureWorktree(ctx(), repo, wt, "agent/test", "")
+	if err != nil {
+		t.Fatalf("EnsureWorktree after deletion: %v", err)
+	}
+	if !res.Pruned || !res.Created {
+		t.Errorf("Pruned = %v, Created = %v; want both", res.Pruned, res.Created)
+	}
+}
+
 func TestEnsureWorktreeRecreatesAfterDirectoryDeleted(t *testing.T) {
 	g := testGit(t)
 	repo := initRepo(t)
