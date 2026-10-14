@@ -13,7 +13,9 @@ set -uo pipefail
 AW="${1:-tspace}"
 FAILED=0
 
-WORK="$(mktemp -d)"
+# Physical path: tmux reports pane directories with symlinks resolved, and on
+# macOS mktemp returns /var/..., which is really /private/var/....
+WORK="$(cd "$(mktemp -d)" && pwd -P)"
 export TSPACE_ROOT="$WORK/state"
 export TSPACE_NO_TITLE=1
 export TMUX_TMPDIR="$WORK/tmux"
