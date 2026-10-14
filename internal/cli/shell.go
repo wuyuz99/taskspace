@@ -52,27 +52,27 @@ func (a *App) newShellCmd() *cobra.Command {
 			if name != "" {
 				label += "/" + name
 			}
-			setTitle(a.Out, "aw: "+label, a.noTitle)
+			setTitle(a.Out, "tspace: "+label, a.noTitle)
 			a.printTaskContext(t)
 
 			sh := os.Getenv("SHELL")
 			if sh == "" {
 				sh = "/bin/sh"
 			}
-			a.warnf("aw: %s in %s\n", label, r.Worktree)
+			a.warnf("tspace: %s in %s\n", label, r.Worktree)
 
 			shell := osexec.CommandContext(cmd.Context(), sh)
 			shell.Dir = r.Worktree
 			shell.Stdin, shell.Stdout, shell.Stderr = os.Stdin, os.Stdout, os.Stderr
 			shell.Env = append(os.Environ(),
-				"AW_TASK="+t.Name,
-				"AW_REPO="+name,
-				"AW_WORKTREE="+r.Worktree,
-				"AW_TASK_DIR="+a.Store.TaskDir(t.Name),
-				"AW_CONTEXT_DIR="+a.Store.ContextDir(t.Name),
+				"TSPACE_TASK="+t.Name,
+				"TSPACE_REPO="+name,
+				"TSPACE_WORKTREE="+r.Worktree,
+				"TSPACE_TASK_DIR="+a.Store.TaskDir(t.Name),
+				"TSPACE_CONTEXT_DIR="+a.Store.ContextDir(t.Name),
 			)
 			if err := shell.Run(); err != nil {
-				// A shell exiting non-zero is how shells exit; it is not an aw error.
+				// A shell exiting non-zero is how shells exit; it is not an tspace error.
 				var exit *osexec.ExitError
 				if errors.As(err, &exit) {
 					return nil
@@ -92,7 +92,7 @@ func (a *App) newPathCmd() *cobra.Command {
 		Use:   "path TASK [REPO]",
 		Short: "Print a worktree path",
 		Long: "path prints the worktree path and nothing else, so it composes:\n\n" +
-			"  cd \"$(aw path checkout-redesign backend)\"\n\n" +
+			"  cd \"$(tspace path checkout-redesign backend)\"\n\n" +
 			"Without REPO, a task with one repository prints that worktree; any other\n" +
 			"task prints its root, the directory holding every worktree.",
 		Args: cobra.RangeArgs(1, 2),
@@ -106,7 +106,7 @@ func (a *App) newPathCmd() *cobra.Command {
 				repoArg = args[1]
 			}
 			// Deliberately not worktreeDir: printing a path should work even
-			// before `aw start` has created it.
+			// before `tspace start` has created it.
 			if root && repoArg != "" {
 				return fmt.Errorf("--root cannot be combined with a repository")
 			}
@@ -138,8 +138,8 @@ func (a *App) newExecCmd() *cobra.Command {
 		Short: "Run a command in every worktree of a task",
 		Long: "exec runs the same command in each of the task's worktrees, in repo-name\n" +
 			"order. Useful for the things you would otherwise do in each tab by hand:\n\n" +
-			"  aw exec checkout-redesign -- git push\n" +
-			"  aw exec checkout-redesign -- git status --short",
+			"  tspace exec checkout-redesign -- git push\n" +
+			"  tspace exec checkout-redesign -- git status --short",
 		// One arg, not two, so that a missing command produces our own message
 		// rather than cobra's "requires at least 2 arg(s)".
 		Args: cobra.MinimumNArgs(1),
@@ -150,7 +150,7 @@ func (a *App) newExecCmd() *cobra.Command {
 			}
 			argv := args[1:]
 			if len(argv) == 0 {
-				return fmt.Errorf("no command given; use: aw exec %s -- COMMAND", t.Name)
+				return fmt.Errorf("no command given; use: tspace exec %s -- COMMAND", t.Name)
 			}
 
 			names := t.RepoNames()

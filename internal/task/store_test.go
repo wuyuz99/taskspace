@@ -234,7 +234,7 @@ func TestPathsFollowConvention(t *testing.T) {
 
 func TestDefaultRootHonoursAWRoot(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("AW_ROOT", dir)
+	t.Setenv("TSPACE_ROOT", dir)
 	got, err := DefaultRoot()
 	if err != nil {
 		t.Fatalf("DefaultRoot: %v", err)

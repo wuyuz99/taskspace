@@ -1,6 +1,6 @@
-/aw
-/aw.exe
-/aw-linux
+/tspace
+/tspace.exe
+/tspace-linux
 /dist/
 *.test
 *.test.bin

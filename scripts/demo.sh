@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Build a small multi-repo playground for trying aw by hand.
+# Build a small multi-repo playground for trying tspace by hand.
 #
-# Usage: scripts/demo.sh [dir]      (default: ~/aw-demo)
+# Usage: scripts/demo.sh [dir]      (default: ~/tspace-demo)
 #        scripts/demo.sh --clean [dir]
 #
 # The two repos are rigged to fail in the two ways real projects fail inside a
@@ -15,12 +15,12 @@ set -euo pipefail
 
 CLEAN=0
 if [ "${1:-}" = "--clean" ]; then CLEAN=1; shift; fi
-ROOT="${1:-$HOME/aw-demo}"
+ROOT="${1:-$HOME/tspace-demo}"
 
 if [ "$CLEAN" -eq 1 ]; then
   rm -rf "$ROOT"
   echo "removed $ROOT"
-  echo "note: task records and worktrees live under AW_ROOT (default ~/.aw)"
+  echo "note: task records and worktrees live under TSPACE_ROOT (default ~/.tspace)"
   exit 0
 fi
 
@@ -36,7 +36,7 @@ mkrepo() {
   mkdir -p "$dir"
   git_in "$dir" init -q -b main
   git_in "$dir" config user.email demo@example.invalid
-  git_in "$dir" config user.name "aw demo"
+  git_in "$dir" config user.name "tspace demo"
 }
 
 commit() { git_in "$1" add -A; git_in "$1" commit -qm "$2"; }
@@ -133,31 +133,31 @@ backend has an uncommitted .env; frontend needs backend as a sibling.
 
 Try it:
 
-  aw task create checkout-redesign
-  aw repo add checkout-redesign $BE \\
-      --post-create 'cp "\$AW_REPO_PATH/.env" .'
-  aw repo add checkout-redesign $FE
+  tspace task create checkout-redesign
+  tspace repo add checkout-redesign $BE \\
+      --post-create 'cp "\$TSPACE_REPO_PATH/.env" .'
+  tspace repo add checkout-redesign $FE
 
-  aw start checkout-redesign
-  aw status
+  tspace start checkout-redesign
+  tspace status
 
   # proves post_create worked and the sibling layout holds
-  aw exec checkout-redesign -- sh -c './run.sh 2>/dev/null || ./build.sh'
+  tspace exec checkout-redesign -- sh -c './run.sh 2>/dev/null || ./build.sh'
 
-  aw attach checkout-redesign     # interactive: Ctrl-b d to detach
-  aw shell checkout-redesign backend
+  tspace attach checkout-redesign     # interactive: Ctrl-b d to detach
+  tspace shell checkout-redesign backend
 
-  aw stop checkout-redesign
-  aw clean checkout-redesign
+  tspace stop checkout-redesign
+  tspace clean checkout-redesign
 
 To see what the hook is for, add the backend a second time without it:
 
-  aw task create no-hook
-  aw repo add no-hook $BE
-  aw start no-hook
-  aw exec no-hook -- ./run.sh        # fails: no .env in the worktree
+  tspace task create no-hook
+  tspace repo add no-hook $BE
+  tspace start no-hook
+  tspace exec no-hook -- ./run.sh        # fails: no .env in the worktree
 
 Remove everything:
   scripts/demo.sh --clean $ROOT
-  rm -rf ~/.aw            # or \$AW_ROOT
+  rm -rf ~/.tspace            # or \$TSPACE_ROOT
 EOF

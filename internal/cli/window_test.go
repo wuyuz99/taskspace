@@ -44,7 +44,7 @@ func TestWindowOpensBesideExistingWindows(t *testing.T) {
 	h.app.Runtime = rt
 	tk, _ := h.app.Store.Load("PAY-9")
 
-	if err := h.exec(t, h.app.newWindowCmd(), "PAY-9", "backend"); err == nil || !strings.Contains(err.Error(), "aw open PAY-9") {
+	if err := h.exec(t, h.app.newWindowCmd(), "PAY-9", "backend"); err == nil || !strings.Contains(err.Error(), "tspace open PAY-9") {
 		t.Fatalf("window without a session = %v, want a hint to open it", err)
 	}
 	rt.running = true
@@ -109,7 +109,7 @@ func TestWindowAgentNeedsOne(t *testing.T) {
 	}
 	rt := &windowRuntime{running: true, panes: map[string]runtime.PaneState{}}
 	h.app.Runtime = rt
-	if err := h.exec(t, h.app.newWindowCmd(), "PAY-10", "--agent"); err == nil || !strings.Contains(err.Error(), "aw config agent") {
+	if err := h.exec(t, h.app.newWindowCmd(), "PAY-10", "--agent"); err == nil || !strings.Contains(err.Error(), "tspace config agent") {
 		t.Fatalf("--agent with none configured = %v", err)
 	}
 	// A shell-root task still reaches the user's default agent.

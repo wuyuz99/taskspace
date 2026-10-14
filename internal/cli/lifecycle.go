@@ -47,7 +47,7 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 				return err
 			}
 			if len(names) == 0 {
-				return fmt.Errorf("task %q has no repositories; add one with: aw repo add %s REPO", t.Name, t.Name)
+				return fmt.Errorf("task %q has no repositories; add one with: tspace repo add %s REPO", t.Name, t.Name)
 			}
 
 			changed := false
@@ -124,7 +124,7 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 			// no longer there.
 			if running, err := a.Runtime.HasSession(ctx, session); err == nil && !running {
 				if err := a.Store.ClearSignals(t.Name); err != nil {
-					a.warnf("aw: %v\n", err)
+					a.warnf("tspace: %v\n", err)
 				}
 			}
 			if err := a.Runtime.Start(ctx, session, windows); err != nil {
@@ -138,18 +138,18 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 					a.warnf("could not inspect agent state: %v\n", err)
 				} else {
 					if pane, ok := st.Pane(a.Runtime.WindowName(task.RootWindowName)); ok && pane.Dead {
-						a.warnf("the root window has exited; inspect its output, then run: aw restart %s --root\n", t.Name)
+						a.warnf("the root window has exited; inspect its output, then run: tspace restart %s --root\n", t.Name)
 					}
 					for _, name := range names {
 						if pane, ok := st.Pane(a.Runtime.WindowName(name)); ok && pane.Dead {
-							a.warnf("%s has exited; inspect its output, then run: aw restart %s %s\n", name, t.Name, name)
+							a.warnf("%s has exited; inspect its output, then run: tspace restart %s %s\n", name, t.Name, name)
 						}
 					}
 				}
-				setTitle(a.Out, "aw: "+t.Name, a.noTitle)
+				setTitle(a.Out, "tspace: "+t.Name, a.noTitle)
 				return a.Runtime.Attach(ctx, session)
 			}
-			a.printf("\nsession %s is up; attach with: aw attach %s\n", session, t.Name)
+			a.printf("\nsession %s is up; attach with: tspace attach %s\n", session, t.Name)
 			return nil
 		},
 	}
@@ -157,11 +157,11 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 		cmd.Use = "open TASK"
 		cmd.Short = "Prepare a workspace, show its context and enter its session"
 		cmd.Long = "open creates missing worktrees and session windows, shows the task brief\n" +
-			"and handoff, then attaches: `aw start` and `aw attach` in one step.\n" +
+			"and handoff, then attaches: `tspace start` and `tspace attach` in one step.\n" +
 			"Existing windows are preserved, including dead agents; use restart\n" +
 			"explicitly to relaunch them.\n\n" +
 			"open takes over the terminal until you detach, so it needs a TTY. From a\n" +
-			"script, use `aw start TASK` and read `aw status TASK` instead."
+			"script, use `tspace start TASK` and read `tspace status TASK` instead."
 		cmd.Args = cobra.ExactArgs(1)
 	} else {
 		cmd.Flags().BoolVar(&noRuntime, "no-runtime", false,
@@ -175,12 +175,12 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 // A fresh worktree has no .env, node_modules or venv. Without this hook the
 // tool is not usable on a real project on the first try.
 //
-// The hook gets AW_REPO_PATH pointing at the source repository. Without it the
+// The hook gets TSPACE_REPO_PATH pointing at the source repository. Without it the
 // only way to reach the original checkout is a relative path back out of the
-// worktree, whose depth depends on where AW_ROOT is — so such a hook silently
+// worktree, whose depth depends on where TSPACE_ROOT is — so such a hook silently
 // breaks for anyone who moves their state directory. Prefer:
 //
-//	cp "$AW_REPO_PATH/.env" .
+//	cp "$TSPACE_REPO_PATH/.env" .
 func (a *App) runPostCreate(ctx context.Context, t *task.Task, name string, r task.Repo) error {
 	if r.PostCreate == "" {
 		return nil
@@ -191,12 +191,12 @@ func (a *App) runPostCreate(ctx context.Context, t *task.Task, name string, r ta
 	cmd.Dir = r.Worktree
 	cmd.Stdout, cmd.Stderr = a.Out, a.Err
 	cmd.Env = append(os.Environ(),
-		"AW_TASK="+t.Name,
-		"AW_REPO="+name,
-		"AW_REPO_PATH="+r.Path,
-		"AW_WORKTREE="+r.Worktree,
-		"AW_TASK_DIR="+a.Store.TaskDir(t.Name),
-		"AW_CONTEXT_DIR="+a.Store.ContextDir(t.Name),
+		"TSPACE_TASK="+t.Name,
+		"TSPACE_REPO="+name,
+		"TSPACE_REPO_PATH="+r.Path,
+		"TSPACE_WORKTREE="+r.Worktree,
+		"TSPACE_TASK_DIR="+a.Store.TaskDir(t.Name),
+		"TSPACE_CONTEXT_DIR="+a.Store.ContextDir(t.Name),
 	)
 	return cmd.Run()
 }
@@ -228,7 +228,7 @@ func (a *App) newStopCmd() *cobra.Command {
 				return err
 			}
 			if err := a.Store.ClearSignals(t.Name); err != nil {
-				a.warnf("aw: %v\n", err)
+				a.warnf("tspace: %v\n", err)
 			}
 			a.printf("stopped %s; worktrees left in place\n", t.Name)
 			return nil
@@ -240,7 +240,7 @@ func (a *App) newRestartCmd() *cobra.Command {
 	var root bool
 	cmd := &cobra.Command{Use: "restart TASK [REPO | --root]", Short: "Relaunch a dead agent or shell",
 		Long: "restart relaunches a dead repository window, or with --root the task-root\n" +
-			"window, using its configured command. A window is dead when `aw status`\n" +
+			"window, using its configured command. A window is dead when `tspace status`\n" +
 			"shows it as such: its command has exited.\n\n" +
 			"It refuses live panes. It replaces the old pane's output, so inspect that\n" +
 			"first. It does not resume agent conversation history or rerun setup hooks.",
@@ -260,7 +260,7 @@ func (a *App) newRestartCmd() *cobra.Command {
 			if root {
 				w = a.rootWindow(t)
 				if info, err := os.Stat(w.Dir); err != nil || !info.IsDir() {
-					return fmt.Errorf("task directory %s is missing; run: aw start %s", w.Dir, t.Name)
+					return fmt.Errorf("task directory %s is missing; run: tspace start %s", w.Dir, t.Name)
 				}
 				label += " root window"
 			} else {
@@ -276,9 +276,9 @@ func (a *App) newRestartCmd() *cobra.Command {
 			}
 			// The relaunched agent has said nothing yet.
 			if err := a.Store.ClearSignal(t.Name, w.Name); err != nil {
-				a.warnf("aw: %v\n", err)
+				a.warnf("tspace: %v\n", err)
 			}
-			a.printf("relaunched %s; use aw status %s to check its state\n", label, t.Name)
+			a.printf("relaunched %s; use tspace status %s to check its state\n", label, t.Name)
 			return nil
 		}}
 	cmd.Flags().BoolVar(&root, "root", false, "restart the task-root window")
@@ -292,8 +292,8 @@ func (a *App) newAttachCmd() *cobra.Command {
 		Long: "attach prints the task's brief and handoff, then hands the terminal to the\n" +
 			"task's tmux session; inside tmux it switches the current client instead.\n" +
 			"Detach with the tmux prefix and d, which leaves everything running.\n\n" +
-			"The session must already be up (`aw start TASK`), and attach needs a TTY.\n" +
-			"To look at a task without one, use `aw status TASK`.",
+			"The session must already be up (`tspace start TASK`), and attach needs a TTY.\n" +
+			"To look at a task without one, use `tspace status TASK`.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			t, err := a.loadTask(args[0])
@@ -302,7 +302,7 @@ func (a *App) newAttachCmd() *cobra.Command {
 			}
 			// Label the hosting tab before handing the terminal over, so the tab
 			// is identifiable even after detaching.
-			setTitle(a.Out, "aw: "+t.Name, a.noTitle)
+			setTitle(a.Out, "tspace: "+t.Name, a.noTitle)
 			a.printTaskContext(t)
 			return a.Runtime.Attach(cmd.Context(), a.Runtime.SessionName(t.Name))
 		},
@@ -344,7 +344,7 @@ func (a *App) worktreeDir(t *task.Task, repoArg string) (task.Repo, string, erro
 			t.Name, name, joinNames(names))
 	}
 	if info, err := os.Stat(r.Worktree); err != nil || !info.IsDir() {
-		return task.Repo{}, "", fmt.Errorf("worktree for %s is missing (%s); run: aw start %s",
+		return task.Repo{}, "", fmt.Errorf("worktree for %s is missing (%s); run: tspace start %s",
 			name, r.Worktree, t.Name)
 	}
 	return r, name, nil

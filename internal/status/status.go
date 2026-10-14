@@ -1,6 +1,6 @@
-// Package status aggregates git and runtime state into what aw shows the user.
+// Package status aggregates git and runtime state into what tspace shows the user.
 //
-// Every status query in aw funnels through Aggregator.Task. That is deliberate:
+// Every status query in tspace funnels through Aggregator.Task. That is deliberate:
 // when notifications arrive (agent finished, agent blocked, run failed), they
 // attach here, at one place, rather than being sprinkled through the commands.
 package status
@@ -11,7 +11,7 @@ import (
 	"sort"
 	"sync"
 
-	awgit "github.com/wuyuz99/taskspace/internal/git"
+	tsgit "github.com/wuyuz99/taskspace/internal/git"
 	"github.com/wuyuz99/taskspace/internal/runtime"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
@@ -42,7 +42,7 @@ const (
 	GitError   GitState = "error"
 )
 
-// RepoStatus is one row of `aw status`.
+// RepoStatus is one row of `tspace status`.
 //
 // Runtime and Git are separate on purpose. A worktree can be dirty and running
 // at the same time — that is the normal state of an agent doing its job — so
@@ -56,7 +56,7 @@ type RepoStatus struct {
 	Git     GitState
 
 	// Detail carries the observed git numbers. Zero when Git is Missing or Error.
-	Detail awgit.Status
+	Detail tsgit.Status
 	// Unpushed counts the commits on a branch with no upstream that are not on
 	// its base: work that exists only on this machine. Detail's ahead/behind
 	// need an upstream, which a new task branch does not have until pushed.
@@ -80,7 +80,7 @@ type TaskStatus struct {
 	RuntimeErr error
 }
 
-// RootStatus is the `(root)` row of `aw status`.
+// RootStatus is the `(root)` row of `tspace status`.
 type RootStatus struct {
 	Agent   string
 	Runtime RuntimeState
@@ -94,14 +94,14 @@ type SignalReader interface {
 
 // Aggregator collects status across git and the runtime.
 type Aggregator struct {
-	Git     *awgit.Git
+	Git     *tsgit.Git
 	Runtime runtime.Runtime
 	// Signals is optional; without it no row carries a signal.
 	Signals SignalReader
 }
 
 // New returns an Aggregator.
-func New(g *awgit.Git, rt runtime.Runtime) *Aggregator {
+func New(g *tsgit.Git, rt runtime.Runtime) *Aggregator {
 	return &Aggregator{Git: g, Runtime: rt}
 }
 

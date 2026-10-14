@@ -1,4 +1,4 @@
-# Implementation plan — `aw` v0.1
+# Implementation plan — `tspace` v0.1
 
 > Worktrees are per-repository. Features aren't.
 
@@ -7,6 +7,19 @@ decision was made: the engineering rationale behind the original requirements.
 If you are a new contributor, read this first.
 
 Status: **v0.1, pre-release.** Nothing here is stable.
+
+### Implementation update — 2026-10-13 (renamed to tspace)
+
+`aw` was always a placeholder name, and one letter from `aws`. The command is
+now `tspace`, matching the repository: `cmd/tspace`, `TSPACE_*` variables,
+`~/.tspace` by default, and `tspace@` session names. `ts`, `tsp` and `tsk` were
+passed over because existing tools already install them.
+
+Nothing was published under the old name, so no state is migrated: an existing
+`~/.aw` keeps working with `TSPACE_ROOT=~/.aw`, since worktree paths are
+recorded absolute and git's worktree metadata points at them. Sessions named
+`aw@...` are treated like the older `aw-...` ones, blocking start and restart
+until they are inspected by hand.
 
 ### Implementation update — 2026-09-10 (the task root is a window)
 
@@ -31,13 +44,13 @@ The root is not a pseudo-repository: it has no branch or worktree, so `clean`,
 `exec` and git status have nothing to act on there.
 
 With a root agent on every task, most people would type the same `--agent` on
-every `task create`. `$AW_ROOT/config.json` now holds a default (`aw config
-agent CMD ARGS...`), which supersedes "`AW_ROOT` is the only knob" below. It is
+every `task create`. `$TSPACE_ROOT/config.json` now holds a default (`tspace config
+agent CMD ARGS...`), which supersedes "`TSPACE_ROOT` is the only knob" below. It is
 resolved at creation, after `--agent/--shell` and the recipe, and recorded on
 the task like a recipe snapshot, so `task show` states exactly what runs and
 editing the default never changes an existing task. It sets the root agent
 only; repository windows stay shells for review. The argv is stored as a JSON
-array, not an `AW_AGENT` string, so arguments need no shell-style splitting.
+array, not an `TSPACE_AGENT` string, so arguments need no shell-style splitting.
 
 ### Implementation update — 2026-09-07 (notes are files)
 
@@ -96,7 +109,7 @@ changes supersede its session naming and shell details:
 
 - `shell --root` opens the task directory, creating it if needed; `path --root`
   prints it without mutations. Repository-specific behavior is unchanged.
-- Sessions use `aw@` plus reversible byte escaping, avoiding both name collisions
+- Sessions use `tspace@` plus reversible byte escaping, avoiding both name collisions
   and overlap with the legacy `aw-` namespace. Possible legacy sessions block
   start/restart for manual inspection; they are never automatically adopted.
 - `restart TASK REPO` only respawns dead windows without tmux's force flag.
@@ -170,7 +183,7 @@ section.
 ## 3. On-disk state
 
 ```
-$AW_ROOT/                      default ~/.aw
+$TSPACE_ROOT/                      default ~/.tspace
 ├── tasks/
 │   ├── checkout-redesign.json
 │   └── payments-fix.json
@@ -184,14 +197,14 @@ $AW_ROOT/                      default ~/.aw
 Three decisions worth defending:
 
 **One JSON file per task, not one global file.** The premise of the tool is many
-concurrent tasks. A single state file means two `aw` processes racing on a
+concurrent tasks. A single state file means two `tspace` processes racing on a
 read-modify-write and losing an update. Per-task files mean invocations against
 different tasks never touch the same bytes, so we need no lockfile at all.
 Writes go through a temp file plus `os.Rename` for atomicity within a task.
 
 **JSON, not YAML.** The file is machine-written and only incidentally read by
 humans. JSON is in the standard library; YAML is a dependency plus a surprising
-spec. `aw task show` is where humans should read task state, and it can format
+spec. `tspace task show` is where humans should read task state, and it can format
 however we like.
 
 **Runtime state is derived, never persisted.** No PIDs, no "running" booleans,
@@ -201,8 +214,8 @@ there is no stale state, no reconciliation pass, no repair command, and no class
 of bug where the file disagrees with reality. It follows directly from the
 project principle "real Git state over duplicated state".
 
-`$AW_ROOT` is overridable because the user already keeps workspace directories
-in a chosen, visible location, and a hidden `~/.aw` should not be forced onto an
+`$TSPACE_ROOT` is overridable because the user already keeps workspace directories
+in a chosen, visible location, and a hidden `~/.tspace` should not be forced onto an
 existing habit. This is the *only* configuration knob in v0.1.
 
 ---
@@ -210,30 +223,30 @@ existing habit. This is the *only* configuration knob in v0.1.
 ## 4. CLI structure
 
 ```
-aw init                              create/report state dirs (never required)
+tspace init                              create/report state dirs (never required)
 
-aw task create NAME
-aw task list
-aw task show NAME
-aw task rm NAME                      refuses while worktrees exist
+tspace task create NAME
+tspace task list
+tspace task show NAME
+tspace task rm NAME                      refuses while worktrees exist
 
-aw repo add TASK PATH [--name N] [--agent CMD...] [--base REF] [--post-create SH]
-aw repo rm TASK REPO
+tspace repo add TASK PATH [--name N] [--agent CMD...] [--base REF] [--post-create SH]
+tspace repo rm TASK REPO
 
-aw start TASK [REPO...]              create worktrees + launch runtime
-aw stop TASK                         SIGINT, grace, kill; worktrees untouched
-aw attach TASK                       title the tab, then attach/switch-client
-aw shell TASK [REPO]                 ad-hoc interactive shell in a worktree
-aw path TASK [REPO]                  print path only, for cd "$(aw path ...)"
-aw exec TASK [-- CMD...]             run CMD in every worktree
-aw status [TASK]                     two-axis table
-aw clean TASK [--delete-branch] [--force]
+tspace start TASK [REPO...]              create worktrees + launch runtime
+tspace stop TASK                         SIGINT, grace, kill; worktrees untouched
+tspace attach TASK                       title the tab, then attach/switch-client
+tspace shell TASK [REPO]                 ad-hoc interactive shell in a worktree
+tspace path TASK [REPO]                  print path only, for cd "$(tspace path ...)"
+tspace exec TASK [-- CMD...]             run CMD in every worktree
+tspace status [TASK]                     two-axis table
+tspace clean TASK [--delete-branch] [--force]
 ```
 
 Package layout:
 
 ```
-cmd/aw/            main
+cmd/tspace/            main
 internal/cli/      cobra commands; the ONLY package that formats for humans
 internal/task/     Task/Repo model, load/save, name validation
 internal/git/      repo validation, base-ref resolution, worktree lifecycle, dirty/safety checks
@@ -256,7 +269,7 @@ take a runner and default to the real one.
 
 ## 5. Git worktree lifecycle
 
-`aw start` per repo:
+`tspace start` per repo:
 
 1. **Validate** the source repo: path exists, `git rev-parse --git-dir` succeeds,
    not mid-rebase/merge/bisect.
@@ -315,9 +328,9 @@ Details that are bugs if skipped:
 - **Stop is SIGINT → grace → kill**, not an immediate `kill-session`, because a
   hard kill can land mid-edit.
 
-Terminal tab titling lives next to this: before handing off, `aw attach` and
-`aw shell` emit `ESC ] 2 ; aw: <task> BEL` so the *hosting* tab is labelled too,
-guarded by a TTY check plus `--no-title` / `AW_NO_TITLE`. Emitting escape
+Terminal tab titling lives next to this: before handing off, `tspace attach` and
+`tspace shell` emit `ESC ] 2 ; tspace: <task> BEL` so the *hosting* tab is labelled too,
+guarded by a TTY check plus `--no-title` / `TSPACE_NO_TITLE`. Emitting escape
 sequences into a pipe would corrupt it.
 
 Zellij and a plain detached-subprocess runtime are the intended second
@@ -340,12 +353,12 @@ base branch, *or* pushed to a tracked upstream. Without both halves of that
 test, a never-pushed branch could never be cleaned at all — every commit on it
 is "unique" by construction. Anything else requires `--force`.
 
-`aw clean` therefore: stops the runtime, inspects every worktree, refuses as a
+`tspace clean` therefore: stops the runtime, inspects every worktree, refuses as a
 whole if any worktree is dirty (listing exactly which files, in which repo),
 removes the worktrees that are safe, and **leaves branches alone** unless
 `--delete-branch` is passed — and even then applies the safety test above.
 
-`aw clean` and `aw task rm` are deliberately different operations: `clean` tears
+`tspace clean` and `tspace task rm` are deliberately different operations: `clean` tears
 down worktrees and keeps the task record; `task rm` deletes the record and
 refuses while worktrees still exist. Conflating them is how a tool ends up
 deleting something the user only wanted to tidy.
@@ -423,13 +436,13 @@ WSL. End-to-end runs use a `GOOS=linux` build of the binary in the same way.
 - No notifications; only the structural choke point for them.
 - `.context/` holds the brief and handoff; a shared API contract or status
   file for agents to coordinate through is still unimplemented.
-- Single configuration knob (`AW_ROOT`); no config file system yet.
+- Single configuration knob (`TSPACE_ROOT`); no config file system yet.
 - Session names collapse `.` to `-`, so tasks named `a.b` and `a-b` would map to
   one session. Accepted over banning dots from task names.
 
-### Deviation: `aw shell` opens a subshell
+### Deviation: `tspace shell` opens a subshell
 
-The original requirements specify that `aw shell` should open a new tmux window in the task's
+The original requirements specify that `tspace shell` should open a new tmux window in the task's
 session when the runtime is up, and fall back to a subshell otherwise. It opens
 a plain subshell in the worktree, always.
 
@@ -437,5 +450,5 @@ The conditional version behaves differently depending on where it is run from �
 creating a window you cannot see if you are outside tmux, and needing a new
 `OpenWindowHere` method on the Runtime interface that zellij would then have to
 implement. A subshell in the right directory solves the actual complaint ("I
-navigate there by hand every time") in every context, and `aw path` composes for
+navigate there by hand every time") in every context, and `tspace path` composes for
 anything more elaborate. Revisit if using it proves otherwise.

@@ -69,7 +69,7 @@ func TestTaskCreateAgentPrecedence(t *testing.T) {
 	if got := h.agentOf(t, "PAY-101"); !slices.Equal(got, []string{"claude"}) {
 		t.Fatalf("default: %q", got)
 	}
-	if !strings.Contains(h.out.String(), "agent: claude (task root, from aw config)") {
+	if !strings.Contains(h.out.String(), "agent: claude (task root, from tspace config)") {
 		t.Fatalf("create output: %q", h.out.String())
 	}
 

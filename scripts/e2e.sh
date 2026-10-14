@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# End-to-end check of the aw vertical slice against real git repositories and a
+# End-to-end check of the tspace vertical slice against real git repositories and a
 # real tmux server.
 #
-# Usage: scripts/e2e.sh [path-to-aw-binary]
+# Usage: scripts/e2e.sh [path-to-tspace-binary]
 #
 # It exercises the Definition of Done: create a task, attach two repos, create
 # isolated worktrees, launch persistent agents, read status, run a command
@@ -10,17 +10,17 @@
 # clean safely.
 set -uo pipefail
 
-AW="${1:-aw}"
+AW="${1:-tspace}"
 FAILED=0
 
 WORK="$(mktemp -d)"
-export AW_ROOT="$WORK/state"
-export AW_NO_TITLE=1
+export TSPACE_ROOT="$WORK/state"
+export TSPACE_NO_TITLE=1
 export TMUX_TMPDIR="$WORK/tmux"
 mkdir -p "$TMUX_TMPDIR"
 
 cleanup() {
-  tmux -L aw-e2e kill-server >/dev/null 2>&1
+  tmux -L tspace-e2e kill-server >/dev/null 2>&1
   rm -rf "$WORK"
 }
 trap cleanup EXIT
@@ -41,7 +41,7 @@ mkrepo() {
   mkdir -p "$dir"
   git -C "$dir" init -q -b main
   git -C "$dir" config user.email t@example.invalid
-  git -C "$dir" config user.name "aw e2e"
+  git -C "$dir" config user.name "tspace e2e"
   echo "# $(basename "$dir")" > "$dir/README.md"
   git -C "$dir" add -A
   git -C "$dir" commit -qm initial
@@ -57,10 +57,10 @@ git -C "$WORK/src/backend" add -A
 git -C "$WORK/src/backend" commit -qm "unrelated work"
 echo "workdir: $WORK"
 
-say "aw task create"
+say "tspace task create"
 out="$($AW task create test-feature 2>&1)"; check "task created" "created task test-feature" "$out"
 
-say "aw repo add (name derived from basename)"
+say "tspace repo add (name derived from basename)"
 out="$($AW repo add test-feature "$WORK/src/backend" 2>&1)"
 check "backend added"        "added backend"              "$out"
 check "branch convention"    "agent/test-feature"         "$out"
@@ -69,35 +69,35 @@ check "base resolved to main" "from main"                 "$out"
 out="$($AW repo add test-feature "$WORK/src/frontend" --agent sleep --agent 600 2>&1)"
 check "frontend added" "added frontend" "$out"
 
-say "aw repo add rejects a non-repository"
+say "tspace repo add rejects a non-repository"
 mkdir -p "$WORK/not-a-repo"
 out="$($AW repo add test-feature "$WORK/not-a-repo" 2>&1)"
 check "non-repo refused" "not a git repository" "$out"
 
-say "aw task show"
+say "tspace task show"
 out="$($AW task show test-feature 2>&1)"
 check "lists backend"  "backend"  "$out"
 check "lists frontend" "frontend" "$out"
 
-say "aw start"
+say "tspace start"
 out="$($AW start test-feature 2>&1)"
 check "backend worktree created"  "backend.*created worktree"  "$out"
 check "frontend worktree created" "frontend.*created worktree" "$out"
-check "session reported"          "session aw@test-feature is up" "$out"
+check "session reported"          "session tspace@test-feature is up" "$out"
 
-if [ -f "$AW_ROOT/worktrees/test-feature/backend/leak.txt" ]; then
+if [ -f "$TSPACE_ROOT/worktrees/test-feature/backend/leak.txt" ]; then
   fail "worktree forked from HEAD, not the base branch (leak.txt present)"
 else
   pass "worktree forked from the resolved base, not HEAD"
 fi
-[ -f "$AW_ROOT/worktrees/test-feature/backend/README.md" ] \
+[ -f "$TSPACE_ROOT/worktrees/test-feature/backend/README.md" ] \
   && pass "worktree is populated" || fail "worktree is empty"
 
 say "worktrees are on their own branch"
-b="$(git -C "$AW_ROOT/worktrees/test-feature/backend" rev-parse --abbrev-ref HEAD)"
+b="$(git -C "$TSPACE_ROOT/worktrees/test-feature/backend" rev-parse --abbrev-ref HEAD)"
 [ "$b" = "agent/test-feature" ] && pass "branch is $b" || fail "branch is $b"
 
-say "aw status (two axes)"
+say "tspace status (two axes)"
 out="$($AW status 2>&1)"
 check "header has RUNTIME" "RUNTIME" "$out"
 check "header has GIT"     "GIT"     "$out"
@@ -106,13 +106,13 @@ check "frontend running"   "frontend.*running" "$out"
 check "clean worktrees"    "clean"             "$out"
 
 say "the root window opens first, at the task root"
-out="$(tmux list-windows -t '=aw@test-feature' -F '#{window_name} #{pane_current_path}' 2>&1)"
-check "root window first" "^_root $AW_ROOT/worktrees/test-feature\$" "$(head -n1 <<<"$out")"
+out="$(tmux list-windows -t '=tspace@test-feature' -F '#{window_name} #{pane_current_path}' 2>&1)"
+check "root window first" "^_root $TSPACE_ROOT/worktrees/test-feature\$" "$(head -n1 <<<"$out")"
 out="$($AW status test-feature 2>&1)"
 check "root row running" "test-feature  *(root)  *-  *shell  *running" "$out"
 
-say "aw restart --root relaunches a dead root window"
-tmux send-keys -t '=aw@test-feature:=_root' 'exit' Enter
+say "tspace restart --root relaunches a dead root window"
+tmux send-keys -t '=tspace@test-feature:=_root' 'exit' Enter
 for _ in 1 2 3 4 5 6 7 8 9 10; do
   $AW status test-feature 2>&1 | grep -q "(root).*dead" && break
   sleep 0.2
@@ -125,77 +125,77 @@ check "relaunched" "relaunched test-feature root window" "$out"
 out="$($AW status test-feature 2>&1)"
 check "root row running again" "(root).*running" "$out"
 
-say "aw status reports dirty and running independently"
-echo "work in progress" > "$AW_ROOT/worktrees/test-feature/backend/wip.txt"
+say "tspace status reports dirty and running independently"
+echo "work in progress" > "$TSPACE_ROOT/worktrees/test-feature/backend/wip.txt"
 out="$($AW status test-feature 2>&1)"
 check "dirty while running" "backend.*running.*dirty" "$out"
 
-say "aw window adds windows to the running session"
+say "tspace window adds windows to the running session"
 out="$($AW window test-feature backend -d -- sleep 600 2>&1)"
 check "command window opened" "opened _backend-sleep" "$out"
 out="$($AW window test-feature --name staging -d 2>&1)"
 check "named shell opened" "opened _staging" "$out"
-out="$(tmux list-windows -t '=aw@test-feature' -F '#{window_name} #{pane_current_path}' 2>&1)"
-check "command window in backend" "^_backend-sleep $AW_ROOT/worktrees/test-feature/backend\$" "$out"
-check "spare shell at the root"   "^_staging $AW_ROOT/worktrees/test-feature\$" "$out"
-check "repository window kept"    "^backend $AW_ROOT/worktrees/test-feature/backend\$" "$out"
+out="$(tmux list-windows -t '=tspace@test-feature' -F '#{window_name} #{pane_current_path}' 2>&1)"
+check "command window in backend" "^_backend-sleep $TSPACE_ROOT/worktrees/test-feature/backend\$" "$out"
+check "spare shell at the root"   "^_staging $TSPACE_ROOT/worktrees/test-feature\$" "$out"
+check "repository window kept"    "^backend $TSPACE_ROOT/worktrees/test-feature/backend\$" "$out"
 out="$($AW window test-feature --name staging -d 2>&1)"
 check "a taken name is refused" "already exists" "$out"
-tmux send-keys -t '=aw@test-feature:=_staging' 'exit' Enter
+tmux send-keys -t '=tspace@test-feature:=_staging' 'exit' Enter
 for _ in 1 2 3 4 5 6 7 8 9 10; do
-  tmux list-windows -t '=aw@test-feature' -F '#{window_name}' | grep -q '^_staging$' || break
+  tmux list-windows -t '=tspace@test-feature' -F '#{window_name}' | grep -q '^_staging$' || break
   sleep 0.2
 done
-if tmux list-windows -t '=aw@test-feature' -F '#{window_name}' | grep -q '^_staging$'; then
+if tmux list-windows -t '=tspace@test-feature' -F '#{window_name}' | grep -q '^_staging$'; then
   fail "an exited spare shell left its window behind"
 else
   pass "an exited spare shell closes its window"
 fi
 
-say "aw exec runs in every worktree"
+say "tspace exec runs in every worktree"
 out="$($AW exec test-feature -- git status --short 2>&1)"
 check "visits backend"     "=== backend"  "$out"
 check "visits frontend"    "=== frontend" "$out"
 check "sees the wip file"  "wip.txt"      "$out"
 
-say "aw path"
+say "tspace path"
 out="$($AW path test-feature backend 2>&1)"
-[ "$out" = "$AW_ROOT/worktrees/test-feature/backend" ] \
+[ "$out" = "$TSPACE_ROOT/worktrees/test-feature/backend" ] \
   && pass "path prints only the path" || fail "path printed: $out"
 
-say "aw start is idempotent and preserves work"
+say "tspace start is idempotent and preserves work"
 out="$($AW start test-feature 2>&1)"
 check "worktree reused" "backend.*worktree ready" "$out"
-[ -f "$AW_ROOT/worktrees/test-feature/backend/wip.txt" ] \
+[ -f "$TSPACE_ROOT/worktrees/test-feature/backend/wip.txt" ] \
   && pass "uncommitted work survived restart" || fail "restart destroyed uncommitted work"
 
-say "aw stop leaves worktrees alone"
+say "tspace stop leaves worktrees alone"
 out="$($AW stop test-feature 2>&1)"
 check "stopped" "stopped test-feature" "$out"
-[ -f "$AW_ROOT/worktrees/test-feature/backend/wip.txt" ] \
+[ -f "$TSPACE_ROOT/worktrees/test-feature/backend/wip.txt" ] \
   && pass "work survived stop" || fail "stop destroyed work"
 
 out="$($AW status test-feature 2>&1)"
 check "runtime now no-session" "no-session" "$out"
 
-say "aw clean refuses to destroy uncommitted work"
+say "tspace clean refuses to destroy uncommitted work"
 out="$($AW clean test-feature 2>&1)"
 check "refused"            "refusing to clean"    "$out"
 check "names the file count" "uncommitted change" "$out"
 check "suggests a way out" "--force"              "$out"
-[ -f "$AW_ROOT/worktrees/test-feature/backend/wip.txt" ] \
+[ -f "$TSPACE_ROOT/worktrees/test-feature/backend/wip.txt" ] \
   && pass "refused clean changed nothing" || fail "refused clean still deleted work"
 
-say "aw clean succeeds once the work is committed"
-git -C "$AW_ROOT/worktrees/test-feature/backend" add -A
-git -C "$AW_ROOT/worktrees/test-feature/backend" -c user.email=t@example.invalid \
-    -c user.name=aw commit -qm "commit the wip"
+say "tspace clean succeeds once the work is committed"
+git -C "$TSPACE_ROOT/worktrees/test-feature/backend" add -A
+git -C "$TSPACE_ROOT/worktrees/test-feature/backend" -c user.email=t@example.invalid \
+    -c user.name=tspace commit -qm "commit the wip"
 out="$($AW clean test-feature 2>&1)"
 check "backend worktree removed"  "backend.*removed worktree"  "$out"
 check "frontend worktree removed" "frontend.*removed worktree" "$out"
 check "record survives"           "task record is still there" "$out"
 
-[ -d "$AW_ROOT/worktrees/test-feature/backend" ] \
+[ -d "$TSPACE_ROOT/worktrees/test-feature/backend" ] \
   && fail "worktree directory still present" || pass "worktree directory gone"
 
 say "clean kept the branch (it holds unmerged work)"
@@ -214,7 +214,7 @@ else
   fail "--delete-branch destroyed unmerged, unpushed work"
 fi
 
-say "aw task rm"
+say "tspace task rm"
 out="$($AW task rm test-feature 2>&1)"
 check "task removed" "removed task test-feature" "$out"
 out="$($AW status 2>&1)"
@@ -239,14 +239,14 @@ out="$($AW task create review-x web@feature/x 2>&1)"
 check "fetched and found the remote branch" "feature/x (will track origin/feature/x)" "$out"
 out="$($AW start review-x --no-runtime 2>&1)"
 check "tracks the remote branch" "created worktree on feature/x (tracking origin/feature/x)" "$out"
-[ -f "$AW_ROOT/worktrees/review-x/web/theirs.txt" ] \
+[ -f "$TSPACE_ROOT/worktrees/review-x/web/theirs.txt" ] \
   && pass "worktree holds the colleague's commit" || fail "worktree was forked without the remote work"
 
 say "a new task branch has no upstream until pushed"
 out="$($AW task create new-y web 2>&1)"
 check "new branch from origin/main" "agent/new-y (new, from origin/main)" "$out"
 $AW start new-y --no-runtime >/dev/null 2>&1
-wt="$AW_ROOT/worktrees/new-y/web"
+wt="$TSPACE_ROOT/worktrees/new-y/web"
 if git -C "$wt" rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1; then
   fail "new branch tracks $(git -C "$wt" rev-parse --abbrev-ref '@{upstream}')"
 else
@@ -254,7 +254,7 @@ else
 fi
 echo change > "$wt/change.txt"
 git -C "$wt" add -A
-git -C "$wt" -c user.email=t@example.invalid -c user.name=aw commit -qm change
+git -C "$wt" -c user.email=t@example.invalid -c user.name=tspace commit -qm change
 out="$($AW status new-y 2>&1)"
 check "unpushed commits reported" "web.*1 commit not pushed" "$out"
 out="$(git -C "$wt" push -u origin HEAD 2>&1)" \

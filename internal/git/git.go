@@ -1,4 +1,4 @@
-// Package git wraps the git commands aw needs.
+// Package git wraps the git commands tspace needs.
 //
 // It never formats output for humans and never knows about tmux or the CLI.
 // Errors carry git's own stderr and the argv that produced it, because a tool
@@ -12,23 +12,23 @@ import (
 	"path/filepath"
 	"strings"
 
-	awexec "github.com/wuyuz99/taskspace/internal/exec"
+	tsexec "github.com/wuyuz99/taskspace/internal/exec"
 )
 
 // Git runs git commands through a Runner.
 type Git struct {
-	run awexec.Runner
+	run tsexec.Runner
 }
 
 // New returns a Git using the given runner.
-func New(r awexec.Runner) *Git {
+func New(r tsexec.Runner) *Git {
 	if r == nil {
-		r = awexec.Real()
+		r = tsexec.Real()
 	}
 	return &Git{run: r}
 }
 
-func (g *Git) git(ctx context.Context, dir string, args ...string) (awexec.Result, error) {
+func (g *Git) git(ctx context.Context, dir string, args ...string) (tsexec.Result, error) {
 	return g.run.Run(ctx, dir, append([]string{"git"}, args...)...)
 }
 
@@ -40,7 +40,7 @@ func (g *Git) ok(ctx context.Context, dir string, args ...string) (bool, error) 
 	if err == nil {
 		return true, nil
 	}
-	if awexec.IsExit(err) {
+	if tsexec.IsExit(err) {
 		return false, nil
 	}
 	return false, err
@@ -79,7 +79,7 @@ func (g *Git) Validate(ctx context.Context, path string) (string, error) {
 
 	res, err := g.git(ctx, abs, "rev-parse", "--show-toplevel")
 	if err != nil {
-		if awexec.IsExit(err) {
+		if tsexec.IsExit(err) {
 			return "", fmt.Errorf("%s: not a git repository", abs)
 		}
 		return "", err
@@ -105,7 +105,7 @@ func (g *Git) Validate(ctx context.Context, path string) (string, error) {
 func (g *Git) InProgress(ctx context.Context, repo string) (string, error) {
 	res, err := g.git(ctx, repo, "rev-parse", "--absolute-git-dir")
 	if err != nil {
-		if awexec.IsExit(err) {
+		if tsexec.IsExit(err) {
 			return "", nil
 		}
 		return "", err
@@ -141,7 +141,7 @@ func (g *Git) InProgress(ctx context.Context, repo string) (string, error) {
 // Callers are expected to report the chosen ref to the user.
 func (g *Git) ResolveBase(ctx context.Context, repo string) (string, error) {
 	res, err := g.git(ctx, repo, "symbolic-ref", "--quiet", "refs/remotes/origin/HEAD")
-	if err != nil && !awexec.IsExit(err) {
+	if err != nil && !tsexec.IsExit(err) {
 		return "", err
 	}
 	if err == nil {
@@ -196,7 +196,7 @@ func (g *Git) ResolveRef(ctx context.Context, repo, ref string) (string, error) 
 // CheckBranchName reports why name cannot be a branch, or nil if it can.
 func (g *Git) CheckBranchName(ctx context.Context, name string) error {
 	if _, err := g.git(ctx, "", "check-ref-format", "--branch", name); err != nil {
-		if awexec.IsExit(err) {
+		if tsexec.IsExit(err) {
 			return fmt.Errorf("%q is not a valid branch name", name)
 		}
 		return err

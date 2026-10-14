@@ -1,4 +1,4 @@
-// Package cli implements aw's commands.
+// Package cli implements tspace's commands.
 //
 // This is the only package that formats anything for humans. git, runtime and
 // status all return data; rendering happens here.
@@ -12,8 +12,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	awexec "github.com/wuyuz99/taskspace/internal/exec"
-	awgit "github.com/wuyuz99/taskspace/internal/git"
+	tsexec "github.com/wuyuz99/taskspace/internal/exec"
+	tsgit "github.com/wuyuz99/taskspace/internal/git"
 	"github.com/wuyuz99/taskspace/internal/runtime"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
@@ -24,7 +24,7 @@ var version = "dev"
 // App carries everything the commands need.
 type App struct {
 	Store   *task.Store
-	Git     *awgit.Git
+	Git     *tsgit.Git
 	Runtime runtime.Runtime
 	Out     io.Writer
 	Err     io.Writer
@@ -38,10 +38,10 @@ func NewApp() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	runner := awexec.Real()
+	runner := tsexec.Real()
 	return &App{
 		Store:   store,
-		Git:     awgit.New(runner),
+		Git:     tsgit.New(runner),
 		Runtime: runtime.NewTmux(runner),
 		Out:     os.Stdout,
 		Err:     os.Stderr,
@@ -61,12 +61,12 @@ func (a *App) loadTask(name string) (*task.Task, error) { return a.Store.Load(na
 
 // listed unwraps a listing error: entries the store had to skip are reported as
 // warnings and the remaining rows are still shown, because one unreadable file
-// should not make `aw task list` refuse to tell you about the other nine.
+// should not make `tspace task list` refuse to tell you about the other nine.
 func (a *App) listed(err error) error {
 	var skipped *task.SkippedError
 	if errors.As(err, &skipped) {
 		for _, e := range skipped.Errs {
-			a.warnf("aw: %v\n", e)
+			a.warnf("tspace: %v\n", e)
 		}
 		return nil
 	}
@@ -77,30 +77,30 @@ func (a *App) listed(err error) error {
 func Execute(ctx context.Context) int {
 	app, err := NewApp()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "aw: %v\n", err)
+		fmt.Fprintf(os.Stderr, "tspace: %v\n", err)
 		return 1
 	}
 
 	root := &cobra.Command{
-		Use:   "aw",
+		Use:   "tspace",
 		Short: "Manage multi-repo, multi-worktree coding-agent tasks",
-		Long: "aw manages multi-repo, multi-worktree coding-agent tasks.\n\n" +
+		Long: "tspace manages multi-repo, multi-worktree coding-agent tasks.\n\n" +
 			"Worktrees are per-repository. Features aren't. A task is the first-class\n" +
 			"object: it spans repositories, each with its own branch, worktree and agent.\n\n" +
 			"Requires git, and tmux for sessions (Linux, macOS or WSL). Without tmux\n" +
-			"everything but the session still works: use `aw start TASK --no-runtime`.\n\n" +
+			"everything but the session still works: use `tspace start TASK --no-runtime`.\n\n" +
 			"A typical task:\n\n" +
-			"  aw config repo backend ~/src/backend     register a repository, once\n" +
-			"  aw task create PAY-142 backend frontend  record the task; nothing on disk yet\n" +
-			"  aw start PAY-142                         create worktrees, start the session\n" +
-			"  aw status PAY-142                        what is running, what is dirty\n" +
-			"  aw attach PAY-142                        enter the session\n" +
-			"  aw stop PAY-142                          end the session, keep the worktrees\n" +
-			"  aw clean PAY-142                         remove the worktrees, if nothing is lost\n" +
-			"  aw task rm PAY-142                       delete the record and its notes\n\n" +
-			"`aw open TASK` is start and attach in one step, and `aw dash` watches\n" +
+			"  tspace config repo backend ~/src/backend     register a repository, once\n" +
+			"  tspace task create PAY-142 backend frontend  record the task; nothing on disk yet\n" +
+			"  tspace start PAY-142                         create worktrees, start the session\n" +
+			"  tspace status PAY-142                        what is running, what is dirty\n" +
+			"  tspace attach PAY-142                        enter the session\n" +
+			"  tspace stop PAY-142                          end the session, keep the worktrees\n" +
+			"  tspace clean PAY-142                         remove the worktrees, if nothing is lost\n" +
+			"  tspace task rm PAY-142                       delete the record and its notes\n\n" +
+			"`tspace open TASK` is start and attach in one step, and `tspace dash` watches\n" +
 			"every task at once.\n\n" +
-			"State lives in $AW_ROOT, by default ~/.aw:\n\n" +
+			"State lives in $TSPACE_ROOT, by default ~/.tspace:\n\n" +
 			"  tasks/TASK.json                     the task record\n" +
 			"  worktrees/TASK/                     the task root, where the root agent runs\n" +
 			"  worktrees/TASK/REPO/                one worktree per repository\n" +
@@ -112,8 +112,8 @@ func Execute(ctx context.Context) int {
 			"prints its result on stdout and warnings on stderr, and exits non-zero on\n" +
 			"failure. status, task list and task show take --json. An agent working\n" +
 			"in a worktree finds its instructions in ../.context/TASK.md, records\n" +
-			"progress with `aw task handoff TASK --file FILE`, and says when it is\n" +
-			"blocked or done with `aw signal`.",
+			"progress with `tspace task handoff TASK --file FILE`, and says when it is\n" +
+			"blocked or done with `tspace signal`.",
 		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -143,7 +143,7 @@ func Execute(ctx context.Context) int {
 	)
 
 	if err := root.ExecuteContext(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "aw: %v\n", err)
+		fmt.Fprintf(os.Stderr, "tspace: %v\n", err)
 		return 1
 	}
 	return 0
@@ -152,10 +152,10 @@ func Execute(ctx context.Context) int {
 func (a *App) newInitCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "init",
-		Short: "Create the aw state directories and report where they live",
+		Short: "Create the tspace state directories and report where they live",
 		Long: "init creates the state directories. It is never required — every command\n" +
-			"creates what it needs — but it is a convenient way to see where aw keeps\n" +
-			"its files. They default to ~/.aw; set AW_ROOT to keep them elsewhere.",
+			"creates what it needs — but it is a convenient way to see where tspace keeps\n" +
+			"its files. They default to ~/.tspace; set TSPACE_ROOT to keep them elsewhere.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := a.Store.Init(); err != nil {
@@ -165,8 +165,8 @@ func (a *App) newInitCmd() *cobra.Command {
 			a.printf("tasks:       %s\n", a.Store.TasksDir())
 			a.printf("worktrees:   %s\n", a.Store.WorktreesDir())
 			a.printf("config:      %s\n", a.Store.ConfigPath())
-			if os.Getenv("AW_ROOT") == "" {
-				a.printf("\nSet AW_ROOT to keep workspaces somewhere else.\n")
+			if os.Getenv("TSPACE_ROOT") == "" {
+				a.printf("\nSet TSPACE_ROOT to keep workspaces somewhere else.\n")
 			}
 			return nil
 		},

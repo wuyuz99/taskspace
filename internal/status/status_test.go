@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	awexec "github.com/wuyuz99/taskspace/internal/exec"
-	awgit "github.com/wuyuz99/taskspace/internal/git"
+	tsexec "github.com/wuyuz99/taskspace/internal/exec"
+	tsgit "github.com/wuyuz99/taskspace/internal/git"
 	"github.com/wuyuz99/taskspace/internal/runtime"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
@@ -22,7 +22,7 @@ type fakeRuntime struct {
 }
 
 func (f *fakeRuntime) Available(context.Context) error { return nil }
-func (f *fakeRuntime) SessionName(t string) string     { return "aw-" + t }
+func (f *fakeRuntime) SessionName(t string) string     { return "tspace-" + t }
 func (f *fakeRuntime) WindowName(repo string) string   { return repo }
 func (f *fakeRuntime) HasSession(context.Context, string) (bool, error) {
 	return f.state.Exists, nil
@@ -43,7 +43,7 @@ func (f *fakeRuntime) State(context.Context, string) (runtime.SessionState, erro
 }
 
 func session(panes map[string]runtime.PaneState) *fakeRuntime {
-	return &fakeRuntime{state: runtime.SessionState{Name: "aw-t", Exists: true, Panes: panes}}
+	return &fakeRuntime{state: runtime.SessionState{Name: "tspace-t", Exists: true, Panes: panes}}
 }
 
 func noSession() *fakeRuntime {
@@ -58,7 +58,7 @@ func TestStatusUsesBackendWindowIdentity(t *testing.T) {
 	tk := task.New("t")
 	tk.SetRepo("api.v1", task.Repo{Worktree: filepath.Join(t.TempDir(), "missing")})
 	rt := &alternateNamingRuntime{session(map[string]runtime.PaneState{"custom/api.v1": {Dead: false}})}
-	got := New(awgit.New(awexec.Real()), rt).Task(context.Background(), tk)
+	got := New(tsgit.New(tsexec.Real()), rt).Task(context.Background(), tk)
 	if got.Repos[0].Runtime != RuntimeRunning {
 		t.Fatalf("backend naming ignored: %+v", got)
 	}
@@ -77,8 +77,8 @@ func initRepo(t *testing.T) string {
 		cmd := osexec.Command("git", args...)
 		cmd.Dir = dir
 		cmd.Env = append(os.Environ(),
-			"GIT_AUTHOR_NAME=aw", "GIT_AUTHOR_EMAIL=t@example.invalid",
-			"GIT_COMMITTER_NAME=aw", "GIT_COMMITTER_EMAIL=t@example.invalid")
+			"GIT_AUTHOR_NAME=tspace", "GIT_AUTHOR_EMAIL=t@example.invalid",
+			"GIT_COMMITTER_NAME=tspace", "GIT_COMMITTER_EMAIL=t@example.invalid")
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
 		}
@@ -103,7 +103,7 @@ func TestDirtyAndRunningAreReportedIndependently(t *testing.T) {
 	tk := task.New("t")
 	tk.SetRepo("backend", task.Repo{Worktree: repo, Branch: "main", Agent: []string{"claude"}})
 
-	a := New(awgit.New(awexec.Real()), session(map[string]runtime.PaneState{
+	a := New(tsgit.New(tsexec.Real()), session(map[string]runtime.PaneState{
 		"backend": {Window: "backend", Dead: false},
 	}))
 	got := a.Task(context.Background(), tk)
@@ -140,7 +140,7 @@ func TestRuntimeStates(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			a := New(awgit.New(awexec.Real()), c.rt)
+			a := New(tsgit.New(tsexec.Real()), c.rt)
 			got := a.Task(context.Background(), tk)
 			if got.Repos[0].Runtime != c.want {
 				t.Errorf("Runtime = %q, want %q", got.Repos[0].Runtime, c.want)
@@ -156,7 +156,7 @@ func TestMissingWorktreeIsReportedNotFatal(t *testing.T) {
 		Branch:   "agent/t",
 	})
 
-	a := New(awgit.New(awexec.Real()), noSession())
+	a := New(tsgit.New(tsexec.Real()), noSession())
 	got := a.Task(context.Background(), tk)
 
 	if got.Repos[0].Git != GitMissing {
@@ -171,7 +171,7 @@ func TestRowsAreOrderedByRepoName(t *testing.T) {
 		tk.SetRepo(n, task.Repo{Worktree: repo, Branch: "main"})
 	}
 
-	a := New(awgit.New(awexec.Real()), noSession())
+	a := New(tsgit.New(tsexec.Real()), noSession())
 	got := a.Task(context.Background(), tk)
 
 	var names []string
@@ -192,7 +192,7 @@ func TestAllSortsTasks(t *testing.T) {
 		tasks = append(tasks, tk)
 	}
 
-	a := New(awgit.New(awexec.Real()), noSession())
+	a := New(tsgit.New(tsexec.Real()), noSession())
 	got := a.All(context.Background(), tasks)
 
 	if len(got) != 2 || got[0].Task != "alpha" || got[1].Task != "zeta" {
@@ -206,7 +206,7 @@ func TestAgentLabelFlowsThrough(t *testing.T) {
 	tk.SetRepo("backend", task.Repo{Worktree: repo, Branch: "main", Agent: []string{"codex"}})
 	tk.SetRepo("infra", task.Repo{Worktree: repo, Branch: "main"})
 
-	a := New(awgit.New(awexec.Real()), noSession())
+	a := New(tsgit.New(tsexec.Real()), noSession())
 	got := a.Task(context.Background(), tk)
 
 	if got.Repos[0].Agent != "codex" {
@@ -228,7 +228,7 @@ func TestUnqueryableRuntimeIsUnknownNotNoSession(t *testing.T) {
 		state: runtime.SessionState{Panes: map[string]runtime.PaneState{}},
 		err:   errors.New("no server running on /tmp/tmux-1000/default"),
 	}
-	got := New(awgit.New(awexec.Real()), broken).Task(context.Background(), tk)
+	got := New(tsgit.New(tsexec.Real()), broken).Task(context.Background(), tk)
 
 	if got.Repos[0].Runtime != RuntimeUnknown {
 		t.Errorf("Runtime = %q, want %q", got.Repos[0].Runtime, RuntimeUnknown)
@@ -264,7 +264,7 @@ func TestRootWindowState(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := New(awgit.New(awexec.Real()), c.rt).Task(context.Background(), tk)
+			got := New(tsgit.New(tsexec.Real()), c.rt).Task(context.Background(), tk)
 			if got.Root.Runtime != c.want {
 				t.Errorf("Root.Runtime = %q, want %q", got.Root.Runtime, c.want)
 			}
@@ -275,7 +275,7 @@ func TestRootWindowState(t *testing.T) {
 	}
 
 	tk.Agent = nil
-	if got := New(awgit.New(awexec.Real()), noSession()).Task(context.Background(), tk); got.Root.Agent != "shell" {
+	if got := New(tsgit.New(tsexec.Real()), noSession()).Task(context.Background(), tk); got.Root.Agent != "shell" {
 		t.Errorf("Root.Agent = %q without an agent, want shell", got.Root.Agent)
 	}
 }

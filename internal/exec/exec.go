@@ -1,7 +1,7 @@
 // Package exec wraps subprocess execution behind a small interface so that
 // argument construction can be tested without spawning processes.
 //
-// This is not dependency injection for its own sake: nearly all of aw's real
+// This is not dependency injection for its own sake: nearly all of tspace's real
 // behaviour is "build the right argv for git or tmux", and that is exactly the
 // thing that fails silently. Callers take a Runner and default to Real().
 package exec

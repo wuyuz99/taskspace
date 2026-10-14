@@ -5,19 +5,19 @@ import (
 	"strings"
 	"testing"
 
-	awexec "github.com/wuyuz99/taskspace/internal/exec"
+	tsexec "github.com/wuyuz99/taskspace/internal/exec"
 )
 
 func ctx() context.Context { return context.Background() }
 
 func TestSessionNameSanitizesTmuxTargetSyntax(t *testing.T) {
-	tm := NewTmux(awexec.NewFake())
+	tm := NewTmux(tsexec.NewFake())
 	cases := map[string]string{
-		"checkout-redesign": "aw@checkout-redesign",
+		"checkout-redesign": "tspace@checkout-redesign",
 		// '.' and ':' are tmux target syntax; leaving them in breaks every -t.
-		"checkout.redesign": "aw@checkout~2eredesign",
-		"payments_fix":      "aw@payments_fix",
-		"weird name":        "aw@weird~20name",
+		"checkout.redesign": "tspace@checkout~2eredesign",
+		"payments_fix":      "tspace@payments_fix",
+		"weird name":        "tspace@weird~20name",
 	}
 	for in, want := range cases {
 		if got := tm.SessionName(in); got != want {
@@ -26,25 +26,25 @@ func TestSessionNameSanitizesTmuxTargetSyntax(t *testing.T) {
 	}
 }
 
-// Prefix matching would make "aw-pay" select the session "aw-payments-fix".
+// Prefix matching would make "tspace-pay" select the session "tspace-payments-fix".
 // Every target we build must be an exact match.
 func TestTargetsUseExactMatchPrefix(t *testing.T) {
-	f := awexec.NewFake()
+	f := tsexec.NewFake()
 	tm := NewTmux(f)
-	if _, err := tm.HasSession(ctx(), "aw-pay"); err != nil {
+	if _, err := tm.HasSession(ctx(), "tspace-pay"); err != nil {
 		t.Fatalf("HasSession: %v", err)
 	}
 	cmds := f.Commands()
 	if len(cmds) != 1 {
 		t.Fatalf("commands = %v, want one", cmds)
 	}
-	if !strings.Contains(cmds[0], "-t =aw-pay") {
-		t.Errorf("command = %q, want an exact-match target '=aw-pay'", cmds[0])
+	if !strings.Contains(cmds[0], "-t =tspace-pay") {
+		t.Errorf("command = %q, want an exact-match target '=tspace-pay'", cmds[0])
 	}
 }
 
 func TestStartCreatesSessionThenWindows(t *testing.T) {
-	f := awexec.NewFake()
+	f := tsexec.NewFake()
 	f.Fail("has-session", "no server running", 1)
 	tm := NewTmux(f)
 	tm.Shell = "/bin/bash"
@@ -54,19 +54,19 @@ func TestStartCreatesSessionThenWindows(t *testing.T) {
 		{Name: "frontend", Dir: "/wt/task/frontend", Command: []string{"codex", "--flag"}},
 		{Name: "infra", Dir: "/wt/task/infra"},
 	}
-	if err := tm.Start(ctx(), "aw-task", windows); err != nil {
+	if err := tm.Start(ctx(), "tspace-task", windows); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	cmds := strings.Join(f.Commands(), "\n")
 
-	if !strings.Contains(cmds, "new-session -d -s aw-task -n backend -c /wt/task/backend /bin/sh") || !strings.Contains(cmds, "respawn-window -k -t =aw-task:=backend -c /wt/task/backend claude") {
+	if !strings.Contains(cmds, "new-session -d -s tspace-task -n backend -c /wt/task/backend /bin/sh") || !strings.Contains(cmds, "respawn-window -k -t =tspace-task:=backend -c /wt/task/backend claude") {
 		t.Errorf("missing correct new-session; got:\n%s", cmds)
 	}
-	if !strings.Contains(cmds, "respawn-window -k -t =aw-task:=frontend -c /wt/task/frontend codex --flag") {
+	if !strings.Contains(cmds, "respawn-window -k -t =tspace-task:=frontend -c /wt/task/frontend codex --flag") {
 		t.Errorf("missing correct new-window for frontend; got:\n%s", cmds)
 	}
 	// A window with no agent gets an interactive shell.
-	if !strings.Contains(cmds, "respawn-window -k -t =aw-task:=infra -c /wt/task/infra /bin/bash") {
+	if !strings.Contains(cmds, "respawn-window -k -t =tspace-task:=infra -c /wt/task/infra /bin/bash") {
 		t.Errorf("agent-less window did not launch a shell; got:\n%s", cmds)
 	}
 	// Without remain-on-exit, a crashed agent's traceback disappears with the window.
@@ -76,7 +76,7 @@ func TestStartCreatesSessionThenWindows(t *testing.T) {
 }
 
 func TestStartReusesExistingSessionAndAddsOnlyMissingWindows(t *testing.T) {
-	f := awexec.NewFake()
+	f := tsexec.NewFake()
 	f.RespondOut("list-panes", "backend\t0\tclaude\n")
 	tm := NewTmux(f)
 
@@ -84,7 +84,7 @@ func TestStartReusesExistingSessionAndAddsOnlyMissingWindows(t *testing.T) {
 		{Name: "backend", Dir: "/wt/backend", Command: []string{"claude"}},
 		{Name: "frontend", Dir: "/wt/frontend", Command: []string{"codex"}},
 	}
-	if err := tm.Start(ctx(), "aw-task", windows); err != nil {
+	if err := tm.Start(ctx(), "tspace-task", windows); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	cmds := strings.Join(f.Commands(), "\n")
@@ -104,7 +104,7 @@ func TestStartReusesExistingSessionAndAddsOnlyMissingWindows(t *testing.T) {
 // Every hasWindow probe costs a has-session plus a list-panes, and one
 // list-panes already describes every window in the session.
 func TestStartQueriesSessionStateOnce(t *testing.T) {
-	f := awexec.NewFake()
+	f := tsexec.NewFake()
 	f.RespondOut("list-panes", "backend\t0\tclaude\n")
 	tm := NewTmux(f)
 
@@ -113,7 +113,7 @@ func TestStartQueriesSessionStateOnce(t *testing.T) {
 		{Name: "frontend", Dir: "/wt/frontend"},
 		{Name: "infra", Dir: "/wt/infra"},
 	}
-	if err := tm.Start(ctx(), "aw-task", windows); err != nil {
+	if err := tm.Start(ctx(), "tspace-task", windows); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	if n := strings.Count(strings.Join(f.Commands(), "\n"), "list-panes"); n != 1 {
@@ -124,11 +124,11 @@ func TestStartQueriesSessionStateOnce(t *testing.T) {
 // tmux happily creates a second window with the same name, and the respawn that
 // follows would then land on the first one — killing a running agent.
 func TestOpenWindowRefusesAnExistingName(t *testing.T) {
-	f := awexec.NewFake()
+	f := tsexec.NewFake()
 	f.RespondOut("list-panes", "backend\t0\tclaude\n")
 	tm := NewTmux(f)
 
-	err := tm.OpenWindow(ctx(), "aw-task", Window{Name: "backend", Dir: "/wt/backend"})
+	err := tm.OpenWindow(ctx(), "tspace-task", Window{Name: "backend", Dir: "/wt/backend"})
 	if err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("OpenWindow on a live window = %v, want refusal", err)
 	}
@@ -136,10 +136,10 @@ func TestOpenWindowRefusesAnExistingName(t *testing.T) {
 		t.Errorf("refusal still touched the window: %v", f.Commands())
 	}
 
-	if err := tm.OpenWindow(ctx(), "aw-task", Window{Name: "frontend", Dir: "/wt/frontend"}); err != nil {
+	if err := tm.OpenWindow(ctx(), "tspace-task", Window{Name: "frontend", Dir: "/wt/frontend"}); err != nil {
 		t.Fatalf("OpenWindow on a free name: %v", err)
 	}
-	if !f.Ran("new-window -d -t =aw-task -n frontend") {
+	if !f.Ran("new-window -d -t =tspace-task -n frontend") {
 		t.Errorf("free name was not created: %v", f.Commands())
 	}
 }
@@ -147,9 +147,9 @@ func TestOpenWindowRefusesAnExistingName(t *testing.T) {
 // A shell the user exits has nothing worth keeping on screen; an agent that
 // crashes does. Only the latter keeps its pane after exit.
 func TestTransientWindowClosesOnExit(t *testing.T) {
-	f := awexec.NewFake()
+	f := tsexec.NewFake()
 	tm := NewTmux(f)
-	if err := tm.OpenWindow(ctx(), "aw-task", Window{Name: "_staging", Dir: "/wt", Transient: true}); err != nil {
+	if err := tm.OpenWindow(ctx(), "tspace-task", Window{Name: "_staging", Dir: "/wt", Transient: true}); err != nil {
 		t.Fatalf("OpenWindow: %v", err)
 	}
 	if f.Ran("remain-on-exit") {
@@ -158,37 +158,37 @@ func TestTransientWindowClosesOnExit(t *testing.T) {
 	if !f.Ran("automatic-rename off") {
 		t.Errorf("transient window can be renamed away from its target: %v", f.Commands())
 	}
-	if err := tm.OpenWindow(ctx(), "aw-task", Window{Name: "_logs", Dir: "/wt", Command: []string{"tail", "-f", "log"}}); err != nil {
+	if err := tm.OpenWindow(ctx(), "tspace-task", Window{Name: "_logs", Dir: "/wt", Command: []string{"tail", "-f", "log"}}); err != nil {
 		t.Fatalf("OpenWindow: %v", err)
 	}
-	if !f.Ran("-t =aw-task:=_logs -w remain-on-exit on") {
+	if !f.Ran("-t =tspace-task:=_logs -w remain-on-exit on") {
 		t.Errorf("command window not kept on exit: %v", f.Commands())
 	}
 }
 
 func TestFocusOnlyFromInsideTmux(t *testing.T) {
-	f := awexec.NewFake()
+	f := tsexec.NewFake()
 	tm := NewTmux(f)
 	t.Setenv("TMUX", "")
-	if ok, err := tm.Focus(ctx(), "aw-task", "_staging"); ok || err != nil || f.Ran("switch-client") {
+	if ok, err := tm.Focus(ctx(), "tspace-task", "_staging"); ok || err != nil || f.Ran("switch-client") {
 		t.Errorf("Focus outside tmux = %v, %v; commands %v", ok, err, f.Commands())
 	}
 	t.Setenv("TMUX", "/tmp/tmux-1000/default,1,0")
-	if ok, err := tm.Focus(ctx(), "aw-task", "_staging"); !ok || err != nil || !f.Ran("switch-client -t =aw-task:=_staging") {
+	if ok, err := tm.Focus(ctx(), "tspace-task", "_staging"); !ok || err != nil || !f.Ran("switch-client -t =tspace-task:=_staging") {
 		t.Errorf("Focus inside tmux = %v, %v; commands %v", ok, err, f.Commands())
 	}
 }
 
 func TestSelectTargetsTheWindow(t *testing.T) {
-	f := awexec.NewFake()
-	if err := NewTmux(f).Select(ctx(), "aw-task", "api.v1"); err != nil || !f.Ran("select-window -t =aw-task:=api~2ev1") {
+	f := tsexec.NewFake()
+	if err := NewTmux(f).Select(ctx(), "tspace-task", "api.v1"); err != nil || !f.Ran("select-window -t =tspace-task:=api~2ev1") {
 		t.Errorf("Select = %v; commands %v", err, f.Commands())
 	}
 }
 
 func TestStartRejectsEmptyWindowList(t *testing.T) {
-	tm := NewTmux(awexec.NewFake())
-	if err := tm.Start(ctx(), "aw-task", nil); err == nil {
+	tm := NewTmux(tsexec.NewFake())
+	if err := tm.Start(ctx(), "tspace-task", nil); err == nil {
 		t.Fatal("Start with no windows = nil, want error")
 	}
 }
@@ -197,13 +197,13 @@ func TestStartRejectsEmptyWindowList(t *testing.T) {
 // probe something would never see the interrupt and would be hard-killed
 // instead. Stop must address panes individually.
 func TestStopInterruptsEveryPaneBeforeKilling(t *testing.T) {
-	f := awexec.NewFake()
+	f := tsexec.NewFake()
 	// Three panes: backend, backend's split, and frontend.
 	f.RespondOut("list-panes", "%0\t0\n%1\t0\n%2\t0\n")
 	tm := NewTmux(f)
 	tm.StopGrace = 0 // keep the test fast; ordering is what matters
 
-	if err := tm.Stop(ctx(), "aw-task"); err != nil {
+	if err := tm.Stop(ctx(), "tspace-task"); err != nil {
 		t.Fatalf("Stop: %v", err)
 	}
 	cmds := f.Commands()
@@ -217,10 +217,10 @@ func TestStopInterruptsEveryPaneBeforeKilling(t *testing.T) {
 			t.Errorf("missing interrupt for pane %s; got:\n%s", pane, joined)
 		}
 	}
-	if strings.Contains(joined, "send-keys -t =aw-task") {
+	if strings.Contains(joined, "send-keys -t =tspace-task") {
 		t.Errorf("interrupt addressed a window instead of a pane; got:\n%s", joined)
 	}
-	if !strings.Contains(joined, "kill-session -t =aw-task") {
+	if !strings.Contains(joined, "kill-session -t =tspace-task") {
 		t.Errorf("missing kill-session; got:\n%s", joined)
 	}
 
@@ -239,11 +239,11 @@ func TestStopInterruptsEveryPaneBeforeKilling(t *testing.T) {
 }
 
 func TestStopOnMissingSessionIsANoOp(t *testing.T) {
-	f := awexec.NewFake()
+	f := tsexec.NewFake()
 	f.Fail("has-session", "can't find session", 1)
 	tm := NewTmux(f)
 
-	if err := tm.Stop(ctx(), "aw-gone"); err != nil {
+	if err := tm.Stop(ctx(), "tspace-gone"); err != nil {
 		t.Fatalf("Stop: %v", err)
 	}
 	if f.Ran("kill-session") {
@@ -252,12 +252,12 @@ func TestStopOnMissingSessionIsANoOp(t *testing.T) {
 }
 
 func TestStopSkipsDeadPanes(t *testing.T) {
-	f := awexec.NewFake()
+	f := tsexec.NewFake()
 	f.RespondOut("list-panes", "%0\t1\n%1\t0\n")
 	tm := NewTmux(f)
 	tm.StopGrace = 0
 
-	if err := tm.Stop(ctx(), "aw-task"); err != nil {
+	if err := tm.Stop(ctx(), "tspace-task"); err != nil {
 		t.Fatalf("Stop: %v", err)
 	}
 	joined := strings.Join(f.Commands(), "\n")
@@ -270,11 +270,11 @@ func TestStopSkipsDeadPanes(t *testing.T) {
 }
 
 func TestStateUsesFormatStringsNotHumanOutput(t *testing.T) {
-	f := awexec.NewFake()
+	f := tsexec.NewFake()
 	f.RespondOut("list-panes", "backend\t0\tclaude\nfrontend\t1\tbash\n")
 	tm := NewTmux(f)
 
-	st, err := tm.State(ctx(), "aw-task")
+	st, err := tm.State(ctx(), "tspace-task")
 	if err != nil {
 		t.Fatalf("State: %v", err)
 	}
@@ -296,11 +296,11 @@ func TestStateUsesFormatStringsNotHumanOutput(t *testing.T) {
 }
 
 func TestStateOnMissingSession(t *testing.T) {
-	f := awexec.NewFake()
+	f := tsexec.NewFake()
 	f.Fail("has-session", "can't find session", 1)
 	tm := NewTmux(f)
 
-	st, err := tm.State(ctx(), "aw-gone")
+	st, err := tm.State(ctx(), "tspace-gone")
 	if err != nil {
 		t.Fatalf("State: %v", err)
 	}
@@ -340,7 +340,7 @@ func TestParsePanesIgnoresMalformedLines(t *testing.T) {
 }
 
 func TestLaunchArgvFallsBackToShell(t *testing.T) {
-	tm := NewTmux(awexec.NewFake())
+	tm := NewTmux(tsexec.NewFake())
 	tm.Shell = "/bin/zsh"
 	if got := tm.launchArgv(Window{Name: "infra"}); len(got) != 1 || got[0] != "/bin/zsh" {
 		t.Errorf("launchArgv = %v, want [/bin/zsh]", got)

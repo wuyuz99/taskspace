@@ -15,8 +15,8 @@ func (a *App) newProjectCmd() *cobra.Command {
 		Long: "A project is a recipe for tasks that span the same repositories: the\n" +
 			"task-root agent, and for each repository its path, base, agent and setup\n" +
 			"hook. It holds no task name, branch, ticket or notes.\n\n" +
-			"  aw project save shop --from PAY-142     keep PAY-142's setup as a recipe\n" +
-			"  aw task create PAY-143 --project shop   a new task with the same setup\n\n" +
+			"  tspace project save shop --from PAY-142     keep PAY-142's setup as a recipe\n" +
+			"  tspace task create PAY-143 --project shop   a new task with the same setup\n\n" +
 			"A recipe is copied into a task when the task is created, so changing or\n" +
 			"replacing one never changes an existing task."}
 	var from string
@@ -51,7 +51,7 @@ func (a *App) newProjectCmd() *cobra.Command {
 				return err
 			}
 			if len(projects) == 0 {
-				a.printf("no projects yet; save one with: aw project save NAME --from TASK\n")
+				a.printf("no projects yet; save one with: tspace project save NAME --from TASK\n")
 				return nil
 			}
 			tw := tabwriter.NewWriter(a.Out, 0, 0, 2, ' ', 0)

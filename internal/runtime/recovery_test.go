@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	awexec "github.com/wuyuz99/taskspace/internal/exec"
+	tsexec "github.com/wuyuz99/taskspace/internal/exec"
 )
 
 func TestNamesDoNotCollide(t *testing.T) {
@@ -28,32 +28,32 @@ func TestNamesDoNotCollide(t *testing.T) {
 
 func TestRestartRefusesLiveOrMissingWindow(t *testing.T) {
 	for _, output := range []string{"backend\t0\tsh\n", "", "backend\t1\tfalse\nbackend\t0\tsh\n"} {
-		f := awexec.NewFake().RespondOut("list-panes", output)
-		if err := NewTmux(f).Restart(ctx(), "aw-task", Window{Name: "backend"}); err == nil {
+		f := tsexec.NewFake().RespondOut("list-panes", output)
+		if err := NewTmux(f).Restart(ctx(), "tspace-task", Window{Name: "backend"}); err == nil {
 			t.Fatal("expected refusal")
 		}
 		if f.Ran("respawn-window") {
 			t.Fatal("refusal changed window")
 		}
 	}
-	f := awexec.NewFake().Fail("has-session", "missing", 1)
-	if err := NewTmux(f).Restart(ctx(), "aw-task", Window{Name: "backend"}); err == nil {
+	f := tsexec.NewFake().Fail("has-session", "missing", 1)
+	if err := NewTmux(f).Restart(ctx(), "tspace-task", Window{Name: "backend"}); err == nil {
 		t.Fatal("missing session accepted")
 	}
 }
 
 func TestRestartDeadWindowDoesNotForce(t *testing.T) {
-	f := awexec.NewFake().RespondOut("list-panes", "backend\t1\tfalse\n")
-	if err := NewTmux(f).Restart(ctx(), "aw-task", Window{Name: "backend", Dir: "/work", Command: []string{"sleep", "10"}}); err != nil {
+	f := tsexec.NewFake().RespondOut("list-panes", "backend\t1\tfalse\n")
+	if err := NewTmux(f).Restart(ctx(), "tspace-task", Window{Name: "backend", Dir: "/work", Command: []string{"sleep", "10"}}); err != nil {
 		t.Fatal(err)
 	}
-	if !f.Ran("respawn-window -t =aw-task:=backend -c /work sleep 10") || f.Ran("respawn-window -k") {
+	if !f.Ran("respawn-window -t =tspace-task:=backend -c /work sleep 10") || f.Ran("respawn-window -k") {
 		t.Fatalf("unsafe argv: %v", f.Commands())
 	}
 }
 
 func TestLegacySessionBlocksStart(t *testing.T) {
-	f := awexec.NewFake() // has-session succeeds for the legacy name
+	f := tsexec.NewFake() // has-session succeeds for the legacy name
 	tm := NewTmux(f)
 	if err := tm.Start(ctx(), tm.SessionName("a.b"), []Window{{Name: "repo"}}); err == nil || !strings.Contains(err.Error(), "legacy") {
 		t.Fatalf("error: %v", err)
@@ -63,14 +63,21 @@ func TestLegacySessionBlocksStart(t *testing.T) {
 	}
 }
 
+func TestLegacySessionNames(t *testing.T) {
+	got := legacySessions(NewTmux(tsexec.NewFake()).SessionName("a.b"))
+	if want := []string{"aw@a~2eb", "aw-a-b"}; strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("legacy names = %v, want %v", got, want)
+	}
+}
+
 // isolatedRunner supplies a private tmux socket without touching the user's server.
 type isolatedRunner struct{ socket string }
 
-func (r isolatedRunner) Run(ctx context.Context, dir string, argv ...string) (awexec.Result, error) {
+func (r isolatedRunner) Run(ctx context.Context, dir string, argv ...string) (tsexec.Result, error) {
 	if argv[0] == "tmux" {
 		argv = append([]string{"tmux", "-S", r.socket}, argv[1:]...)
 	}
-	return awexec.Real().Run(ctx, dir, argv...)
+	return tsexec.Real().Run(ctx, dir, argv...)
 }
 
 func TestRealTmuxIsolationAndRecovery(t *testing.T) {
@@ -78,7 +85,7 @@ func TestRealTmuxIsolationAndRecovery(t *testing.T) {
 		t.Skip("tmux unavailable")
 	}
 	// Socket length is limited on Unix; Go's per-test directory can be long.
-	dir, err := os.MkdirTemp("", "aw-rt-")
+	dir, err := os.MkdirTemp("", "tspace-rt-")
 	if err != nil {
 		t.Fatal(err)
 	}

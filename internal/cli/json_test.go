@@ -34,7 +34,7 @@ func TestStatusJSON(t *testing.T) {
 	if err := json.Unmarshal(h.out.Bytes(), &got); err != nil {
 		t.Fatalf("%v\n%s", err, h.out.String())
 	}
-	if len(got) != 1 || got[0].Task != "PAY-142" || got[0].Session != "aw-PAY-142" || got[0].Running {
+	if len(got) != 1 || got[0].Task != "PAY-142" || got[0].Session != "tspace-PAY-142" || got[0].Running {
 		t.Fatalf("task: %+v", got)
 	}
 	if got[0].Root.Agent != "shell" || got[0].Root.Runtime != "no-session" {
@@ -107,7 +107,7 @@ func TestTaskJSON(t *testing.T) {
 	}
 }
 
-// `aw config repo add PATH` must not register a repository called "add".
+// `tspace config repo add PATH` must not register a repository called "add".
 func TestConfigRepoRejectsSubcommandNames(t *testing.T) {
 	h := newHarness(t)
 	for _, args := range [][]string{
@@ -116,7 +116,7 @@ func TestConfigRepoRejectsSubcommandNames(t *testing.T) {
 		{"repo", "list"},
 	} {
 		err := h.exec(t, h.app.newConfigCmd(), args...)
-		if err == nil || !strings.Contains(err.Error(), "aw config repo") {
+		if err == nil || !strings.Contains(err.Error(), "tspace config repo") {
 			t.Fatalf("%v: %v", args, err)
 		}
 	}

@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	awgit "github.com/wuyuz99/taskspace/internal/git"
+	tsgit "github.com/wuyuz99/taskspace/internal/git"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
@@ -17,7 +17,7 @@ type cleanPlan struct {
 	Repo     task.Repo
 	Present  bool
 	Blockers []string
-	Discard  awgit.Discardability
+	Discard  tsgit.Discardability
 }
 
 func (a *App) newCleanCmd() *cobra.Command {
@@ -31,7 +31,7 @@ func (a *App) newCleanCmd() *cobra.Command {
 			"files or stashes: refusing is always better than losing code. Branches\n" +
 			"are left alone unless --delete-branch, and even then only when their\n" +
 			"work is merged into the base branch or pushed to an upstream.\n\n" +
-			"The task record survives; use `aw task rm` to remove that.",
+			"The task record survives; use `tspace task rm` to remove that.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -93,16 +93,16 @@ func (a *App) newCleanCmd() *cobra.Command {
 			}
 
 			if err := a.Store.ClearSignals(t.Name); err != nil {
-				a.warnf("aw: %v\n", err)
+				a.warnf("tspace: %v\n", err)
 			}
 
 			// Tidy the now-empty workspace directory, but never recursively:
 			// this fails, deliberately, while the task's .context notes are
 			// still there. Worktrees are disposable; the brief that describes
-			// them is not, and only `aw task rm` deletes it.
+			// them is not, and only `tspace task rm` deletes it.
 			_ = os.Remove(a.Store.TaskDir(t.Name))
 
-			a.printf("\ncleaned %s; the task record is still there (aw task rm %s to remove it)\n",
+			a.printf("\ncleaned %s; the task record is still there (tspace task rm %s to remove it)\n",
 				t.Name, t.Name)
 			return nil
 		},

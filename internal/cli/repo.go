@@ -31,8 +31,8 @@ func (a *App) newRepoUpdateCmd() *cobra.Command {
 			"Running windows are untouched: agent settings apply when a window is\n" +
 			"created or explicitly restarted, and hooks run only when a worktree is\n" +
 			"newly created.\n\n" +
-			"  aw repo update PAY-142 backend --agent codex --agent=--resume\n" +
-			"  aw repo update PAY-142 backend --shell --post-create=''",
+			"  tspace repo update PAY-142 backend --agent codex --agent=--resume\n" +
+			"  tspace repo update PAY-142 backend --shell --post-create=''",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			setAgent, setHook := cmd.Flags().Changed("agent"), cmd.Flags().Changed("post-create")
@@ -97,23 +97,23 @@ func (a *App) newRepoAddCmd() *cobra.Command {
 		Use:   "add TASK REPO",
 		Short: "Attach a repository to a task",
 		Long: "add registers a repository with a task. REPO is a name registered with\n" +
-			"`aw config repo` or a path, optionally followed by a branch and a base:\n\n" +
-			"  aw repo add PAY-142 backend                  new branch agent/PAY-142\n" +
-			"  aw repo add PAY-142 frontend@feature/x       an existing branch\n" +
-			"  aw repo add PAY-142 infra:develop            new branch, from develop\n" +
-			"  aw repo add PAY-142 ~/src/api@fix-1:release  new branch fix-1, from release\n\n" +
+			"`tspace config repo` or a path, optionally followed by a branch and a base:\n\n" +
+			"  tspace repo add PAY-142 backend                  new branch agent/PAY-142\n" +
+			"  tspace repo add PAY-142 frontend@feature/x       an existing branch\n" +
+			"  tspace repo add PAY-142 infra:develop            new branch, from develop\n" +
+			"  tspace repo add PAY-142 ~/src/api@fix-1:release  new branch fix-1, from release\n\n" +
 			"A branch that exists locally is used as it is; one that exists only on a\n" +
 			"remote is checked out tracking it; otherwise it is created from the base,\n" +
 			"which defaults to origin/HEAD. The repo name defaults to the registered\n" +
 			"name or the directory's base name; --name overrides it.\n\n" +
 			"The repository's window runs a shell unless --agent names a command, one\n" +
 			"flag per word:\n\n" +
-			"  aw repo add PAY-142 backend --agent claude --agent=--model --agent opus\n\n" +
+			"  tspace repo add PAY-142 backend --agent claude --agent=--model --agent opus\n\n" +
 			"--post-create is run once by `sh -c` in the new worktree, which has no\n" +
-			".env, node_modules or venv of its own. It is given AW_TASK, AW_REPO,\n" +
-			"AW_REPO_PATH (the source repository), AW_WORKTREE, AW_TASK_DIR and\n" +
-			"AW_CONTEXT_DIR. A failing hook is reported and the worktree is kept.\n\n" +
-			"Nothing is created on disk here — `aw start` makes the worktrees.",
+			".env, node_modules or venv of its own. It is given TSPACE_TASK, TSPACE_REPO,\n" +
+			"TSPACE_REPO_PATH (the source repository), TSPACE_WORKTREE, TSPACE_TASK_DIR and\n" +
+			"TSPACE_CONTEXT_DIR. A failing hook is reported and the worktree is kept.\n\n" +
+			"Nothing is created on disk here — `tspace start` makes the worktrees.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			t, err := a.loadTask(args[0])
@@ -135,7 +135,7 @@ func (a *App) newRepoAddCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.Base, "base", "", "ref to branch from, the same as REPO:BASE (default: origin/HEAD, then the local default branch)")
 	cmd.Flags().StringArrayVar(&opts.Agent, "agent", nil, "agent command to run in this worktree, one flag per word")
 	cmd.Flags().StringVar(&opts.PostCreate, "post-create", "",
-		`shell command run once in a new worktree, e.g. 'cp "$AW_REPO_PATH/.env" . && pnpm install'`)
+		`shell command run once in a new worktree, e.g. 'cp "$TSPACE_REPO_PATH/.env" . && pnpm install'`)
 	return cmd
 }
 
@@ -277,7 +277,7 @@ func (a *App) addRepo(ctx context.Context, t *task.Task, c *task.Config, path st
 		}
 	}
 
-	// Resolve the base now so that `aw task show` can report it before anything
+	// Resolve the base now so that `tspace task show` can report it before anything
 	// is created, and so a later start cannot silently pick a different one.
 	base := opts.Base
 	if base == "" {
@@ -363,7 +363,7 @@ func (a *App) newRepoRmCmd() *cobra.Command {
 		Use:   "rm TASK REPO",
 		Short: "Detach a repository from a task",
 		Long: "rm forgets the repository. It does not remove the worktree — run\n" +
-			"`aw clean TASK` for that, so the safety checks apply.",
+			"`tspace clean TASK` for that, so the safety checks apply.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			t, err := a.loadTask(args[0])

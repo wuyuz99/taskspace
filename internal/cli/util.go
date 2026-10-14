@@ -57,7 +57,7 @@ func shellJoin(argv []string) string {
 // It is emitted only to a real terminal: writing escape sequences into a pipe
 // would corrupt whatever is reading it.
 func setTitle(w io.Writer, title string, disabled bool) {
-	if disabled || os.Getenv("AW_NO_TITLE") != "" {
+	if disabled || os.Getenv("TSPACE_NO_TITLE") != "" {
 		return
 	}
 	if !isTerminal(w) {

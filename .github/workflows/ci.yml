@@ -33,5 +33,5 @@ jobs:
       - run: go test ./...
       - name: End-to-end
         run: |
-          go build -o aw ./cmd/aw
-          scripts/e2e.sh ./aw
+          go build -o tspace ./cmd/tspace
+          scripts/e2e.sh ./tspace

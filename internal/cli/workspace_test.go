@@ -48,7 +48,7 @@ func TestRootShellEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	script := filepath.Join(t.TempDir(), "probe")
-	if err := os.WriteFile(script, []byte("#!/bin/sh\nprintf '%s\\n' \"$PWD\" \"$AW_TASK_DIR\" \"$AW_TASK\" \"$AW_REPO\" \"$AW_WORKTREE\" > probe.txt\n"), 0755); err != nil {
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nprintf '%s\\n' \"$PWD\" \"$TSPACE_TASK_DIR\" \"$TSPACE_TASK\" \"$TSPACE_REPO\" \"$TSPACE_WORKTREE\" > probe.txt\n"), 0755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("SHELL", script)

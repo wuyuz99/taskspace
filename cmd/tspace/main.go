@@ -1,4 +1,4 @@
-// Command aw manages multi-repo, multi-worktree coding-agent tasks.
+// Command tspace manages multi-repo, multi-worktree coding-agent tasks.
 //
 // Worktrees are per-repository. Features aren't.
 package main

@@ -1,8 +1,8 @@
-# aw
+# tspace
 
 > **Worktrees are per-repository. Features aren't.**
 
-`aw` manages named development workspaces across repositories, with optional coding-agent commands.
+`tspace` manages named development workspaces across repositories, with optional coding-agent commands.
 
 > **Early-stage project.** v0.1, Unix-only, and the command surface will change.
 > It is usable on real repositories today — that was the point of the first
@@ -25,7 +25,7 @@ Most tools model this as:
 repo -> worktree -> agent
 ```
 
-`aw` models it as:
+`tspace` models it as:
 
 ```
 task -> repos -> worktrees -> shells or optional agents
@@ -37,7 +37,7 @@ on nine separate resources.
 Every task has a window at its root, the directory holding every worktree: run
 one agent there and it works across all the repositories, while a shell in each
 repository is on hand to review and commit. Agents can also run in selected
-repositories. `aw` prepares and resumes the workspace; it does not coordinate
+repositories. `tspace` prepares and resumes the workspace; it does not coordinate
 agents or schedule their work.
 
 ```
@@ -56,66 +56,66 @@ checkout-redesign
 - `tmux` (on macOS: `brew install tmux`)
 - Go 1.26+ to build
 
-Agents (Claude Code, Codex, anything else) are optional external programs. `aw`
+Agents (Claude Code, Codex, anything else) are optional external programs. `tspace`
 does not implement or bundle one, and the test suite does not need any.
 
 ## Install
 
 ```bash
 git clone https://github.com/wuyuz99/taskspace.git && cd taskspace
-go build -o aw ./cmd/aw
-sudo install -m 0755 aw /usr/local/bin/aw     # or put it anywhere on PATH
+go build -o tspace ./cmd/tspace
+sudo install -m 0755 tspace /usr/local/bin/tspace     # or put it anywhere on PATH
 ```
 
 ## Quick start
 
 ```bash
 # once: your agent, and the repositories you work in
-aw config agent claude
-aw config repo backend  ~/src/backend
-aw config repo frontend ~/src/frontend
-aw config repo infra    ~/src/infra
+tspace config agent claude
+tspace config repo backend  ~/src/backend
+tspace config repo frontend ~/src/frontend
+tspace config repo infra    ~/src/infra
 
 # one logical task spanning the repositories it needs: a new branch in
 # backend, a colleague's existing branch in frontend, and a new branch in
 # infra forked from develop
-aw task create checkout-redesign backend frontend@feature/cart infra:develop
+tspace task create checkout-redesign backend frontend@feature/cart infra:develop
 
 # create the worktrees, show the task context and enter its session
-aw open checkout-redesign
+tspace open checkout-redesign
 
 # one tmux session: the agent's _root window first, then a shell per repo
-aw attach checkout-redesign        # detach with Ctrl-b d
+tspace attach checkout-redesign        # detach with Ctrl-b d
 
 # more windows in the same session, as the work needs them
-aw window checkout-redesign backend --agent             # an agent in backend only
-aw window checkout-redesign --name staging              # a spare shell at the root
-aw window checkout-redesign infra -- kubectl port-forward svc/api 8080:80
+tspace window checkout-redesign backend --agent             # an agent in backend only
+tspace window checkout-redesign --name staging              # a spare shell at the root
+tspace window checkout-redesign infra -- kubectl port-forward svc/api 8080:80
 
 # what is going on, across every task
-aw status
+tspace status
 
 # poke at one repo by hand without leaving your workflow
-aw shell checkout-redesign backend
-cd "$(aw path checkout-redesign frontend)"
+tspace shell checkout-redesign backend
+cd "$(tspace path checkout-redesign frontend)"
 
 # do the same thing in every worktree
-aw exec checkout-redesign -- git push -u origin HEAD
+tspace exec checkout-redesign -- git push -u origin HEAD
 
 # stop the agents; nothing on disk is touched
-aw stop checkout-redesign
+tspace stop checkout-redesign
 
 # tear the worktrees down, safely
-aw clean checkout-redesign
+tspace clean checkout-redesign
 ```
 
-Repositories can also be given as paths (`aw task create T ~/src/backend`), and
-added later with `aw repo add TASK REPO`.
+Repositories can also be given as paths (`tspace task create T ~/src/backend`), and
+added later with `tspace repo add TASK REPO`.
 
 ### Choose branches
 
 Each repository in a task is written `REPO[@BRANCH][:BASE]`, where `REPO` is a
-name registered with `aw config repo` or a path:
+name registered with `tspace config repo` or a path:
 
 | You write | Branch | Created from |
 | --- | --- | --- |
@@ -137,16 +137,16 @@ made from the refs you already have.
 New branches start **with no upstream**. git would otherwise make
 `origin/main` the upstream of a branch forked from it, and then `git push`
 refuses — or, with `push.default=upstream`, pushes the task's work to main.
-Push with `git push -u origin HEAD`. Until then `aw status` counts the commits
+Push with `git push -u origin HEAD`. Until then `tspace status` counts the commits
 that are not on the base as "not pushed".
 
 The `agent/` prefix is configurable. Branches are recorded when a repository is
 added, so changing it leaves existing tasks alone:
 
 ```bash
-aw config branch-prefix me/        # me/PAY-142
-aw config branch-prefix ''         # PAY-142
-aw config branch-prefix --unset    # back to agent/PAY-142
+tspace config branch-prefix me/        # me/PAY-142
+tspace config branch-prefix ''         # PAY-142
+tspace config branch-prefix --unset    # back to agent/PAY-142
 ```
 
 ### Set your agent once
@@ -154,36 +154,36 @@ aw config branch-prefix --unset    # back to agent/PAY-142
 If you use the same agent for every task, make it the default:
 
 ```bash
-aw config agent claude --model opus   # everything after the command is its argv
-aw task create checkout-redesign      # root agent: claude --model opus
-aw config                             # show defaults and where they are stored
-aw config agent --unset
+tspace config agent claude --model opus   # everything after the command is its argv
+tspace task create checkout-redesign      # root agent: claude --model opus
+tspace config                             # show defaults and where they are stored
+tspace config agent --unset
 ```
 
 A new task's root agent comes from, in order: `task create --agent` or `--shell`,
 then the `--project` recipe's agent, then this default, and otherwise your
 shell. The result is recorded on the task, as recipes are, so changing the
-default later leaves existing tasks alone; use `aw task update TASK --agent` for
-those. The default is stored in `$AW_ROOT/config.json`. It sets only the
+default later leaves existing tasks alone; use `tspace task update TASK --agent` for
+those. The default is stored in `$TSPACE_ROOT/config.json`. It sets only the
 task-root agent; repository windows remain shells unless given their own
 `--agent`.
 
 ### Open more windows as you go
 
-`aw window` adds a window to a running task session without touching the
+`tspace window` adds a window to a running task session without touching the
 windows already there — an agent in one repository while the root agent keeps
 working, a spare shell, or a long-running command against staging:
 
 ```bash
-aw window PAY-142 backend --agent       # the task's agent, in backend's worktree
-aw window PAY-142 --name staging        # your shell, at the task root
-aw window PAY-142 infra -- ./scripts/tail-staging-logs
-aw window PAY-142 backend -d -- make watch   # open it without switching to it
+tspace window PAY-142 backend --agent       # the task's agent, in backend's worktree
+tspace window PAY-142 --name staging        # your shell, at the task root
+tspace window PAY-142 infra -- ./scripts/tail-staging-logs
+tspace window PAY-142 backend -d -- make watch   # open it without switching to it
 ```
 
 Without `REPO`, a task with one repository opens that worktree and any other
 task opens its root, as with `shell`. `--agent` runs the task's root agent, or
-for a task whose root runs a shell, the default from `aw config agent`.
+for a task whose root runs a shell, the default from `tspace config agent`.
 
 Extra windows are named with a leading `_` — `_backend-claude`,
 `_staging` — so they never take a repository's window name, and a name already
@@ -193,8 +193,8 @@ still be read. Inside tmux you are switched to the new window. Extra windows are
 not part of the task record: `start` and `open` do not recreate them, and `stop`
 ends them with the rest of the session.
 
-`aw shell` is the other way to get a terminal: a plain subshell in the terminal
-you are already in, labelled and with `AW_*` variables set, whether or not the
+`tspace shell` is the other way to get a terminal: a plain subshell in the terminal
+you are already in, labelled and with `TSPACE_*` variables set, whether or not the
 session is running.
 
 ### Run an agent per repository
@@ -202,12 +202,12 @@ session is running.
 A repository can run its own agent instead of a shell:
 
 ```bash
-aw repo add checkout-redesign ~/src/backend  --agent claude
-aw repo add checkout-redesign ~/src/frontend --agent codex
+tspace repo add checkout-redesign ~/src/backend  --agent claude
+tspace repo add checkout-redesign ~/src/frontend --agent codex
 ```
 
 The `_root` window is still created, running a shell unless the task has an
-agent of its own. For an agent in a repository only now and then, `aw window
+agent of its own. For an agent in a repository only now and then, `tspace window
 TASK REPO --agent` keeps the repository's shell window as it is.
 
 ### Work with ordinary shells
@@ -215,9 +215,9 @@ TASK REPO --agent` keeps the repository's shell window as it is.
 For a manual workflow without persistent terminals or agent commands:
 
 ```bash
-aw task create checkout-review "backend=$HOME/src/backend" "frontend=$HOME/src/frontend"
-aw start checkout-review --no-runtime
-aw shell checkout-review
+tspace task create checkout-review "backend=$HOME/src/backend" "frontend=$HOME/src/frontend"
+tspace start checkout-review --no-runtime
+tspace shell checkout-review
 # a task with several repositories opens at its root: backend/ and frontend/
 # are available in this shell; exit to return
 ```
@@ -227,14 +227,14 @@ aw shell checkout-review
 Save a working task's repository configuration once, then reuse it for new tickets:
 
 ```bash
-aw project save payments --from PAY-142
-aw project list
-aw project show payments
-aw task create PAY-156 --project payments --title "Add payment retry"
-aw open PAY-156
+tspace project save payments --from PAY-142
+tspace project list
+tspace project show payments
+tspace task create PAY-156 --project payments --title "Add payment retry"
+tspace open PAY-156
 ```
 
-Recipes live in `$AW_ROOT/projects/<name>.json`. They copy the task-root agent,
+Recipes live in `$TSPACE_ROOT/projects/<name>.json`. They copy the task-root agent,
 repository names and local source paths, base refs, agent argv, and setup hooks.
 `task create --project payments --agent codex` (or `--shell`) replaces the
 recipe's root agent for the new task. Worktree paths and
@@ -243,7 +243,7 @@ tickets, briefs, and handoffs are not copied. No worktrees or agents are created
 until `start` or `open`.
 
 Each task snapshots the recipe. To update the recipe for future tasks, run
-`aw project save payments --from TASK --replace`; existing tasks remain unchanged.
+`tspace project save payments --from TASK --replace`; existing tasks remain unchanged.
 Saving over an existing recipe without `--replace` is refused. Use `project show`
 to inspect commands and hooks before applying a recipe. Saving never executes them.
 
@@ -257,13 +257,13 @@ base refs are reused; no fetch is performed. An empty base is resolved at creati
 ### Update repository settings
 
 ```bash
-aw repo update PAY-142 backend --agent codex
-aw repo update PAY-142 backend --post-create 'pnpm install'
-aw repo update PAY-142 backend --shell
-aw repo update PAY-142 backend --post-create=''
-aw task update PAY-142 --agent claude --agent=--model --agent opus
-aw task update PAY-142 --shell
-aw project save payments --from PAY-142 --replace
+tspace repo update PAY-142 backend --agent codex
+tspace repo update PAY-142 backend --post-create 'pnpm install'
+tspace repo update PAY-142 backend --shell
+tspace repo update PAY-142 backend --post-create=''
+tspace task update PAY-142 --agent claude --agent=--model --agent opus
+tspace task update PAY-142 --shell
+tspace project save payments --from PAY-142 --replace
 ```
 
 `task update --agent` and `--shell` set the task-root window's command the same
@@ -283,11 +283,11 @@ A workspace can be named after a ticket, or use any ordinary task name.
 No ticket key, URL, Jira connection, or account is required.
 
 ```bash
-aw task create PAY-142 --title "Handle expired cards during checkout"
-aw task brief PAY-142 "Reject expired cards and show an inline error."
-aw task handoff PAY-142 "Backend validation done; connect the frontend next."
-aw task list
-aw task show PAY-142
+tspace task create PAY-142 --title "Handle expired cards during checkout"
+tspace task brief PAY-142 "Reject expired cards and show an inline error."
+tspace task handoff PAY-142 "Backend validation done; connect the frontend next."
+tspace task list
+tspace task show PAY-142
 ```
 
 Keep requirements and acceptance criteria in the **brief**, and local progress,
@@ -300,7 +300,7 @@ print the full context before handing over the terminal.
 Both are ordinary Markdown files in the task's shared context directory:
 
 ```
-$AW_ROOT/worktrees/PAY-142/
+$TSPACE_ROOT/worktrees/PAY-142/
 ├── .context/
 │   ├── TASK.md       the brief
 │   └── HANDOFF.md    the handoff
@@ -319,24 +319,24 @@ cat ../.context/TASK.md
 The agent in the `_root` window starts one level up, so for it the same file is
 `.context/TASK.md`.
 
-`aw shell` and `post_create` hooks also get `AW_CONTEXT_DIR`. Nothing stops you
-editing, grepping, or diffing these files directly; `aw` only reads and writes
+`tspace shell` and `post_create` hooks also get `TSPACE_CONTEXT_DIR`. Nothing stops you
+editing, grepping, or diffing these files directly; `tspace` only reads and writes
 the same two paths.
 
 For longer Markdown notes, use your editor and import/export files:
 
 ```bash
-aw task brief PAY-142 --file brief.md
-aw task handoff PAY-142 --file handoff.md
-aw task brief PAY-142 > brief-copy.md
-aw task handoff PAY-142 --clear
-aw task brief PAY-142 --edit
-aw task handoff PAY-142 --edit
-aw task update PAY-142 --title "Validate expired payment cards"
+tspace task brief PAY-142 --file brief.md
+tspace task handoff PAY-142 --file handoff.md
+tspace task brief PAY-142 > brief-copy.md
+tspace task handoff PAY-142 --clear
+tspace task brief PAY-142 --edit
+tspace task handoff PAY-142 --edit
+tspace task update PAY-142 --title "Validate expired payment cards"
 ```
 
-Notes survive `aw clean` — worktrees are disposable, the brief describing them
-is not — and are deleted with `aw task rm`. `aw task rm --force` leaves the
+Notes survive `tspace clean` — worktrees are disposable, the brief describing them
+is not — and are deleted with `tspace task rm`. `tspace task rm --force` leaves the
 worktrees on disk, so it leaves the notes too and tells you where they are.
 `--file` copies a file's contents in; it does not link to it or keep it in sync.
 Updating a handoff never changes the brief, and clearing a note removes its file,
@@ -375,35 +375,35 @@ path, an optional agent command, and an optional `post_create` hook.
 siblings:
 
 ```
-$AW_ROOT/worktrees/checkout-redesign/
+$TSPACE_ROOT/worktrees/checkout-redesign/
 ├── backend/
 └── frontend/
 ```
 
 Cross-repo relative paths (`../frontend`) keep working inside a task.
 
-**Session** — one tmux session per task (`aw@<encoded-task>`). Its first window,
+**Session** — one tmux session per task (`tspace@<encoded-task>`). Its first window,
 `_root`, opens in the task root and runs the task's agent, or your shell if it
 has none. Then comes one window per repo, named after the repo. No repository
 can be called `_root`: repository names start with a letter or digit. Closing
-`aw` never stops an agent.
+`tspace` never stops an agent.
 
 ### Enter the whole workspace
 
-`aw open TASK` prepares missing worktrees and session windows, prints the task
+`tspace open TASK` prepares missing worktrees and session windows, prints the task
 brief and handoff, and attaches to the session (or switches clients inside tmux).
-Existing windows are preserved. Dead windows get an explicit `aw restart` hint;
+Existing windows are preserved. Dead windows get an explicit `tspace restart` hint;
 opening does not restart them automatically. Setup hooks run only for newly
-created worktrees, as with `aw start`. Add at least one repository before opening.
+created worktrees, as with `tspace start`. Add at least one repository before opening.
 
-`aw start TASK` and `aw open TASK` create the `_root` window along with the
-repository windows. `aw start TASK REPO...` starts only the named repositories.
+`tspace start TASK` and `tspace open TASK` create the `_root` window along with the
+repository windows. `tspace start TASK REPO...` starts only the named repositories.
 A session started before root windows existed gains one, as its last window,
 on the next full `start` or `open`.
 
 ```bash
-aw shell PAY-142
-cd "$(aw path PAY-142)"
+tspace shell PAY-142
+cd "$(tspace path PAY-142)"
 ```
 
 The root contains the task's repository directories, useful for cross-repository
@@ -412,20 +412,20 @@ inspection or launching your preferred agent there. Without a repository argumen
 which case they use its worktree. `--root` asks for the root explicitly and cannot
 be combined with a repository. `shell` creates the root if necessary, even before
 repositories are added, but does not create worktrees or start a session. `path`
-only prints it. Shells expose `AW_TASK_DIR`, `AW_CONTEXT_DIR`, `AW_TASK`,
-`AW_WORKTREE` (the current directory), and `AW_REPO` (empty at the task root).
+only prints it. Shells expose `TSPACE_TASK_DIR`, `TSPACE_CONTEXT_DIR`, `TSPACE_TASK`,
+`TSPACE_WORKTREE` (the current directory), and `TSPACE_REPO` (empty at the task root).
 The root shell has a task-only terminal label.
 
 ### Recover a stopped agent
 
 ```bash
-aw restart PAY-142 backend
-aw restart PAY-142 --root
+tspace restart PAY-142 backend
+tspace restart PAY-142 --root
 ```
 
 Restart relaunches the configured command only when every pane in that window
 is dead. A live agent or ad-hoc split causes refusal. Missing sessions or
-windows should be created with `aw start`. Restart replaces dead-window output,
+windows should be created with `tspace start`. Restart replaces dead-window output,
 so inspect it first; it does not resume agent conversation history or rerun setup.
 Ordinary `start` continues to preserve existing windows, including dead ones.
 
@@ -436,11 +436,12 @@ are behind `internal/runtime.Runtime`, so additional multiplexers can implement
 that interface. No other backend or runtime selector is implemented yet.
 Notes, task metadata, paths, plain shells, and `start --no-runtime` do not need tmux.
 
-Session names now use the `aw@` namespace; dots are encoded as `~2e`, with the
+Session names now use the `tspace@` namespace; dots are encoded as `~2e`, with the
 escape marker itself escaped. `a.b` and `a-b` have distinct sessions and windows.
 Window targets are exact matches, and automatic renaming is disabled.
 
-**Upgrading from old sessions:** old `aw-...` sessions are not adopted or stopped
+**Upgrading from old sessions:** sessions named `aw@...` (from before the rename
+to `tspace`) or `aw-...` are not adopted or stopped
 by this version. Start/restart refuse if a possible legacy session exists. Inspect
 that session using tmux, then stop or rename it manually before starting a new
 session. Old names were ambiguous, so automatic migration could affect another
@@ -449,7 +450,7 @@ task. Worktree paths, branches, and task records do not change.
 ## Where things live
 
 ```
-$AW_ROOT/                          default ~/.aw, override with AW_ROOT
+$TSPACE_ROOT/                          default ~/.tspace, override with TSPACE_ROOT
 ├── config.json                    user-wide defaults: root agent, registered repos, branch prefix
 ├── tasks/<name>.json              task identity and repository configuration
 ├── projects/<name>.json           reusable repository recipes
@@ -467,10 +468,10 @@ git every time. Nothing can go stale, and there is no repair command.
 Records, recipes and notes are written `0600`: your notes are your own material,
 and not something to publish to every account on the machine. A file that cannot
 be read or parsed is reported on stderr and skipped, so one damaged record never
-hides the rest of your workspaces from `aw task list` or `aw status`.
+hides the rest of your workspaces from `tspace task list` or `tspace status`.
 
-`AW_ROOT` exists because you probably already keep workspace directories
-somewhere visible, and a hidden `~/.aw` should not be forced on that habit.
+`TSPACE_ROOT` exists because you probably already keep workspace directories
+somewhere visible, and a hidden `~/.tspace` should not be forced on that habit.
 
 ## Fresh worktrees are empty: `post_create`
 
@@ -478,8 +479,8 @@ A new worktree has your tracked files and nothing else. No `.env`, no
 `node_modules`, no `venv`, no local certificates. This surprises everyone once.
 
 ```bash
-aw repo add checkout-redesign ~/src/backend \
-  --post-create 'cp "$AW_REPO_PATH/.env" . && pnpm install'
+tspace repo add checkout-redesign ~/src/backend \
+  --post-create 'cp "$TSPACE_REPO_PATH/.env" . && pnpm install'
 ```
 
 The hook runs once, in the new worktree, the first time it is created, with
@@ -487,17 +488,17 @@ these variables set:
 
 | Variable | Value |
 | --- | --- |
-| `AW_REPO_PATH` | the source repository the worktree came from |
-| `AW_WORKTREE` | the new worktree (also the working directory) |
-| `AW_TASK_DIR` | the task's workspace directory, parent of every repo |
-| `AW_CONTEXT_DIR` | the task's `.context/` directory, holding its notes |
-| `AW_TASK`, `AW_REPO` | the task and repo names |
+| `TSPACE_REPO_PATH` | the source repository the worktree came from |
+| `TSPACE_WORKTREE` | the new worktree (also the working directory) |
+| `TSPACE_TASK_DIR` | the task's workspace directory, parent of every repo |
+| `TSPACE_CONTEXT_DIR` | the task's `.context/` directory, holding its notes |
+| `TSPACE_TASK`, `TSPACE_REPO` | the task and repo names |
 
-Use `$AW_REPO_PATH` rather than a relative path like `../../../src/backend`.
-How many `..` you need depends on where `AW_ROOT` is, so a relative hook breaks
+Use `$TSPACE_REPO_PATH` rather than a relative path like `../../../src/backend`.
+How many `..` you need depends on where `TSPACE_ROOT` is, so a relative hook breaks
 for anyone who moves their state directory.
 
-If the hook fails you get a warning and a worktree you can inspect — `aw` will
+If the hook fails you get a warning and a worktree you can inspect — `tspace` will
 not delete your worktree because a provisioning step failed.
 
 ### Application and service isolation
@@ -505,16 +506,16 @@ not delete your worktree because a provisioning step failed.
 Worktrees separate checked-out source files. They share the source repository's
 Git object database, refs, and stash stack. Applications in different tasks can
 still use the same listening port, database, container name, or external account.
-`aw` does not allocate these resources or rewrite application configuration.
+`tspace` does not allocate these resources or rewrite application configuration.
 Copying a source `.env` also copies its service destinations.
 
 For an application that reads `DATABASE_PATH` and `UPLOAD_DIR` from `.env`, a
 setup hook can put its SQLite database and uploads inside its own worktree:
 
 ```bash
-aw repo add checkout-review ~/src/backend --post-create '
+tspace repo add checkout-review ~/src/backend --post-create '
   mkdir -p .local/uploads
-  printf "DATABASE_PATH=.local/app.sqlite\nUPLOAD_DIR=.local/uploads\nWORKSPACE_LABEL=%s/%s\n" "$AW_TASK" "$AW_REPO" > .env
+  printf "DATABASE_PATH=.local/app.sqlite\nUPLOAD_DIR=.local/uploads\nWORKSPACE_LABEL=%s/%s\n" "$TSPACE_TASK" "$TSPACE_REPO" > .env
 '
 ```
 
@@ -528,13 +529,13 @@ Treat generated data here as disposable: Git-ignored files are not a backup and
 can disappear when a worktree is removed. Keep valuable data outside worktrees
 and back it up independently. For external databases, volumes, or other resources,
 record their exact names, owning task, and teardown command in the handoff.
-`aw stop` ends the terminal session; `aw clean` removes worktrees. Neither runs
+`tspace stop` ends the terminal session; `tspace clean` removes worktrees. Neither runs
 an external-resource teardown hook. Inspect ownership before deleting resources,
 especially when configuration was copied from another workspace.
 
 ## Status
 
-`aw status` reports two **independent** things per repository:
+`tspace status` reports two **independent** things per repository:
 
 ```
 TASK               REPO      BRANCH                   AGENT   RUNTIME     GIT
@@ -554,11 +555,11 @@ state of its own: whatever its agent changes shows up in the repositories' rows.
   the commits that are not on its base (`2 commits not pushed`)
 
 They are separate columns because a worktree can be dirty *and* running at the
-same time — that is the normal state of an agent doing its job. `aw` reports
+same time — that is the normal state of an agent doing its job. `tspace` reports
 only what it can observe; it will not guess that an agent is "waiting for
 input", because tmux cannot tell it that.
 
-`aw status --watch` redraws the table every two seconds (`--interval`), and
+`tspace status --watch` redraws the table every two seconds (`--interval`), and
 `--json` prints the same observations for a script.
 
 ### Signals
@@ -567,40 +568,40 @@ Only the agent knows whether it is busy, waiting on you, or finished, so it
 says so itself:
 
 ```bash
-aw signal blocked 'totals endpoint: round per line or per order?'
-aw signal done
+tspace signal blocked 'totals endpoint: round per line or per order?'
+tspace signal done
 ```
 
 The states are `working`, `blocked`, `done` and `failed`. Run inside a task,
-`aw signal` works out which window it is from the current directory, so it
+`tspace signal` works out which window it is from the current directory, so it
 needs no arguments in an agent's hooks. For Claude Code, in the worktree's
 `.claude/settings.json`:
 
 ```json
 {
   "hooks": {
-    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "aw signal working" }] }],
-    "Notification":     [{ "hooks": [{ "type": "command", "command": "aw signal blocked" }] }],
-    "Stop":             [{ "hooks": [{ "type": "command", "command": "aw signal done" }] }]
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "tspace signal working" }] }],
+    "Notification":     [{ "hooks": [{ "type": "command", "command": "tspace signal blocked" }] }],
+    "Stop":             [{ "hooks": [{ "type": "command", "command": "tspace signal done" }] }]
   }
 }
 ```
 
-Once any window has a signal, `aw status` grows a `SIGNAL` column (`blocked 3m`),
+Once any window has a signal, `tspace status` grows a `SIGNAL` column (`blocked 3m`),
 and `--json` carries the state, message and time. A signal is the agent's word,
 shown beside `RUNTIME` and never instead of it. It is one file,
 `.context/signals/REPO.json` (`_root.json` for the root window), so an agent
-without `aw` on its `PATH` can write `{"state": "blocked", "message": "..."}`
-there directly. `aw stop`, `aw clean` and a fresh `aw start` clear a task's
-signals; `aw restart` clears the window's own.
+without `tspace` on its `PATH` can write `{"state": "blocked", "message": "..."}`
+there directly. `tspace stop`, `tspace clean` and a fresh `tspace start` clear a task's
+signals; `tspace restart` clears the window's own.
 
 ### Dashboard
 
-`aw dash` is the same information, live and full-screen, for supervising
+`tspace dash` is the same information, live and full-screen, for supervising
 several agents at once:
 
 ```
-aw dash  2 tasks · 1 blocked · 1 dead  22:53:17
+tspace dash  2 tasks · 1 blocked · 1 dead  22:53:17
 
   TASK               REPO      AGENT   RUNTIME     SIGNAL       GIT
   checkout-redesign  (root)    claude  running     working 40s  -
@@ -610,7 +611,7 @@ aw dash  2 tasks · 1 blocked · 1 dead  22:53:17
                      backend   codex   dead        -            missing
 
 checkout-redesign/frontend  agent/checkout-redesign
-  /home/me/.aw/worktrees/checkout-redesign/frontend
+  /home/me/.tspace/worktrees/checkout-redesign/frontend
   signal   blocked, 3m ago: totals endpoint: round per line or per order?
   handoff  API done, tests pass.
 
@@ -625,7 +626,7 @@ window. Every key runs the command you would have typed.
 
 The rule is: **refusing beats losing code.**
 
-`aw clean` refuses outright if any worktree has uncommitted changes, untracked
+`tspace clean` refuses outright if any worktree has uncommitted changes, untracked
 files, a stash on its branch, or a lock. It tells you which files, in which
 repo, and how to proceed.
 
@@ -651,7 +652,7 @@ branch's combined change. A squash that needed conflict resolution changes
 that patch and is not recognised, so the branch is kept. The base is compared
 as your clone last fetched it; `git fetch` first if the merge just happened.
 
-`aw clean` and `aw task rm` are deliberately different. `clean` tears down
+`tspace clean` and `tspace task rm` are deliberately different. `clean` tears down
 worktrees and keeps the record; `task rm` deletes the record and refuses while
 worktrees exist.
 
@@ -659,35 +660,35 @@ worktrees exist.
 
 | Command | What it does |
 | --- | --- |
-| `aw init` | Create/report state directories (never required) |
-| `aw config` / `aw config agent [CMD ARGS... / --unset]` | Show defaults; set the default task-root agent |
-| `aw config repo [NAME [PATH] / NAME --unset]` | Register source repositories by name |
-| `aw config branch-prefix [PREFIX / --unset]` | Set the prefix of new task branches (default `agent/`) |
-| `aw project save NAME --from TASK [--replace]` | Save a reusable repository recipe |
-| `aw project list` / `aw project show NAME` | Inspect saved recipes |
-| `aw task create NAME [REPO...] [--agent CMD / --shell]` | Create a task; each REPO is `REPO[@BRANCH][:BASE]` |
-| `aw task update NAME [--agent CMD / --shell] [--title ...]` | Update a task's root agent and details |
-| `aw task list [--json]` | List tasks |
-| `aw task show NAME [--json]` | Show a task's repos in detail |
-| `aw task rm NAME` | Delete the record; refuses while worktrees exist |
-| `aw repo add TASK REPO [--name --branch --base --agent --post-create]` | Attach a repository, by registered name or path |
-| `aw repo rm TASK REPO` | Detach a repository (leaves the worktree) |
-| `aw repo update TASK REPO [--agent CMD / --shell] [--post-create SH]` | Update saved agent and setup settings |
-| `aw start TASK [REPO...]` | Create worktrees, launch the session |
-| `aw open TASK` | Prepare worktrees, show brief/handoff, and attach |
-| `aw restart TASK REPO` / `aw restart TASK --root` | Relaunch a dead repository or root window |
-| `aw stop TASK` | Interrupt agents, end the session, keep worktrees |
-| `aw attach TASK` | Attach (or `switch-client` when already in tmux) |
-| `aw window TASK [REPO / --root] [--agent / -- CMD]` | Open another window in the running session |
-| `aw shell TASK [REPO / --root]` | Interactive shell in a worktree or the task root |
-| `aw path TASK [REPO / --root]` | Print a worktree or task-root path, for `cd "$(...)"` |
-| `aw exec TASK -- CMD` | Run a command in every worktree |
-| `aw status [TASK] [--json / --watch]` | Runtime, git and signal state |
-| `aw dash` | Live full-screen view of every task; attach, start, restart, stop |
-| `aw signal STATE [MESSAGE] [--task --repo / --root]` | Report an agent as `working`, `blocked`, `done` or `failed` |
-| `aw clean TASK [--delete-branch] [--force]` | Remove worktrees, safely |
+| `tspace init` | Create/report state directories (never required) |
+| `tspace config` / `tspace config agent [CMD ARGS... / --unset]` | Show defaults; set the default task-root agent |
+| `tspace config repo [NAME [PATH] / NAME --unset]` | Register source repositories by name |
+| `tspace config branch-prefix [PREFIX / --unset]` | Set the prefix of new task branches (default `agent/`) |
+| `tspace project save NAME --from TASK [--replace]` | Save a reusable repository recipe |
+| `tspace project list` / `tspace project show NAME` | Inspect saved recipes |
+| `tspace task create NAME [REPO...] [--agent CMD / --shell]` | Create a task; each REPO is `REPO[@BRANCH][:BASE]` |
+| `tspace task update NAME [--agent CMD / --shell] [--title ...]` | Update a task's root agent and details |
+| `tspace task list [--json]` | List tasks |
+| `tspace task show NAME [--json]` | Show a task's repos in detail |
+| `tspace task rm NAME` | Delete the record; refuses while worktrees exist |
+| `tspace repo add TASK REPO [--name --branch --base --agent --post-create]` | Attach a repository, by registered name or path |
+| `tspace repo rm TASK REPO` | Detach a repository (leaves the worktree) |
+| `tspace repo update TASK REPO [--agent CMD / --shell] [--post-create SH]` | Update saved agent and setup settings |
+| `tspace start TASK [REPO...]` | Create worktrees, launch the session |
+| `tspace open TASK` | Prepare worktrees, show brief/handoff, and attach |
+| `tspace restart TASK REPO` / `tspace restart TASK --root` | Relaunch a dead repository or root window |
+| `tspace stop TASK` | Interrupt agents, end the session, keep worktrees |
+| `tspace attach TASK` | Attach (or `switch-client` when already in tmux) |
+| `tspace window TASK [REPO / --root] [--agent / -- CMD]` | Open another window in the running session |
+| `tspace shell TASK [REPO / --root]` | Interactive shell in a worktree or the task root |
+| `tspace path TASK [REPO / --root]` | Print a worktree or task-root path, for `cd "$(...)"` |
+| `tspace exec TASK -- CMD` | Run a command in every worktree |
+| `tspace status [TASK] [--json / --watch]` | Runtime, git and signal state |
+| `tspace dash` | Live full-screen view of every task; attach, start, restart, stop |
+| `tspace signal STATE [MESSAGE] [--task --repo / --root]` | Report an agent as `working`, `blocked`, `done` or `failed` |
+| `tspace clean TASK [--delete-branch] [--force]` | Remove worktrees, safely |
 
-`--no-title` (or `AW_NO_TITLE=1`) suppresses terminal tab titling.
+`--no-title` (or `TSPACE_NO_TITLE=1`) suppresses terminal tab titling.
 
 ## Development
 
@@ -704,8 +705,8 @@ absent. No agent is needed to run the suite.
 The full end-to-end check, against real repos and a real tmux server:
 
 ```bash
-go build -o aw ./cmd/aw
-scripts/e2e.sh ./aw
+go build -o tspace ./cmd/tspace
+scripts/e2e.sh ./tspace
 ```
 
 To try it by hand, `scripts/demo.sh` builds a two-repo playground rigged to fail
@@ -717,8 +718,8 @@ siblings. It prints a walkthrough, and `scripts/demo.sh --clean` removes it.
 cross-compile and run under WSL.
 
 ```bash
-GOOS=linux GOARCH=amd64 go build -o aw-linux ./cmd/aw
-# then run scripts/e2e.sh against aw-linux inside WSL
+GOOS=linux GOARCH=amd64 go build -o tspace-linux ./cmd/tspace
+# then run scripts/e2e.sh against tspace-linux inside WSL
 ```
 
 ## Current limitations
@@ -726,11 +727,11 @@ GOOS=linux GOARCH=amd64 go build -o aw-linux ./cmd/aw
 - **Unix only.** tmux is required; there is no Windows path.
 - **Submodules** are detected and reported, but not recursed into.
 - **No notifications.** `internal/status` is the single place one would attach.
-- **Extra windows are not remembered.** `aw window` adds to the running
+- **Extra windows are not remembered.** `tspace window` adds to the running
   session only; after `stop`, `start` recreates the root and repository
   windows, not the extras.
-- **Agent windows get no `AW_*` variables.** Shells from `aw shell` and hooks
-  do; tmux windows, including `aw window`, start from tmux's environment.
+- **Agent windows get no `TSPACE_*` variables.** Shells from `tspace shell` and hooks
+  do; tmux windows, including `tspace window`, start from tmux's environment.
 - **Briefs and handoffs render with control characters stripped.** The stored
   Markdown keeps every byte; what reaches the terminal cannot move the cursor or
   retitle the tab, because a brief is usually pasted in from somewhere else.
@@ -740,10 +741,10 @@ GOOS=linux GOARCH=amd64 go build -o aw-linux ./cmd/aw
 - **`.context/` holds two notes and the signals.** `TASK.md`, `HANDOFF.md`
   and `signals/` exist; the `API_CONTRACT.md` and `STATUS.json` of the
   original sketch do not, and nothing writes notes on your behalf.
-- **Little configuration.** `AW_ROOT` chooses the state directory, and
-  `$AW_ROOT/config.json` holds the default task-root agent, the registered
+- **Little configuration.** `TSPACE_ROOT` chooses the state directory, and
+  `$TSPACE_ROOT/config.json` holds the default task-root agent, the registered
   repositories and the branch prefix. Nothing else is configurable.
-- Existing sessions from the old `aw-...` naming scheme require manual inspection
+- Existing sessions from the old `aw@...` or `aw-...` naming schemes require manual inspection
   and stopping or renaming before starting their replacement.
 
 ## Roadmap
@@ -755,9 +756,9 @@ agent coordination is not part of the current workspace workflow.
   API contract or status file agents write to, so they can coordinate without
   sharing a context window
 - Agent status that is observed rather than reported: adapters that can tell
-  an agent is waiting without it running `aw signal`
+  an agent is waiting without it running `tspace signal`
 - Agent-to-agent dependencies — "frontend waits for the backend API contract"
-- `aw run TASK "prompt"` to coordinate agents across repositories
+- `tspace run TASK "prompt"` to coordinate agents across repositories
 - Notifications when an agent finishes or blocks
 - GitHub/PR integration: PRs, CI status, merge readiness
 - More runtimes — zellij, plain subprocess, remote

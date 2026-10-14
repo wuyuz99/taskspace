@@ -93,7 +93,7 @@ func TestStatusShowsSignalsOnlyWhenThereAreSome(t *testing.T) {
 		t.Fatalf("signal column with no signals:\n%s", h.out.String())
 	}
 
-	// Written the way an agent without aw would write it.
+	// Written the way an agent without tspace would write it.
 	if err := os.MkdirAll(h.app.Store.SignalsDir("PAY-142"), 0o755); err != nil {
 		t.Fatal(err)
 	}

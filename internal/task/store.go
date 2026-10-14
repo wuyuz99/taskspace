@@ -46,23 +46,23 @@ func (e SkippedError) orNil() error {
 // Store persists tasks as one JSON file per task.
 //
 // One file per task rather than one global file: the premise of the tool is
-// many concurrent tasks, and a single file means two aw processes racing on a
+// many concurrent tasks, and a single file means two tspace processes racing on a
 // read-modify-write. Per-task files never touch the same bytes, so no lockfile
 // is needed. Writes within a task are atomic via temp file + rename.
 type Store struct {
 	root string
 }
 
-// DefaultRoot resolves the aw state root: $AW_ROOT if set, else ~/.aw.
+// DefaultRoot resolves the tspace state root: $TSPACE_ROOT if set, else ~/.tspace.
 //
 // It is overridable because users already keep workspace directories in a
-// chosen, visible location, and a hidden ~/.aw should not be forced onto an
+// chosen, visible location, and a hidden ~/.tspace should not be forced onto an
 // existing habit.
 func DefaultRoot() (string, error) {
-	if v := strings.TrimSpace(os.Getenv("AW_ROOT")); v != "" {
+	if v := strings.TrimSpace(os.Getenv("TSPACE_ROOT")); v != "" {
 		abs, err := filepath.Abs(v)
 		if err != nil {
-			return "", fmt.Errorf("resolve AW_ROOT: %w", err)
+			return "", fmt.Errorf("resolve TSPACE_ROOT: %w", err)
 		}
 		return abs, nil
 	}
@@ -70,7 +70,7 @@ func DefaultRoot() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("locate home directory: %w", err)
 	}
-	return filepath.Join(home, ".aw"), nil
+	return filepath.Join(home, ".tspace"), nil
 }
 
 // NewStore returns a store rooted at root.
@@ -217,7 +217,7 @@ func (s *Store) Create(name string) (*Task, error) {
 	return t, nil
 }
 
-// Delete removes a task record. It does not touch worktrees; that is aw clean's
+// Delete removes a task record. It does not touch worktrees; that is tspace clean's
 // job, and conflating the two is how a tool deletes something the user only
 // wanted to tidy.
 func (s *Store) Delete(name string) error {

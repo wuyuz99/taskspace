@@ -138,7 +138,7 @@ func TestOpenPointsAtRootRestart(t *testing.T) {
 	if err := h.exec(t, h.app.newOpenCmd(), "PAY-142"); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(h.errb.String(), "aw restart PAY-142 --root") {
+	if !strings.Contains(h.errb.String(), "tspace restart PAY-142 --root") {
 		t.Fatalf("root restart hint missing: %s", h.errb.String())
 	}
 }
@@ -230,7 +230,7 @@ func TestShellWithoutRepoOpensRootOfMultiRepoTask(t *testing.T) {
 		t.Fatal(err)
 	}
 	script := filepath.Join(t.TempDir(), "probe")
-	if err := os.WriteFile(script, []byte("#!/bin/sh\nprintf '%s\\n' \"$PWD\" \"$AW_REPO\" > probe.txt\n"), 0755); err != nil {
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nprintf '%s\\n' \"$PWD\" \"$TSPACE_REPO\" > probe.txt\n"), 0755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("SHELL", script)

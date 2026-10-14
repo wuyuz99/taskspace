@@ -1,7 +1,7 @@
 // Package runtime owns persistent terminal sessions.
 //
 // tmux is the only implementation in v0.1, but the interface is sized so that
-// zellij or a plain detached subprocess can be added without the rest of aw
+// zellij or a plain detached subprocess can be added without the rest of tspace
 // learning about them. Nothing outside this package should know what tmux is.
 package runtime
 
@@ -68,7 +68,7 @@ type Runtime interface {
 	Stop(ctx context.Context, session string) error
 	// Attach hands the terminal over to the session.
 	Attach(ctx context.Context, session string) error
-	// Focus shows a window to the user when aw runs inside a client that can
+	// Focus shows a window to the user when tspace runs inside a client that can
 	// display it, and reports whether it did.
 	Focus(ctx context.Context, session, window string) (bool, error)
 	// Select makes a window the one a later Attach lands on.

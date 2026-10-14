@@ -41,7 +41,7 @@ func (s Status) Dirty() bool {
 // WorktreeStatus inspects a worktree directory.
 //
 // A missing directory is reported as Exists=false rather than an error: a task
-// whose worktree has been deleted out from under it is a state aw must be able
+// whose worktree has been deleted out from under it is a state tspace must be able
 // to display, not one it should fail on.
 func (g *Git) WorktreeStatus(ctx context.Context, worktree string) (Status, error) {
 	var s Status
@@ -132,7 +132,7 @@ func parseAheadBehind(v string) (ahead, behind int) {
 // git keeps a single stash stack per repository, shared by every worktree, so
 // there is no exact way to attribute a stash to a worktree. The stash subject
 // does record the branch it was made on ("WIP on <branch>: ..." or
-// "On <branch>: ..."), and aw gives every task branch a unique name, so
+// "On <branch>: ..."), and tspace gives every task branch a unique name, so
 // matching on the branch is reliable in practice. It is a heuristic; it errs
 // toward reporting a stash, which is the safe direction.
 func (g *Git) stashCount(ctx context.Context, dir, branch string) (int, error) {

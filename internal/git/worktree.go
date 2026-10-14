@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	awexec "github.com/wuyuz99/taskspace/internal/exec"
+	tsexec "github.com/wuyuz99/taskspace/internal/exec"
 )
 
 // Worktree is one entry from `git worktree list --porcelain`.
@@ -274,7 +274,7 @@ func (g *Git) RemoveWorktree(ctx context.Context, repo, path string, force bool)
 	args = append(args, path)
 
 	if _, err := g.git(ctx, repo, args...); err != nil {
-		if awexec.IsExit(err) {
+		if tsexec.IsExit(err) {
 			return fmt.Errorf("remove worktree %s: %w", path, err)
 		}
 		return err

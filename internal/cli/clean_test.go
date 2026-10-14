@@ -11,8 +11,8 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
-	awexec "github.com/wuyuz99/taskspace/internal/exec"
-	awgit "github.com/wuyuz99/taskspace/internal/git"
+	tsexec "github.com/wuyuz99/taskspace/internal/exec"
+	tsgit "github.com/wuyuz99/taskspace/internal/git"
 	"github.com/wuyuz99/taskspace/internal/runtime"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
@@ -22,7 +22,7 @@ import (
 type stubRuntime struct{ stopped bool }
 
 func (s *stubRuntime) Available(context.Context) error { return nil }
-func (s *stubRuntime) SessionName(t string) string     { return "aw-" + t }
+func (s *stubRuntime) SessionName(t string) string     { return "tspace-" + t }
 func (s *stubRuntime) WindowName(repo string) string   { return repo }
 func (s *stubRuntime) HasSession(context.Context, string) (bool, error) {
 	return false, nil
@@ -65,7 +65,7 @@ func newHarness(t *testing.T) *harness {
 	return &harness{
 		app: &App{
 			Store:   task.NewStore(root),
-			Git:     awgit.New(awexec.Real()),
+			Git:     tsgit.New(tsexec.Real()),
 			Runtime: &stubRuntime{},
 			Out:     out,
 			Err:     errb,
@@ -86,8 +86,8 @@ func mkRepo(t *testing.T) string {
 		cmd := osexec.Command("git", args...)
 		cmd.Dir = dir
 		cmd.Env = append(os.Environ(),
-			"GIT_AUTHOR_NAME=aw", "GIT_AUTHOR_EMAIL=t@example.invalid",
-			"GIT_COMMITTER_NAME=aw", "GIT_COMMITTER_EMAIL=t@example.invalid")
+			"GIT_AUTHOR_NAME=tspace", "GIT_AUTHOR_EMAIL=t@example.invalid",
+			"GIT_COMMITTER_NAME=tspace", "GIT_COMMITTER_EMAIL=t@example.invalid")
 		if o, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, o)
 		}
@@ -101,7 +101,7 @@ func mkRepo(t *testing.T) string {
 	return dir
 }
 
-// exec runs one aw command through cobra, as the binary would.
+// exec runs one tspace command through cobra, as the binary would.
 func (h *harness) exec(t *testing.T, cmd *cobra.Command, args ...string) error {
 	t.Helper()
 	h.out.Reset()
@@ -173,7 +173,7 @@ func TestCleanVerifiesDetachedHead(t *testing.T) {
 				t.Helper()
 				cmd := osexec.Command("git", args...)
 				cmd.Dir = r.Worktree
-				cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=aw", "GIT_AUTHOR_EMAIL=t@example.invalid", "GIT_COMMITTER_NAME=aw", "GIT_COMMITTER_EMAIL=t@example.invalid")
+				cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=tspace", "GIT_AUTHOR_EMAIL=t@example.invalid", "GIT_COMMITTER_NAME=tspace", "GIT_COMMITTER_EMAIL=t@example.invalid")
 				out, err := cmd.CombinedOutput()
 				if err != nil {
 					t.Fatalf("git %v: %v\n%s", args, err, out)
@@ -231,8 +231,8 @@ func TestCleanRefusesOnAStashAlone(t *testing.T) {
 	stash := osexec.Command("git", "stash", "push", "-m", "wip")
 	stash.Dir = wt
 	stash.Env = append(os.Environ(),
-		"GIT_AUTHOR_NAME=aw", "GIT_AUTHOR_EMAIL=t@example.invalid",
-		"GIT_COMMITTER_NAME=aw", "GIT_COMMITTER_EMAIL=t@example.invalid")
+		"GIT_AUTHOR_NAME=tspace", "GIT_AUTHOR_EMAIL=t@example.invalid",
+		"GIT_COMMITTER_NAME=tspace", "GIT_COMMITTER_EMAIL=t@example.invalid")
 	if o, err := stash.CombinedOutput(); err != nil {
 		t.Fatalf("git stash: %v\n%s", err, o)
 	}
@@ -253,7 +253,7 @@ func TestCleanKeepsBranchUsedAsItsOwnBase(t *testing.T) {
 		t.Helper()
 		cmd := osexec.Command("git", args...)
 		cmd.Dir = h.repo
-		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=aw", "GIT_AUTHOR_EMAIL=t@example.invalid", "GIT_COMMITTER_NAME=aw", "GIT_COMMITTER_EMAIL=t@example.invalid")
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=tspace", "GIT_AUTHOR_EMAIL=t@example.invalid", "GIT_COMMITTER_NAME=tspace", "GIT_COMMITTER_EMAIL=t@example.invalid")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("git %v: %v\n%s", args, err, out)
@@ -296,13 +296,13 @@ func TestCleanSucceedsOnCleanWorktreeAndKeepsBranch(t *testing.T) {
 		t.Error("worktree still present after clean")
 	}
 	// Branches are not deleted by default.
-	g := awgit.New(awexec.Real())
+	g := tsgit.New(tsexec.Real())
 	if ok, err := g.BranchExists(context.Background(), repoPath, branch); err != nil || !ok {
 		t.Errorf("BranchExists(%s) = %v, %v; clean must not delete branches", branch, ok, err)
 	}
 	// The task record survives clean.
 	if !h.app.Store.Exists("clean-task") {
-		t.Error("clean deleted the task record; that is aw task rm's job")
+		t.Error("clean deleted the task record; that is tspace task rm's job")
 	}
 }
 
@@ -314,8 +314,8 @@ func TestTaskRmRefusesWhileWorktreesExist(t *testing.T) {
 	if err == nil {
 		t.Fatal("task rm with live worktrees = nil, want refusal")
 	}
-	if !strings.Contains(err.Error(), "aw clean") {
-		t.Errorf("error = %v, want it to point at aw clean", err)
+	if !strings.Contains(err.Error(), "tspace clean") {
+		t.Errorf("error = %v, want it to point at tspace clean", err)
 	}
 	if !h.app.Store.Exists("live-task") {
 		t.Error("refused task rm deleted the record anyway")
@@ -374,7 +374,7 @@ func TestPathPrintsOnlyThePath(t *testing.T) {
 }
 
 // The hook must be able to reach its source repository without a relative path
-// out of the worktree: that depth depends on where AW_ROOT is, so such a hook
+// out of the worktree: that depth depends on where TSPACE_ROOT is, so such a hook
 // silently breaks for anyone who moves their state directory.
 func TestPostCreateHookGetsRepoPathInEnvironment(t *testing.T) {
 	if goruntime.GOOS == "windows" {
@@ -385,7 +385,7 @@ func TestPostCreateHookGetsRepoPathInEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := h.exec(t, h.app.newRepoCmd(), "add", "hook-task", h.repo,
-		"--post-create", `printf '%s\n' "$AW_REPO_PATH" > hook-saw.txt`); err != nil {
+		"--post-create", `printf '%s\n' "$TSPACE_REPO_PATH" > hook-saw.txt`); err != nil {
 		t.Fatalf("repo add: %v", err)
 	}
 	if err := h.exec(t, h.app.newStartCmd(), "hook-task", "--no-runtime"); err != nil {
@@ -406,6 +406,6 @@ func TestPostCreateHookGetsRepoPathInEnvironment(t *testing.T) {
 		t.Fatalf("hook did not run: %v", err)
 	}
 	if strings.TrimSpace(string(got)) != h.repo {
-		t.Errorf("AW_REPO_PATH = %q, want %q", strings.TrimSpace(string(got)), h.repo)
+		t.Errorf("TSPACE_REPO_PATH = %q, want %q", strings.TrimSpace(string(got)), h.repo)
 	}
 }

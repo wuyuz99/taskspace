@@ -20,7 +20,7 @@ func (a *App) newSignalCmd() *cobra.Command {
 		Use:   "signal STATE [MESSAGE]",
 		Short: "Report what an agent is doing, for status and dash",
 		Long: "signal records what the agent in a window says about itself, so that\n" +
-			"`aw status` and `aw dash` can show which agents need a person. aw can see\n" +
+			"`tspace status` and `tspace dash` can show which agents need a person. tspace can see\n" +
 			"whether a process is alive; only the agent knows whether it is busy,\n" +
 			"waiting or finished. STATE is one of:\n\n" +
 			"  working  busy, needs nothing\n" +
@@ -29,15 +29,15 @@ func (a *App) newSignalCmd() *cobra.Command {
 			"  failed   gave up\n\n" +
 			"Run from inside a task, it knows where it is: in a worktree it reports for\n" +
 			"that repository, and at the task root for the root window.\n\n" +
-			"  aw signal blocked 'migration needs a decision: drop or keep the column?'\n" +
-			"  aw signal done\n" +
-			"  aw signal working --task PAY-142 --repo backend\n\n" +
+			"  tspace signal blocked 'migration needs a decision: drop or keep the column?'\n" +
+			"  tspace signal done\n" +
+			"  tspace signal working --task PAY-142 --repo backend\n\n" +
 			"It is meant to be called by the agent's own hooks rather than typed. For\n" +
-			"Claude Code, for example: UserPromptSubmit runs `aw signal working`,\n" +
-			"Notification runs `aw signal blocked`, and Stop runs `aw signal done`.\n\n" +
+			"Claude Code, for example: UserPromptSubmit runs `tspace signal working`,\n" +
+			"Notification runs `tspace signal blocked`, and Stop runs `tspace signal done`.\n\n" +
 			"A signal is one JSON file, .context/signals/REPO.json beside the\n" +
 			"worktrees (_root.json for the root window), holding\n" +
-			`{"state": "blocked", "message": "..."}` + "; an agent without aw on its\n" +
+			`{"state": "blocked", "message": "..."}` + "; an agent without tspace on its\n" +
 			"PATH can write it directly. Its age is the file's modification time.\n\n" +
 			"Signals describe a running agent, so stop, clean and a fresh start\n" +
 			"clear them, and restart clears the window's own.",
@@ -137,7 +137,7 @@ func (a *App) signalTarget(taskName, repo string, root bool) (*task.Task, string
 // the worktrees directory.
 func (a *App) locate(dir string) (taskName, below string, ok bool) {
 	base := a.Store.WorktreesDir()
-	// Both sides resolved, so a symlinked AW_ROOT or temp directory still matches.
+	// Both sides resolved, so a symlinked TSPACE_ROOT or temp directory still matches.
 	if r, err := filepath.EvalSymlinks(base); err == nil {
 		base = r
 	}

@@ -14,7 +14,7 @@ func (a *App) newConfigCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "Show and set user-wide defaults",
-		Long: "Defaults live in $AW_ROOT/config.json. They are applied when a task is\n" +
+		Long: "Defaults live in $TSPACE_ROOT/config.json. They are applied when a task is\n" +
 			"created and recorded on it, so changing one never changes an existing task.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -26,7 +26,7 @@ func (a *App) newConfigCmd() *cobra.Command {
 			a.printf("agent:  %s\n", defaultAgentDisplay(c.Agent))
 			a.printf("branch: %s (new repositories' default branch)\n", c.Branch("TASK"))
 			if len(c.Repos) == 0 {
-				a.printf("repos:  none registered (aw config repo NAME PATH)\n")
+				a.printf("repos:  none registered (tspace config repo NAME PATH)\n")
 				return nil
 			}
 			a.printf("repos:\n")
@@ -45,13 +45,13 @@ func (a *App) newConfigRepoCmd() *cobra.Command {
 		Short: "Register source repositories by name",
 		Long: "Register each repository you work in once, then give tasks its name\n" +
 			"instead of a path:\n\n" +
-			"  aw config repo backend ~/src/backend\n" +
-			"  aw task create PAY-142 backend frontend@feature/x infra:develop\n\n" +
+			"  tspace config repo backend ~/src/backend\n" +
+			"  tspace task create PAY-142 backend frontend@feature/x infra:develop\n\n" +
 			"There are no add, list or rm subcommands; the arguments say which:\n\n" +
-			"  aw config repo                  list the registered repositories\n" +
-			"  aw config repo backend          print backend's path\n" +
-			"  aw config repo backend PATH     register backend, or move it to PATH\n" +
-			"  aw config repo backend --unset  forget backend\n\n" +
+			"  tspace config repo                  list the registered repositories\n" +
+			"  tspace config repo backend          print backend's path\n" +
+			"  tspace config repo backend PATH     register backend, or move it to PATH\n" +
+			"  tspace config repo backend --unset  forget backend\n\n" +
 			"Tasks record the path when a repository is added, so moving or\n" +
 			"unregistering one later leaves existing tasks alone.",
 		Args: cobra.MaximumNArgs(2),
@@ -65,7 +65,7 @@ func (a *App) newConfigRepoCmd() *cobra.Command {
 				return fmt.Errorf("--unset takes exactly one repository name")
 			case len(args) == 0:
 				if len(c.Repos) == 0 {
-					a.printf("no repositories registered; add one with: aw config repo NAME PATH\n")
+					a.printf("no repositories registered; add one with: tspace config repo NAME PATH\n")
 					return nil
 				}
 				a.printRepoCatalog(c)
@@ -74,7 +74,7 @@ func (a *App) newConfigRepoCmd() *cobra.Command {
 				p, ok := c.Repos[args[0]]
 				if !ok {
 					if hint, verb := configRepoVerbs[args[0]]; verb {
-						return fmt.Errorf("aw config repo has no %q subcommand; %s", args[0], hint)
+						return fmt.Errorf("tspace config repo has no %q subcommand; %s", args[0], hint)
 					}
 					return fmt.Errorf("no repository registered as %q%s", args[0], registeredHint(c))
 				}
@@ -83,7 +83,7 @@ func (a *App) newConfigRepoCmd() *cobra.Command {
 			}
 
 			name := args[0]
-			// `aw config repo add ~/src/api` reads as a subcommand, and would
+			// `tspace config repo add ~/src/api` reads as a subcommand, and would
 			// otherwise quietly register a repository called "add".
 			if hint, verb := configRepoVerbs[name]; verb && !unset {
 				return fmt.Errorf("%q cannot be a repository name, because it reads as a subcommand; %s", name, hint)
@@ -133,8 +133,8 @@ func (a *App) newConfigBranchPrefixCmd() *cobra.Command {
 		Short: "Show or set the prefix of new task branches",
 		Long: "A repository added to a task without a branch of its own gets\n" +
 			"PREFIX + TASK, by default agent/TASK:\n\n" +
-			"  aw config branch-prefix me/        # me/PAY-142\n" +
-			"  aw config branch-prefix ''         # PAY-142\n\n" +
+			"  tspace config branch-prefix me/        # me/PAY-142\n" +
+			"  tspace config branch-prefix ''         # PAY-142\n\n" +
 			"Branches are recorded when a repository is added, so changing the prefix\n" +
 			"leaves existing tasks alone.",
 		Args: cobra.MaximumNArgs(1),
@@ -170,15 +170,15 @@ func (a *App) newConfigBranchPrefixCmd() *cobra.Command {
 	return cmd
 }
 
-// configRepoVerbs are the subcommands people expect `aw config repo` to have,
+// configRepoVerbs are the subcommands people expect `tspace config repo` to have,
 // each with what to type instead.
 var configRepoVerbs = map[string]string{
-	"add":    "register one with: aw config repo NAME PATH",
-	"set":    "register one with: aw config repo NAME PATH",
-	"list":   "list them with: aw config repo",
-	"ls":     "list them with: aw config repo",
-	"rm":     "forget one with: aw config repo NAME --unset",
-	"remove": "forget one with: aw config repo NAME --unset",
+	"add":    "register one with: tspace config repo NAME PATH",
+	"set":    "register one with: tspace config repo NAME PATH",
+	"list":   "list them with: tspace config repo",
+	"ls":     "list them with: tspace config repo",
+	"rm":     "forget one with: tspace config repo NAME --unset",
+	"remove": "forget one with: tspace config repo NAME --unset",
 }
 
 func (a *App) printRepoCatalog(c *task.Config) {
@@ -191,7 +191,7 @@ func (a *App) printRepoCatalog(c *task.Config) {
 
 func registeredHint(c *task.Config) string {
 	if len(c.Repos) == 0 {
-		return "; register it with: aw config repo NAME PATH"
+		return "; register it with: tspace config repo NAME PATH"
 	}
 	return " (registered: " + joinNames(c.RepoNames()) + ")"
 }
@@ -204,9 +204,9 @@ func (a *App) newConfigAgentCmd() *cobra.Command {
 		Long: "With a command, new tasks run it in their root window, unless task create\n" +
 			"is given --agent or --shell, or its --project recipe names an agent.\n" +
 			"Everything after COMMAND is passed to it, flags included:\n\n" +
-			"  aw config agent claude --model opus\n\n" +
+			"  tspace config agent claude --model opus\n\n" +
 			"Existing tasks keep the agent they were created with; change one with\n" +
-			"aw task update TASK --agent CMD.",
+			"tspace task update TASK --agent CMD.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if unset && len(args) > 0 {
 				return fmt.Errorf("choose either a command or --unset")
@@ -237,7 +237,7 @@ func (a *App) newConfigAgentCmd() *cobra.Command {
 			return nil
 		},
 	}
-	// Flags after COMMAND belong to the agent, not to aw.
+	// Flags after COMMAND belong to the agent, not to tspace.
 	cmd.Flags().SetInterspersed(false)
 	cmd.Flags().BoolVar(&unset, "unset", false, "clear the default, so new tasks' root windows run a shell")
 	return cmd

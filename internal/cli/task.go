@@ -17,7 +17,7 @@ func (a *App) newTaskCmd() *cobra.Command {
 		Long: "A task is one piece of work and the repositories it spans. Its record\n" +
 			"holds a name, an optional title and ticket, the agent for its root window\n" +
 			"and its repositories; its brief and handoff are Markdown notes beside its\n" +
-			"worktrees. Elsewhere aw calls a task's directory its workspace.",
+			"worktrees. Elsewhere tspace calls a task's directory its workspace.",
 	}
 	cmd.AddCommand(a.newTaskCreateCmd(), a.newTaskListCmd(), a.newTaskShowCmd(), a.newTaskRmCmd())
 	cmd.AddCommand(a.newTaskUpdateCmd(), a.newTaskNoteCmd(false), a.newTaskNoteCmd(true))
@@ -34,17 +34,17 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 		Use:   "create NAME [REPO...]",
 		Short: "Create a task",
 		Long: "create records a task and the repositories it spans. Each REPO is a name\n" +
-			"registered with `aw config repo` or a path, optionally with a branch and\n" +
-			"a base, as for `aw repo add`:\n\n" +
-			"  aw task create PAY-142 backend frontend@feature/x infra:develop\n\n" +
+			"registered with `tspace config repo` or a path, optionally with a branch and\n" +
+			"a base, as for `tspace repo add`:\n\n" +
+			"  tspace task create PAY-142 backend frontend@feature/x infra:develop\n\n" +
 			"NAME starts with a letter or digit and holds only letters, digits, '.',\n" +
 			"'_' and '-'. It names the task's directory, session and default branch.\n\n" +
-			"The task-root window runs the agent from `aw config agent`, or a shell.\n" +
+			"The task-root window runs the agent from `tspace config agent`, or a shell.\n" +
 			"--agent overrides it, one flag per word of the command:\n\n" +
-			"  aw task create PAY-142 backend --agent claude --agent=--model --agent opus\n\n" +
+			"  tspace task create PAY-142 backend --agent claude --agent=--model --agent opus\n\n" +
 			"--brief-file stores the task's instructions where its agents will look\n" +
-			"for them; see `aw task brief --help`.\n\n" +
-			"No worktree is created until `aw start` or `aw open`.",
+			"for them; see `tspace task brief --help`.\n\n" +
+			"No worktree is created until `tspace start` or `tspace open`.",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			brief, err := details.readBrief()
@@ -100,7 +100,7 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 				}
 			}
 
-			// Each REPO is sugar for a following `aw repo add`.
+			// Each REPO is sugar for a following `tspace repo add`.
 			for _, spec := range append(repos, args[1:]...) {
 				c, err := config()
 				if err != nil {
@@ -120,7 +120,7 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 				}
 				if len(cfg.Agent) > 0 {
 					t.Agent = append([]string(nil), cfg.Agent...)
-					agentFrom = "aw config"
+					agentFrom = "tspace config"
 				}
 			}
 			if err := a.Store.CreatePrepared(t); err != nil {
@@ -150,7 +150,7 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 	return cmd
 }
 
-// taskJSON is a task in `aw task list --json` and `aw task show --json`.
+// taskJSON is a task in `tspace task list --json` and `tspace task show --json`.
 type taskJSON struct {
 	Name             string         `json:"name"`
 	Title            string         `json:"title,omitempty"`
@@ -191,7 +191,7 @@ func (a *App) describeTask(t *task.Task) taskJSON {
 	}
 	brief, handoff, err := a.notes(t)
 	if err != nil {
-		a.warnf("aw: %s: %v\n", t.Name, err)
+		a.warnf("tspace: %s: %v\n", t.Name, err)
 	}
 	out.Brief, out.Handoff = brief.Text, handoff.Text
 	if !handoff.UpdatedAt.IsZero() {
@@ -216,8 +216,8 @@ func (a *App) newTaskListCmd() *cobra.Command {
 		Short:   "List tasks",
 		Long: "list prints one row per task: its ticket and title, the first line of\n" +
 			"its handoff with the time that was written, and its repositories.\n" +
-			"It reads only the records; `aw status` adds what is running and dirty.\n\n" +
-			"--json prints an array of the objects `aw task show --json` prints.",
+			"It reads only the records; `tspace status` adds what is running and dirty.\n\n" +
+			"--json prints an array of the objects `tspace task show --json` prints.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			tasks, err := a.Store.List()
@@ -232,7 +232,7 @@ func (a *App) newTaskListCmd() *cobra.Command {
 				return a.printJSON(out)
 			}
 			if len(tasks) == 0 {
-				a.printf("no tasks yet; create one with: aw task create NAME\n")
+				a.printf("no tasks yet; create one with: tspace task create NAME\n")
 				return nil
 			}
 
@@ -241,7 +241,7 @@ func (a *App) newTaskListCmd() *cobra.Command {
 			for _, t := range tasks {
 				_, handoff, err := a.notes(t)
 				if err != nil {
-					a.warnf("aw: %s: %v\n", t.Name, err)
+					a.warnf("tspace: %s: %v\n", t.Name, err)
 				}
 				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", t.Name, dash(t.Ticket), dash(oneLine(t.Title)),
 					dash(noteSummary(handoff.Text)), handoffTime(handoff), dash(joinNames(t.RepoNames())))
@@ -263,7 +263,7 @@ func (a *App) newTaskShowCmd() *cobra.Command {
 			"and handoff, and for each repository the source path, branch, base,\n" +
 			"worktree path, agent and setup hook.\n\n" +
 			"It reads only the record, so the paths are shown whether or not the\n" +
-			"worktrees exist yet; `aw status NAME` reports what is on disk and running.",
+			"worktrees exist yet; `tspace status NAME` reports what is on disk and running.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			t, err := a.loadTask(args[0])
@@ -281,7 +281,7 @@ func (a *App) newTaskShowCmd() *cobra.Command {
 			a.printf("agent:     %s (window %s, at the workspace root)\n", agentDisplay(task.Repo{Agent: t.Agent}), task.RootWindowName)
 			a.printTaskContext(t)
 			if len(t.Repos) == 0 {
-				a.printf("\nno repositories yet; add one with:\n  aw repo add %s REPO\n", t.Name)
+				a.printf("\nno repositories yet; add one with:\n  tspace repo add %s REPO\n", t.Name)
 				return nil
 			}
 
@@ -313,7 +313,7 @@ func (a *App) newTaskRmCmd() *cobra.Command {
 		Use:   "rm NAME",
 		Short: "Delete a task record",
 		Long: "rm deletes the task's record. It refuses while worktrees still exist:\n" +
-			"tearing down worktrees is `aw clean`, and conflating the two is how a\n" +
+			"tearing down worktrees is `tspace clean`, and conflating the two is how a\n" +
 			"tool ends up deleting something you only wanted to tidy.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -331,7 +331,7 @@ func (a *App) newTaskRmCmd() *cobra.Command {
 				}
 				if len(present) > 0 {
 					return fmt.Errorf(
-						"task %q still has worktrees for %s\nrun `aw clean %s` first, or `aw task rm %s --force` to drop the record and leave them on disk",
+						"task %q still has worktrees for %s\nrun `tspace clean %s` first, or `tspace task rm %s --force` to drop the record and leave them on disk",
 						t.Name, joinNames(present), t.Name, t.Name)
 				}
 			}

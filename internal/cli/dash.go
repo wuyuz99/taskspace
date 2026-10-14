@@ -22,24 +22,24 @@ func (a *App) newDashCmd() *cobra.Command {
 		Use:   "dash",
 		Short: "Watch every task and step into the one that needs you",
 		Long: "dash is a live, full-screen view of every task: one row per window, with\n" +
-			"its runtime state, what its agent last reported with `aw signal`, and its\n" +
+			"its runtime state, what its agent last reported with `tspace signal`, and its\n" +
 			"git state. Below the table it shows the selected row's directory, signal\n" +
-			"message and handoff. It is `aw status` for a person supervising several\n" +
+			"message and handoff. It is `tspace status` for a person supervising several\n" +
 			"agents; everything it does is also a command.\n\n" +
 			"  up/down, j/k  select a row\n" +
 			"  enter         attach to that window; detaching returns here\n" +
-			"  s             start the task (aw start)\n" +
-			"  r             restart a dead window (aw restart)\n" +
-			"  x             stop the task, after confirming (aw stop)\n" +
+			"  s             start the task (tspace start)\n" +
+			"  r             restart a dead window (tspace restart)\n" +
+			"  x             stop the task, after confirming (tspace stop)\n" +
 			"  c             clear the row's signal\n" +
 			"  q             quit\n\n" +
 			"Inside tmux, enter switches the client to the window and dash keeps\n" +
 			"running in its own.\n\n" +
-			"dash needs a terminal. In a script, use `aw status --json`.",
+			"dash needs a terminal. In a script, use `tspace status --json`.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if !isTerminal(a.Out) {
-				return fmt.Errorf("aw dash needs a terminal; use `aw status --watch` or `aw status --json` instead")
+				return fmt.Errorf("tspace dash needs a terminal; use `tspace status --watch` or `tspace status --json` instead")
 			}
 			if interval < 200*time.Millisecond {
 				return fmt.Errorf("--interval must be at least 200ms")
@@ -47,7 +47,7 @@ func (a *App) newDashCmd() *cobra.Command {
 			ctx := cmd.Context()
 			m := newDashModel(ctx, a, interval)
 			for {
-				setTitle(a.Out, "aw dash", a.noTitle)
+				setTitle(a.Out, "tspace dash", a.noTitle)
 				final, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithContext(ctx)).Run()
 				if ctx.Err() != nil {
 					return nil
@@ -67,7 +67,7 @@ func (a *App) newDashCmd() *cobra.Command {
 				session := a.Runtime.SessionName(target.Task)
 				err = a.Runtime.Select(ctx, session, target.Window)
 				if err == nil {
-					setTitle(a.Out, "aw: "+target.Task, a.noTitle)
+					setTitle(a.Out, "tspace: "+target.Task, a.noTitle)
 					err = a.Runtime.Attach(ctx, session)
 				}
 				m.note, m.noteErr = "detached from "+target.label(), false
@@ -414,7 +414,7 @@ const dashDetailLines = 12
 
 func (m dashModel) View() string {
 	if !m.loaded {
-		return "aw dash: loading...\n"
+		return "tspace dash: loading...\n"
 	}
 	var b strings.Builder
 	now := time.Now()
@@ -446,11 +446,11 @@ func (m dashModel) View() string {
 	if dead > 0 {
 		head = append(head, dashRed.Render(fmt.Sprintf("%d dead", dead)))
 	}
-	fmt.Fprintf(&b, "%s  %s  %s\n\n", dashBold.Render("aw dash"), strings.Join(head, " · "),
+	fmt.Fprintf(&b, "%s  %s  %s\n\n", dashBold.Render("tspace dash"), strings.Join(head, " · "),
 		dashFaint.Render(m.data.At.Format("15:04:05")))
 
 	if len(m.data.Rows) == 0 {
-		b.WriteString("no tasks yet; create one with: aw task create NAME\n")
+		b.WriteString("no tasks yet; create one with: tspace task create NAME\n")
 	} else {
 		m.table(&b, now)
 		m.detail(&b, now)

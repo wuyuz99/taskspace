@@ -13,7 +13,7 @@ import (
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
-// statusJSON is one task in `aw status --json`.
+// statusJSON is one task in `tspace status --json`.
 type statusJSON struct {
 	Task         string           `json:"task"`
 	Session      string           `json:"session"`
@@ -46,7 +46,7 @@ type statusRepoJSON struct {
 	Behind     int    `json:"behind"`
 	Unpushed   int    `json:"unpushed"`
 	Error      string `json:"error,omitempty"`
-	// Signal is what the agent last reported with `aw signal`.
+	// Signal is what the agent last reported with `tspace signal`.
 	Signal *task.Signal `json:"signal,omitempty"`
 }
 
@@ -134,21 +134,21 @@ func (a *App) newStatusCmd() *cobra.Command {
 			"runtime state but no git state: its changes appear in the repositories.\n\n" +
 			"RUNTIME is one of:\n\n" +
 			"  running     the window's command is alive\n" +
-			"  dead        the window is there but its command has exited; see aw restart\n" +
+			"  dead        the window is there but its command has exited; see tspace restart\n" +
 			"  no-window   the session is up without a window for this row\n" +
-			"  no-session  nothing is running for the task; see aw start\n" +
+			"  no-session  nothing is running for the task; see tspace start\n" +
 			"  unknown     tmux could not be queried; the reason is printed below\n\n" +
-			"GIT is missing (no worktree yet; see aw start), error, clean or dirty,\n" +
+			"GIT is missing (no worktree yet; see tspace start), error, clean or dirty,\n" +
 			"followed by stashes, commits ahead of and behind the upstream, and commits\n" +
 			"not pushed anywhere.\n\n" +
 			"A SIGNAL column appears once an agent has reported on itself with\n" +
-			"`aw signal`: working, blocked, done or failed, and how long ago. It is\n" +
-			"the agent's word, not something aw observed.\n\n" +
+			"`tspace signal`: working, blocked, done or failed, and how long ago. It is\n" +
+			"the agent's word, not something tspace observed.\n\n" +
 			"Without TASK, every task is shown. --watch redraws the table until\n" +
-			"interrupted; `aw dash` is the interactive version. --json prints the\n" +
+			"interrupted; `tspace dash` is the interactive version. --json prints the\n" +
 			"same observations as an array of tasks, with the counts as separate\n" +
 			"fields; there a worktree holding only a stash is dirty, as it is to\n" +
-			"aw clean.",
+			"tspace clean.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if watch && asJSON {
@@ -180,7 +180,7 @@ func (a *App) newStatusCmd() *cobra.Command {
 				if isTerminal(a.Out) {
 					frame.WriteString("\033[H\033[2J")
 				}
-				fmt.Fprintf(&frame, "aw status at %s, every %s; Ctrl-C to stop\n\n", time.Now().Format("15:04:05"), interval)
+				fmt.Fprintf(&frame, "tspace status at %s, every %s; Ctrl-C to stop\n\n", time.Now().Format("15:04:05"), interval)
 				printStatusTable(&frame, &frame, results)
 				if _, err := a.Out.Write(frame.Bytes()); err != nil {
 					return err
@@ -203,7 +203,7 @@ func (a *App) newStatusCmd() *cobra.Command {
 // "unknown" cell: a bare label is not actionable.
 func printStatusTable(out, errOut io.Writer, results []status.TaskStatus) {
 	if len(results) == 0 {
-		fmt.Fprintf(out, "no tasks yet; create one with: aw task create NAME\n")
+		fmt.Fprintf(out, "no tasks yet; create one with: tspace task create NAME\n")
 		return
 	}
 

@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	awexec "github.com/wuyuz99/taskspace/internal/exec"
+	tsexec "github.com/wuyuz99/taskspace/internal/exec"
 )
 
 // Tmux implements Runtime on top of tmux.
 type Tmux struct {
-	run awexec.Runner
+	run tsexec.Runner
 	// StopGrace is how long processes get after SIGINT before the session is
 	// killed. A hard kill can land mid-edit, so it is worth waiting.
 	StopGrace time.Duration
@@ -23,14 +23,14 @@ type Tmux struct {
 }
 
 // NewTmux returns a tmux runtime.
-func NewTmux(r awexec.Runner) *Tmux {
+func NewTmux(r tsexec.Runner) *Tmux {
 	if r == nil {
-		r = awexec.Real()
+		r = tsexec.Real()
 	}
 	return &Tmux{run: r, StopGrace: 2 * time.Second}
 }
 
-func (t *Tmux) tmux(ctx context.Context, args ...string) (awexec.Result, error) {
+func (t *Tmux) tmux(ctx context.Context, args ...string) (tsexec.Result, error) {
 	return t.run.Run(ctx, "", append([]string{"tmux"}, args...)...)
 }
 
@@ -43,11 +43,11 @@ func (t *Tmux) Available(ctx context.Context) error {
 }
 
 // SessionName implements Runtime.
-func (t *Tmux) SessionName(task string) string { return "aw@" + sanitize(task) }
+func (t *Tmux) SessionName(task string) string { return "tspace@" + sanitize(task) }
 func (t *Tmux) WindowName(repo string) string  { return WindowName(repo) }
 
 // target builds an exact-match tmux target. The '=' prefix disables tmux's
-// prefix matching, without which "aw-pay" would match session "aw-payments".
+// prefix matching, without which "tspace-pay" would match session "tspace-payments".
 func target(session string) string { return "=" + session }
 
 func windowTarget(session, window string) string { return "=" + session + ":=" + window }
@@ -58,7 +58,7 @@ func (t *Tmux) HasSession(ctx context.Context, session string) (bool, error) {
 	if err == nil {
 		return true, nil
 	}
-	if awexec.IsExit(err) {
+	if tsexec.IsExit(err) {
 		return false, nil
 	}
 	return false, err
@@ -175,11 +175,11 @@ func (t *Tmux) Restart(ctx context.Context, session string, w Window) error {
 		return err
 	}
 	if !st.Exists {
-		return fmt.Errorf("session is missing; run aw start for this task first")
+		return fmt.Errorf("session is missing; run tspace start for this task first")
 	}
 	p, ok := st.Panes[WindowName(w.Name)]
 	if !ok {
-		return fmt.Errorf("window %s is missing; run aw start for this repository first", w.Name)
+		return fmt.Errorf("window %s is missing; run tspace start for this repository first", w.Name)
 	}
 	if !p.Dead {
 		return fmt.Errorf("refusing to restart %s: a pane is still running", w.Name)
@@ -196,13 +196,15 @@ func (t *Tmux) Restart(ctx context.Context, session string, w Window) error {
 	return err
 }
 
-// Old names were ambiguous. Never adopt or kill an old session automatically,
-// and refuse launching duplicate agents while a possible legacy session exists.
-func (t *Tmux) checkLegacySession(ctx context.Context, session string) error {
-	if !strings.HasPrefix(session, "aw@") {
+// legacySessions are the names this task's session had before: "aw@" from
+// before the rename to tspace, and the older, ambiguous "aw-" scheme. Never
+// adopt or kill one automatically, and refuse launching duplicate agents while
+// one exists.
+func legacySessions(session string) []string {
+	if !strings.HasPrefix(session, "tspace@") {
 		return nil
 	}
-	s := strings.TrimPrefix(session, "aw@")
+	s := strings.TrimPrefix(session, "tspace@")
 	var old strings.Builder
 	old.WriteString("aw-")
 	for i := 0; i < len(s); i++ {
@@ -215,12 +217,18 @@ func (t *Tmux) checkLegacySession(ctx context.Context, session string) error {
 		}
 		old.WriteByte(s[i])
 	}
-	exists, err := t.HasSession(ctx, old.String())
-	if err != nil {
-		return err
-	}
-	if exists {
-		return fmt.Errorf("legacy session %q exists; inspect it with tmux and stop or rename it manually before starting %q (old names may belong to another task)", old.String(), session)
+	return []string{"aw@" + s, old.String()}
+}
+
+func (t *Tmux) checkLegacySession(ctx context.Context, session string) error {
+	for _, old := range legacySessions(session) {
+		exists, err := t.HasSession(ctx, old)
+		if err != nil {
+			return err
+		}
+		if exists {
+			return fmt.Errorf("legacy session %q exists; inspect it with tmux and stop or rename it manually before starting %q (old names may belong to another task)", old, session)
+		}
 	}
 	return nil
 }
@@ -229,7 +237,7 @@ func (t *Tmux) checkLegacySession(ctx context.Context, session string) error {
 //
 // Without this the window closes the instant an agent crashes, taking the
 // traceback with it — precisely when the user needs to read it. It is set per
-// window rather than globally so aw never changes the behaviour of the user's
+// window rather than globally so tspace never changes the behaviour of the user's
 // other tmux sessions.
 func (t *Tmux) setRemainOnExit(ctx context.Context, session, window string) error {
 	if err := t.fixName(ctx, session, window); err != nil {
@@ -243,7 +251,7 @@ func (t *Tmux) setRemainOnExit(ctx context.Context, session, window string) erro
 }
 
 // fixName stops tmux renaming the window after its running command: every
-// later target addresses the window by the name aw gave it.
+// later target addresses the window by the name tspace gave it.
 func (t *Tmux) fixName(ctx context.Context, session, window string) error {
 	_, err := t.tmux(ctx, "set-option", "-t", windowTarget(session, WindowName(window)), "-w", "automatic-rename", "off")
 	return err
@@ -357,7 +365,7 @@ func (t *Tmux) Attach(ctx context.Context, session string) error {
 		return err
 	}
 	if !exists {
-		return fmt.Errorf("no tmux session %q; run aw start first", session)
+		return fmt.Errorf("no tmux session %q; run tspace start first", session)
 	}
 
 	args := []string{"attach-session", "-t", target(session)}
@@ -382,7 +390,7 @@ const livePaneFormat = "#{pane_id}\t#{pane_dead}"
 func (t *Tmux) livePanes(ctx context.Context, session string) ([]string, error) {
 	res, err := t.tmux(ctx, "list-panes", "-s", "-t", target(session), "-F", livePaneFormat)
 	if err != nil {
-		if awexec.IsExit(err) {
+		if tsexec.IsExit(err) {
 			// The session went away between the check and here.
 			return nil, nil
 		}
@@ -422,7 +430,7 @@ func (t *Tmux) State(ctx context.Context, session string) (SessionState, error) 
 
 	res, err := t.tmux(ctx, "list-panes", "-s", "-t", target(session), "-F", stateFormat)
 	if err != nil {
-		if awexec.IsExit(err) {
+		if tsexec.IsExit(err) {
 			// The session went away between the two calls.
 			st.Exists = false
 			return st, nil

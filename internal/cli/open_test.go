@@ -61,7 +61,7 @@ func TestOpenPreparesAndResumesWorkspace(t *testing.T) {
 	if !strings.Contains(h.out.String(), "Expired cards") || !strings.Contains(h.out.String(), "Frontend next") {
 		t.Fatalf("context missing: %s", h.out.String())
 	}
-	if !strings.Contains(h.errb.String(), "aw restart PAY-142 backend") {
+	if !strings.Contains(h.errb.String(), "tspace restart PAY-142 backend") {
 		t.Fatalf("restart hint missing: %s", h.errb.String())
 	}
 	wt := h.app.Store.WorktreePath("PAY-142", "backend")
@@ -103,7 +103,7 @@ func TestOpenEmptyTaskExplainsNextStep(t *testing.T) {
 	if _, err := h.app.Store.Create("empty"); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.exec(t, h.app.newOpenCmd(), "empty"); err == nil || !strings.Contains(err.Error(), "aw repo add empty REPO") {
+	if err := h.exec(t, h.app.newOpenCmd(), "empty"); err == nil || !strings.Contains(err.Error(), "tspace repo add empty REPO") {
 		t.Fatalf("error: %v", err)
 	}
 }

@@ -27,7 +27,7 @@ func TestWorktreeStatusClean(t *testing.T) {
 
 func TestWorktreeStatusMissingDirectoryIsNotAnError(t *testing.T) {
 	g := testGit(t)
-	// A worktree deleted out from under a task is a state aw must display,
+	// A worktree deleted out from under a task is a state tspace must display,
 	// not one it should fail on.
 	st, err := g.WorktreeStatus(ctx(), filepath.Join(t.TempDir(), "gone"))
 	if err != nil {

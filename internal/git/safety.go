@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	awexec "github.com/wuyuz99/taskspace/internal/exec"
+	tsexec "github.com/wuyuz99/taskspace/internal/exec"
 )
 
 // Discardability answers "can this branch be deleted without losing work?"
@@ -150,7 +150,7 @@ func (g *Git) CanDiscardBranch(ctx context.Context, repo, branch, base string) (
 func (g *Git) squashMerged(ctx context.Context, repo, branch, base string) (bool, error) {
 	res, err := g.git(ctx, repo, "merge-base", base, branch)
 	if err != nil {
-		if awexec.IsExit(err) {
+		if tsexec.IsExit(err) {
 			return false, nil // unrelated histories
 		}
 		return false, err
@@ -163,8 +163,8 @@ func (g *Git) squashMerged(ctx context.Context, repo, branch, base string) (bool
 	// commit-tree needs an identity, and the user may not have configured one.
 	// It also honours commit.gpgSign, which would prompt for a passphrase to
 	// sign a probe nobody will ever see.
-	res, err = g.git(ctx, repo, "-c", "user.name=aw", "-c", "user.email=aw@localhost",
-		"commit-tree", "--no-gpg-sign", res.Out(), "-p", mergeBase, "-m", "aw squash-merge probe")
+	res, err = g.git(ctx, repo, "-c", "user.name=tspace", "-c", "user.email=tspace@localhost",
+		"commit-tree", "--no-gpg-sign", res.Out(), "-p", mergeBase, "-m", "tspace squash-merge probe")
 	if err != nil {
 		return false, fmt.Errorf("check whether %s was squash-merged: %w", branch, err)
 	}
@@ -179,7 +179,7 @@ func (g *Git) squashMerged(ctx context.Context, repo, branch, base string) (bool
 func (g *Git) upstreamOf(ctx context.Context, repo, branch string) (string, error) {
 	res, err := g.git(ctx, repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", branch+"@{upstream}")
 	if err != nil {
-		if awexec.IsExit(err) {
+		if tsexec.IsExit(err) {
 			// No upstream configured is an expected, non-exceptional state.
 			return "", nil
 		}

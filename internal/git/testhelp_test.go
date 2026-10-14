@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	awexec "github.com/wuyuz99/taskspace/internal/exec"
+	tsexec "github.com/wuyuz99/taskspace/internal/exec"
 )
 
 // These tests drive real git against real temporary repositories. Mocking git
@@ -21,7 +21,7 @@ func testGit(t *testing.T) *Git {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
 	}
-	return New(awexec.Real())
+	return New(tsexec.Real())
 }
 
 func ctx() context.Context { return context.Background() }
@@ -32,8 +32,8 @@ func runGit(t *testing.T, dir string, args ...string) string {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(),
-		"GIT_AUTHOR_NAME=aw test", "GIT_AUTHOR_EMAIL=test@example.invalid",
-		"GIT_COMMITTER_NAME=aw test", "GIT_COMMITTER_EMAIL=test@example.invalid",
+		"GIT_AUTHOR_NAME=tspace test", "GIT_AUTHOR_EMAIL=test@example.invalid",
+		"GIT_COMMITTER_NAME=tspace test", "GIT_COMMITTER_EMAIL=test@example.invalid",
 		"GIT_CONFIG_GLOBAL="+filepath.Join(dir, ".gitconfig-none"),
 		"GIT_CONFIG_SYSTEM="+filepath.Join(dir, ".gitconfig-none"),
 	)

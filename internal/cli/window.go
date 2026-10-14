@@ -9,7 +9,7 @@ import (
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
-// extraWindowPrefix starts the name of every window `aw window` opens.
+// extraWindowPrefix starts the name of every window `tspace window` opens.
 // Repository names must start with a letter or digit, so an extra window can
 // never take a repository's window name, and "_root" is already reserved.
 const extraWindowPrefix = "_"
@@ -22,9 +22,9 @@ func (a *App) newWindowCmd() *cobra.Command {
 		Short: "Open another window in a task's running session",
 		Long: "window adds a window to the task's session, in a repository's worktree or\n" +
 			"at the task root, without touching the windows already there:\n\n" +
-			"  aw window PAY-142 backend --agent     the task's agent, in backend only\n" +
-			"  aw window PAY-142 --name staging      a spare shell at the task root\n" +
-			"  aw window PAY-142 infra -- kubectl port-forward svc/api 8080:80\n\n" +
+			"  tspace window PAY-142 backend --agent     the task's agent, in backend only\n" +
+			"  tspace window PAY-142 --name staging      a spare shell at the task root\n" +
+			"  tspace window PAY-142 infra -- kubectl port-forward svc/api 8080:80\n\n" +
 			"Without a command the window runs your shell and closes when it exits.\n" +
 			"A command's window stays open after it exits, so its output can be read.\n" +
 			"Without REPO, a task with one repository opens that worktree; any other\n" +
@@ -72,7 +72,7 @@ func (a *App) newWindowCmd() *cobra.Command {
 				}
 				place, dir = repoName, r.Worktree
 			} else if !isDir(dir) {
-				return fmt.Errorf("task directory %s is missing; run: aw start %s", dir, t.Name)
+				return fmt.Errorf("task directory %s is missing; run: tspace start %s", dir, t.Name)
 			}
 
 			if useAgent {
@@ -88,7 +88,7 @@ func (a *App) newWindowCmd() *cobra.Command {
 				return err
 			}
 			if !st.Exists {
-				return fmt.Errorf("task %s has no running session; start it with: aw open %s", t.Name, t.Name)
+				return fmt.Errorf("task %s has no running session; start it with: tspace open %s", t.Name, t.Name)
 			}
 			taken := func(n string) bool {
 				_, ok := st.Pane(a.Runtime.WindowName(n))
@@ -133,13 +133,13 @@ func (a *App) newWindowCmd() *cobra.Command {
 				return err
 			}
 			if !focused {
-				a.printf("attach with: aw attach %s\n", t.Name)
+				a.printf("attach with: tspace attach %s\n", t.Name)
 			}
 			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&root, "root", false, "open the window at the task root")
-	cmd.Flags().BoolVar(&useAgent, "agent", false, "run the task's agent (its root agent, else the default from aw config)")
+	cmd.Flags().BoolVar(&useAgent, "agent", false, "run the task's agent (its root agent, else the default from tspace config)")
 	cmd.Flags().StringVar(&name, "name", "", "window name, shown with a leading '_' (default: from the place and command)")
 	cmd.Flags().BoolVarP(&detach, "detach", "d", false, "open the window without switching to it")
 	return cmd
@@ -156,7 +156,7 @@ func (a *App) taskAgent(t *task.Task) ([]string, error) {
 		return nil, err
 	}
 	if len(c.Agent) == 0 {
-		return nil, fmt.Errorf("task %s has no agent and no default is set; give a command after --, or set one with: aw config agent CMD", t.Name)
+		return nil, fmt.Errorf("task %s has no agent and no default is set; give a command after --, or set one with: tspace config agent CMD", t.Name)
 	}
 	return c.Agent, nil
 }

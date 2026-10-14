@@ -126,7 +126,7 @@ func (a *App) newTaskNoteCmd(handoff bool) *cobra.Command {
 	if handoff {
 		purpose = "The handoff is where the work stands: what is done, what is next, what\n" +
 			"to watch for. Whoever stops working on the task, person or agent, leaves\n" +
-			"it for whoever continues. `aw task list` shows its first line."
+			"it for whoever continues. `tspace task list` shows its first line."
 	}
 	cmd := &cobra.Command{Use: name + " NAME [TEXT]", Short: "Show or replace the task's " + name,
 		Long: purpose + "\n\n" +
@@ -136,7 +136,7 @@ func (a *App) newTaskNoteCmd(handoff bool) *cobra.Command {
 			"worktrees, so anything working in one reaches it as ../.context/" + noteFile + ",\n" +
 			"and the root agent as .context/" + noteFile + ". Editing the file directly is\n" +
 			"the same as replacing it here.\n\n" +
-			"Notes survive aw clean and are deleted with the task record.",
+			"Notes survive tspace clean and are deleted with the task record.",
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			t, err := a.loadTask(args[0])
@@ -228,7 +228,7 @@ func displayText(s string) string {
 
 func oneLine(s string) string { return strings.Join(strings.Fields(displayText(s)), " ") }
 
-// summaryWidth keeps `aw task list` inside an 80-column terminal: the row
+// summaryWidth keeps `tspace task list` inside an 80-column terminal: the row
 // already carries a workspace, ticket, title, timestamp and repo names.
 const summaryWidth = 48
 
@@ -271,7 +271,7 @@ func (a *App) printTaskContext(t *task.Task) {
 	if err != nil {
 		// Context is a courtesy on the way into a workspace; failing to read it
 		// must not stop you getting there.
-		a.warnf("aw: could not read task notes: %v\n", err)
+		a.warnf("tspace: could not read task notes: %v\n", err)
 		return
 	}
 	if brief.Text != "" {

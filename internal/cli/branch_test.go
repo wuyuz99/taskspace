@@ -13,8 +13,8 @@ func gitIn(t *testing.T, dir string, args ...string) string {
 	cmd := osexec.Command("git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(),
-		"GIT_AUTHOR_NAME=aw", "GIT_AUTHOR_EMAIL=t@example.invalid",
-		"GIT_COMMITTER_NAME=aw", "GIT_COMMITTER_EMAIL=t@example.invalid")
+		"GIT_AUTHOR_NAME=tspace", "GIT_AUTHOR_EMAIL=t@example.invalid",
+		"GIT_COMMITTER_NAME=tspace", "GIT_COMMITTER_EMAIL=t@example.invalid")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
@@ -101,7 +101,7 @@ func TestConfigRepoRegistry(t *testing.T) {
 	if err := h.exec(t, cfg(), "repo", "backend", "--unset"); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "backend"); err == nil || !strings.Contains(err.Error(), "aw config repo") {
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "backend"); err == nil || !strings.Contains(err.Error(), "tspace config repo") {
 		t.Fatalf("create with an unregistered name = %v, want a hint", err)
 	}
 	if h.app.Store.Exists("PAY-1") {

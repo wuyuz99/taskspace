@@ -3,7 +3,7 @@ package cli
 import (
 	"testing"
 
-	awgit "github.com/wuyuz99/taskspace/internal/git"
+	tsgit "github.com/wuyuz99/taskspace/internal/git"
 	"github.com/wuyuz99/taskspace/internal/status"
 )
 
@@ -18,27 +18,27 @@ func TestGitSummary(t *testing.T) {
 		{"error", status.RepoStatus{Git: status.GitError}, "error"},
 		{
 			"one dirty file",
-			status.RepoStatus{Git: status.GitDirty, Detail: awgit.Status{Modified: 1}},
+			status.RepoStatus{Git: status.GitDirty, Detail: tsgit.Status{Modified: 1}},
 			"dirty (1 file)",
 		},
 		{
 			"several dirty files",
-			status.RepoStatus{Git: status.GitDirty, Detail: awgit.Status{Modified: 2, Untracked: 1}},
+			status.RepoStatus{Git: status.GitDirty, Detail: tsgit.Status{Modified: 2, Untracked: 1}},
 			"dirty (3 files)",
 		},
 		{
 			"clean but ahead",
-			status.RepoStatus{Git: status.GitClean, Detail: awgit.Status{Ahead: 2}},
+			status.RepoStatus{Git: status.GitClean, Detail: tsgit.Status{Ahead: 2}},
 			"clean, ahead 2",
 		},
 		{
 			"stash only",
-			status.RepoStatus{Git: status.GitDirty, Detail: awgit.Status{Stashes: 1}},
+			status.RepoStatus{Git: status.GitDirty, Detail: tsgit.Status{Stashes: 1}},
 			"clean, 1 stash",
 		},
 		{
 			"everything at once",
-			status.RepoStatus{Git: status.GitDirty, Detail: awgit.Status{Modified: 1, Stashes: 2, Ahead: 1, Behind: 3}},
+			status.RepoStatus{Git: status.GitDirty, Detail: tsgit.Status{Modified: 1, Stashes: 2, Ahead: 1, Behind: 3}},
 			"dirty (1 file), 2 stashes, ahead 1, behind 3",
 		},
 	}

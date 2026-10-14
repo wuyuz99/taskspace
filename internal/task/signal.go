@@ -64,7 +64,7 @@ type signalFile struct {
 }
 
 // SignalsDir holds one file per window. It sits in .context so that an agent
-// in a worktree can write ../.context/signals/REPO.json without aw on its PATH.
+// in a worktree can write ../.context/signals/REPO.json without tspace on its PATH.
 func (s *Store) SignalsDir(taskName string) string {
 	return filepath.Join(s.ContextDir(taskName), "signals")
 }
