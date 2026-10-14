@@ -247,6 +247,40 @@ func TestCleanRefusesOnAStashAlone(t *testing.T) {
 	}
 }
 
+func TestCleanKeepsBranchUsedAsItsOwnBase(t *testing.T) {
+	h := newHarness(t)
+	run := func(args ...string) string {
+		t.Helper()
+		cmd := osexec.Command("git", args...)
+		cmd.Dir = h.repo
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=aw", "GIT_AUTHOR_EMAIL=t@example.invalid", "GIT_COMMITTER_NAME=aw", "GIT_COMMITTER_EMAIL=t@example.invalid")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	run("checkout", "-qb", "feature")
+	run("commit", "--allow-empty", "-m", "unique")
+	head := run("rev-parse", "HEAD")
+	run("checkout", "-q", "main")
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "review", h.repo+"@feature:feature"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newStartCmd(), "review", "--no-runtime"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newCleanCmd(), "review", "--delete-branch"); err != nil {
+		t.Fatal(err)
+	}
+	if got := run("rev-parse", "refs/heads/feature"); got != head {
+		t.Fatalf("branch lost its commit: %s, want %s", got, head)
+	}
+	if !strings.Contains(h.errb.String(), "kept branch feature") {
+		t.Fatalf("missing branch preservation warning: %s", h.errb.String())
+	}
+}
+
 func TestCleanSucceedsOnCleanWorktreeAndKeepsBranch(t *testing.T) {
 	h := newHarness(t)
 	tk := h.startedTask(t, "clean-task")

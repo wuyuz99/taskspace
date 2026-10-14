@@ -29,12 +29,20 @@ func (d Discardability) Safe() bool { return d.Merged || d.Squashed || d.Pushed 
 // remote-tracking ref that will survive cleanup. Reflogs and other worktree
 // HEADs are not durable protection for a detached commit.
 func (g *Git) HeadReferenced(ctx context.Context, worktree, excludedBranch string) (bool, error) {
-	res, err := g.git(ctx, worktree, "for-each-ref", "--contains=HEAD", "--format=%(refname)", "refs/heads/", "refs/tags/", "refs/remotes/")
+	return g.refSurvivesDeletion(ctx, worktree, "HEAD", excludedBranch)
+}
+
+// A commit ID or symbolic alias alone does not keep work reachable. Require a
+// containing ref other than the branch being removed or an alias of it.
+func (g *Git) refSurvivesDeletion(ctx context.Context, repo, ref, excludedBranch string) (bool, error) {
+	res, err := g.git(ctx, repo, "for-each-ref", "--contains="+ref, "--format=%(refname) %(symref)", "refs/heads/", "refs/tags/", "refs/remotes/")
 	if err != nil {
-		return false, fmt.Errorf("verify detached HEAD in %s: %w", worktree, err)
+		return false, fmt.Errorf("verify surviving reference for %s in %s: %w", ref, repo, err)
 	}
-	for _, ref := range strings.Fields(res.Stdout) {
-		if ref != "refs/heads/"+excludedBranch {
+	for _, line := range strings.Split(res.Stdout, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) > 0 && fields[0] != "refs/heads/"+excludedBranch &&
+			(len(fields) == 1 || fields[1] != "refs/heads/"+excludedBranch) {
 			return true, nil
 		}
 	}
@@ -84,7 +92,13 @@ func (g *Git) CanDiscardBranch(ctx context.Context, repo, branch, base string) (
 			return d, err
 		}
 		if baseExists {
-			merged, err := g.ok(ctx, repo, "merge-base", "--is-ancestor", branch, base)
+			baseExists, err = g.refSurvivesDeletion(ctx, repo, base, branch)
+			if err != nil {
+				return d, err
+			}
+		}
+		if baseExists {
+			merged, err := g.ok(ctx, repo, "merge-base", "--is-ancestor", "refs/heads/"+branch, base)
 			if err != nil {
 				return d, err
 			}
@@ -104,7 +118,7 @@ func (g *Git) CanDiscardBranch(ctx context.Context, repo, branch, base string) (
 	d.Upstream = upstream
 
 	if upstream != "" {
-		res, err := g.git(ctx, repo, "rev-list", "--count", upstream+".."+branch)
+		res, err := g.git(ctx, repo, "rev-list", "--count", upstream+"..refs/heads/"+branch)
 		if err != nil {
 			return d, fmt.Errorf("count unpushed commits on %s: %w", branch, err)
 		}
@@ -113,7 +127,12 @@ func (g *Git) CanDiscardBranch(ctx context.Context, repo, branch, base string) (
 			return d, fmt.Errorf("parse commit count for %s: %q", branch, res.Out())
 		}
 		d.UnpushedCommits = n
-		d.Pushed = n == 0
+		if n == 0 {
+			d.Pushed, err = g.refSurvivesDeletion(ctx, repo, upstream, branch)
+			if err != nil {
+				return d, err
+			}
+		}
 	}
 	return d, nil
 }

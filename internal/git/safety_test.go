@@ -211,3 +211,41 @@ func TestCanDiscardHandlesMissingBaseRef(t *testing.T) {
 		t.Error("Safe() = true when the base ref cannot be checked")
 	}
 }
+
+func TestDiscardRequiresSurvivingReference(t *testing.T) {
+	for _, mode := range []string{"same-branch", "full-ref", "symbolic-alias", "commit-id", "self-upstream", "saved-branch", "saved-tag"} {
+		t.Run(mode, func(t *testing.T) {
+			g := testGit(t)
+			repo := initRepo(t)
+			runGit(t, repo, "checkout", "-qb", "feature")
+			runGit(t, repo, "commit", "--allow-empty", "-m", "unique")
+			head := runGit(t, repo, "rev-parse", "HEAD")
+			runGit(t, repo, "checkout", "-q", "main")
+			base := "feature"
+			wantSafe := false
+			switch mode {
+			case "full-ref":
+				base = "refs/heads/feature"
+			case "symbolic-alias":
+				runGit(t, repo, "symbolic-ref", "refs/heads/alias", "refs/heads/feature")
+				base = "alias"
+			case "commit-id":
+				base = head
+			case "self-upstream":
+				base = "main"
+				runGit(t, repo, "config", "branch.feature.remote", ".")
+				runGit(t, repo, "config", "branch.feature.merge", "refs/heads/feature")
+			case "saved-branch":
+				runGit(t, repo, "branch", "saved", head)
+				wantSafe = true
+			case "saved-tag":
+				runGit(t, repo, "tag", "saved", head)
+				wantSafe = true
+			}
+			d, err := g.CanDiscardBranch(ctx(), repo, "feature", base)
+			if err != nil || d.Safe() != wantSafe {
+				t.Fatalf("Safe = %v, want %v; error = %v; reason = %s", d.Safe(), wantSafe, err, d.Reason())
+			}
+		})
+	}
+}

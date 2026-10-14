@@ -640,6 +640,10 @@ upstream*. Both halves matter: without the upstream test a pushed-but-unmerged
 branch looks unique forever, and without the merge test a merged local-only
 branch could never be cleaned.
 
+The reference protecting that work must survive deletion. A branch used as its
+own base or upstream, including through a symbolic alias, is not protection by
+itself; cleanup keeps the branch unless another surviving reference protects it.
+
 A **squash merge** counts as merged: none of the branch's commits reach the
 base, and the hosting service has often deleted the remote branch too, so
 `clean` also looks for a single commit on the base that makes exactly the
