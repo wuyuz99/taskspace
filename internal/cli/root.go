@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
 
 	"github.com/spf13/cobra"
 	tsexec "github.com/wuyuz99/taskspace/internal/exec"
@@ -18,8 +19,20 @@ import (
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
-// version is set at build time via -ldflags.
+// version is set at build time via -ldflags by release builds.
 var version = "dev"
+
+// buildVersion is the release version, or for `go install ...@v0.1.0`, which
+// sets no ldflags, the module version Go recorded in the binary.
+func buildVersion() string {
+	if version != "dev" {
+		return version
+	}
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+	return version
+}
 
 // App carries everything the commands need.
 type App struct {
@@ -114,7 +127,7 @@ func Execute(ctx context.Context) int {
 			"in a worktree finds its instructions in ../.context/TASK.md, records\n" +
 			"progress with `tspace task handoff TASK --file FILE`, and says when it is\n" +
 			"blocked or done with `tspace signal`.",
-		Version:       version,
+		Version:       buildVersion(),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
