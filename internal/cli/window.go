@@ -28,7 +28,7 @@ func (a *App) newWindowCmd() *cobra.Command {
 			"Without a command the window runs your shell and closes when it exits.\n" +
 			"A command's window stays open after it exits, so its output can be read.\n" +
 			"Without REPO, a task with one repository opens that worktree; any other\n" +
-			"task opens its root. Inside tmux you are switched to the new window.\n\n" +
+			"task opens its root. Inside the multiplexer you are switched to it.\n\n" +
 			"Extra windows are named with a leading '_' and are not recreated by\n" +
 			"start or open; stop ends them with the rest of the session.",
 		Args: func(cmd *cobra.Command, args []string) error {

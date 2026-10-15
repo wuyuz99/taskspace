@@ -55,10 +55,37 @@ func NewApp() (*App, error) {
 	return &App{
 		Store:   store,
 		Git:     tsgit.New(runner),
-		Runtime: runtime.NewTmux(runner),
+		Runtime: configuredRuntime(store, runner),
 		Out:     os.Stdout,
 		Err:     os.Stderr,
 	}, nil
+}
+
+// configuredRuntime is the multiplexer chosen by $TSPACE_MULTIPLEXER, else by
+// the config, else tmux. A bad choice does not stop tspace from starting: the
+// commands that need no session still work, and the rest report the problem.
+func configuredRuntime(store *task.Store, runner tsexec.Runner) runtime.Runtime {
+	c, err := store.LoadConfig()
+	if err != nil {
+		return runtime.Unavailable{Err: err}
+	}
+	name := multiplexerName(c)
+	rt, err := runtime.New(name, c.Adapters[name], runner)
+	if err != nil {
+		return runtime.Unavailable{Err: err}
+	}
+	return rt
+}
+
+// multiplexerName is the multiplexer in effect.
+func multiplexerName(c *task.Config) string {
+	if env := os.Getenv("TSPACE_MULTIPLEXER"); env != "" {
+		return env
+	}
+	if c.Multiplexer != "" {
+		return c.Multiplexer
+	}
+	return runtime.Default
 }
 
 func (a *App) printf(format string, args ...any) {
@@ -100,8 +127,10 @@ func Execute(ctx context.Context) int {
 		Long: "tspace manages multi-repo, multi-worktree coding-agent tasks.\n\n" +
 			"Worktrees are per-repository. Features aren't. A task is the first-class\n" +
 			"object: it spans repositories, each with its own branch, worktree and agent.\n\n" +
-			"Requires git, and tmux for sessions (Linux, macOS or WSL). Without tmux\n" +
-			"everything but the session still works: use `tspace start TASK --no-runtime`.\n\n" +
+			"Requires git, and a terminal multiplexer for sessions (Linux, macOS or\n" +
+			"WSL): tmux by default, or zellij or another chosen with `tspace config\n" +
+			"multiplexer`. Without one everything but the session still works: use\n" +
+			"`tspace start TASK --no-runtime`.\n\n" +
 			"A typical task:\n\n" +
 			"  tspace config repo backend ~/src/backend     register a repository, once\n" +
 			"  tspace task create PAY-142 backend frontend  record the task; nothing on disk yet\n" +

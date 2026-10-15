@@ -25,6 +25,7 @@ func (a *App) newConfigCmd() *cobra.Command {
 			a.printf("config: %s\n", a.Store.ConfigPath())
 			a.printf("agent:  %s\n", defaultAgentDisplay(c.Agent))
 			a.printf("branch: %s (new repositories' default branch)\n", c.Branch("TASK"))
+			a.printf("multiplexer: %s\n", multiplexerDisplay(multiplexerName(c), c))
 			if len(c.Repos) == 0 {
 				a.printf("repos:  none registered (tspace config repo NAME PATH)\n")
 				return nil
@@ -34,7 +35,7 @@ func (a *App) newConfigCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.AddCommand(a.newConfigAgentCmd(), a.newConfigRepoCmd(), a.newConfigBranchPrefixCmd())
+	cmd.AddCommand(a.newConfigAgentCmd(), a.newConfigRepoCmd(), a.newConfigBranchPrefixCmd(), a.newConfigMultiplexerCmd())
 	return cmd
 }
 

@@ -281,23 +281,8 @@ func (t *Tmux) Select(ctx context.Context, session, window string) error {
 }
 
 // launchArgv renders the command for a window. tmux takes the command as
-// trailing arguments; an empty Command means an interactive shell.
-func (t *Tmux) launchArgv(w Window) []string {
-	if len(w.Command) == 0 {
-		return []string{t.shell()}
-	}
-	return w.Command
-}
-
-func (t *Tmux) shell() string {
-	if t.Shell != "" {
-		return t.Shell
-	}
-	if s := os.Getenv("SHELL"); s != "" {
-		return s
-	}
-	return "/bin/sh"
-}
+// trailing arguments.
+func (t *Tmux) launchArgv(w Window) []string { return launchArgv(w, t.Shell) }
 
 func (t *Tmux) hasWindow(ctx context.Context, session, window string) (bool, error) {
 	st, err := t.State(ctx, session)

@@ -129,3 +129,67 @@ func TestBrokenConfigStopsTaskCreate(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestConfigMultiplexer(t *testing.T) {
+	t.Setenv("TSPACE_MULTIPLEXER", "")
+	h := newHarness(t)
+	if err := h.exec(t, h.app.newConfigCmd(), "multiplexer"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.out.String(), "tmux (built in) (default)") {
+		t.Fatalf("default: %q", h.out.String())
+	}
+
+	if err := h.exec(t, h.app.newConfigCmd(), "multiplexer", "zellij"); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := h.app.Store.LoadConfig(); c.Multiplexer != "zellij" || multiplexerName(c) != "zellij" {
+		t.Fatalf("zellij not chosen: %+v", c)
+	}
+
+	// An adapter's own flags are not tspace's.
+	if err := h.exec(t, h.app.newConfigCmd(), "multiplexer", "wez", "/opt/wez-adapter", "--unset"); err != nil {
+		t.Fatal(err)
+	}
+	c, _ := h.app.Store.LoadConfig()
+	if c.Multiplexer != "wez" || !slices.Equal(c.Adapters["wez"], []string{"/opt/wez-adapter", "--unset"}) {
+		t.Fatalf("adapter: %+v", c)
+	}
+	if err := h.exec(t, h.app.newConfigCmd()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.out.String(), "multiplexer: wez, through adapter /opt/wez-adapter --unset") {
+		t.Fatalf("config: %q", h.out.String())
+	}
+
+	t.Setenv("TSPACE_MULTIPLEXER", "zellij")
+	if name := multiplexerName(c); name != "zellij" {
+		t.Fatalf("environment did not override: %s", name)
+	}
+	t.Setenv("TSPACE_MULTIPLEXER", "")
+
+	for _, bad := range [][]string{{"multiplexer", "Bad/Name"}, {"multiplexer", "--unset", "tmux"}} {
+		if err := h.exec(t, h.app.newConfigCmd(), bad...); err == nil {
+			t.Fatalf("%v accepted", bad)
+		}
+	}
+
+	if err := h.exec(t, h.app.newConfigCmd(), "multiplexer", "--unset"); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := h.app.Store.LoadConfig(); c.Multiplexer != "" || len(c.Adapters["wez"]) == 0 {
+		t.Fatalf("--unset: %+v", c)
+	}
+}
+
+func TestBadMultiplexerKeepsOtherCommandsWorking(t *testing.T) {
+	t.Setenv("TSPACE_MULTIPLEXER", "Not/Valid")
+	h := newHarness(t)
+	rt := configuredRuntime(h.app.Store, nil)
+	if err := rt.Available(t.Context()); err == nil || !strings.Contains(err.Error(), "invalid multiplexer") {
+		t.Fatalf("Available = %v", err)
+	}
+	if got := rt.SessionName("a.b"); got != "tspace@a~2eb" {
+		t.Fatalf("SessionName = %s", got)
+	}
+}

@@ -53,7 +53,9 @@ checkout-redesign
 - A **Unix-like OS** — Linux or macOS (BSD likely works, untested). **Windows
   is not supported**; use WSL.
 - `git`
-- `tmux` (on macOS: `brew install tmux`)
+- A terminal multiplexer: `tmux` by default (on macOS: `brew install tmux`), or
+  `zellij` 0.44+, or any other through an adapter. See
+  [Choose a multiplexer](#choose-a-multiplexer).
 - Go 1.26+ to build
 
 Agents (Claude Code, Codex, anything else) are optional external programs. `tspace`
@@ -104,8 +106,8 @@ tspace task create checkout-redesign backend frontend@feature/cart infra:develop
 # create the worktrees, show the task context and enter its session
 tspace open checkout-redesign
 
-# one tmux session: the agent's _root window first, then a shell per repo
-tspace attach checkout-redesign        # detach with Ctrl-b d
+# one session: the agent's _root window first, then a shell per repo
+tspace attach checkout-redesign        # detach: Ctrl-b d in tmux, Ctrl-o d in zellij
 
 # more windows in the same session, as the work needs them
 tspace window checkout-redesign backend --agent             # an agent in backend only
@@ -209,7 +211,7 @@ Extra windows are named with a leading `_` — `_backend-claude`,
 `_staging` — so they never take a repository's window name, and a name already
 in use is refused rather than duplicated. A shell window closes when you exit
 it; a command's window stays open after the command exits, so its output can
-still be read. Inside tmux you are switched to the new window. Extra windows are
+still be read. Inside the multiplexer you are switched to the new window. Extra windows are
 not part of the task record: `start` and `open` do not recreate them, and `stop`
 ends them with the rest of the session.
 
@@ -402,7 +404,7 @@ $TSPACE_ROOT/worktrees/checkout-redesign/
 
 Cross-repo relative paths (`../frontend`) keep working inside a task.
 
-**Session** — one tmux session per task (`tspace@<encoded-task>`). Its first window,
+**Session** — one multiplexer session per task (`tspace@<encoded-task>`). Its first window,
 `_root`, opens in the task root and runs the task's agent, or your shell if it
 has none. Then comes one window per repo, named after the repo. No repository
 can be called `_root`: repository names start with a letter or digit. Closing
@@ -411,7 +413,7 @@ can be called `_root`: repository names start with a letter or digit. Closing
 ### Enter the whole workspace
 
 `tspace open TASK` prepares missing worktrees and session windows, prints the task
-brief and handoff, and attaches to the session (or switches clients inside tmux).
+brief and handoff, and attaches to the session (or switches clients inside the multiplexer).
 Existing windows are preserved. Dead windows get an explicit `tspace restart` hint;
 opening does not restart them automatically. Setup hooks run only for newly
 created worktrees, as with `tspace start`. Add at least one repository before opening.
@@ -449,12 +451,28 @@ windows should be created with `tspace start`. Restart replaces dead-window outp
 so inspect it first; it does not resume agent conversation history or rerun setup.
 Ordinary `start` continues to preserve existing windows, including dead ones.
 
-### Runtime compatibility
+### Choose a multiplexer
 
-Persistent sessions currently require tmux. Session lifecycle and window identity
-are behind `internal/runtime.Runtime`, so additional multiplexers can implement
-that interface. No other backend or runtime selector is implemented yet.
-Notes, task metadata, paths, plain shells, and `start --no-runtime` do not need tmux.
+Sessions run in tmux unless you choose otherwise. zellij is also built in, and
+any other multiplexer can be plugged in through a small adapter program:
+
+```bash
+tspace config multiplexer zellij                        # built in
+tspace config multiplexer wezterm                       # runs tspace-mux-wezterm from PATH
+tspace config multiplexer wezterm ~/bin/wez-adapter     # or a command of your choosing
+TSPACE_MULTIPLEXER=tmux tspace status                   # override for one command
+```
+
+The choice is user-wide: tspace looks for every task's session in the chosen
+multiplexer, so stop running sessions before switching. An adapter only
+translates a handful of operations into its multiplexer's commands. tspace
+still enforces the safety rules itself: it never starts a window twice and
+never relaunches a live one. [docs/MULTIPLEXERS.md](docs/MULTIPLEXERS.md) has
+the protocol, a 100-line reference adapter in sh, and the one zellij caveat:
+tabs can only be added to a session while someone is attached to it.
+
+Notes, task metadata, paths, plain shells, and `start --no-runtime` need no
+multiplexer at all.
 
 Session names now use the `tspace@` namespace; dots are encoded as `~2e`, with the
 escape marker itself escaped. `a.b` and `a-b` have distinct sessions and windows.
@@ -482,7 +500,7 @@ $TSPACE_ROOT/                          default ~/.tspace, override with TSPACE_R
 ```
 
 Only declarative metadata is stored. **Runtime state is never written down** —
-whether a session is up and whether a worktree is dirty are asked of tmux and
+whether a session is up and whether a worktree is dirty are asked of the multiplexer and
 git every time. Nothing can go stale, and there is no repair command.
 
 Records, recipes and notes are written `0600`: your notes are your own material,
@@ -577,7 +595,7 @@ state of its own: whatever its agent changes shows up in the repositories' rows.
 They are separate columns because a worktree can be dirty *and* running at the
 same time — that is the normal state of an agent doing its job. `tspace` reports
 only what it can observe; it will not guess that an agent is "waiting for
-input", because tmux cannot tell it that.
+input", because no multiplexer can tell it that.
 
 `tspace status --watch` redraws the table every two seconds (`--interval`), and
 `--json` prints the same observations for a script.
@@ -639,7 +657,7 @@ enter attach · s start · r restart · x stop · c clear signal · q quit
 ```
 
 `enter` attaches to the selected window and detaching brings you back; inside
-tmux it switches the client instead and the dashboard keeps running in its own
+the multiplexer it switches the client instead and the dashboard keeps running in its own
 window. Every key runs the command you would have typed.
 
 ## Safety
@@ -698,7 +716,7 @@ worktrees exist.
 | `tspace open TASK` | Prepare worktrees, show brief/handoff, and attach |
 | `tspace restart TASK REPO` / `tspace restart TASK --root` | Relaunch a dead repository or root window |
 | `tspace stop TASK` | Interrupt agents, end the session, keep worktrees |
-| `tspace attach TASK` | Attach (or `switch-client` when already in tmux) |
+| `tspace attach TASK` | Attach (or switch the client when already inside the multiplexer) |
 | `tspace window TASK [REPO / --root] [--agent / -- CMD]` | Open another window in the running session |
 | `tspace shell TASK [REPO / --root]` | Interactive shell in a worktree or the task root |
 | `tspace path TASK [REPO / --root]` | Print a worktree or task-root path, for `cd "$(...)"` |
@@ -719,8 +737,8 @@ go test ./...       # unit + git integration tests
 ```
 
 Git tests build real temporary repositories rather than mocking git — mocking
-would only test our idea of git. tmux tests skip themselves when tmux is
-absent. No agent is needed to run the suite.
+would only test our idea of git. tmux and zellij tests skip themselves when
+the program is absent. No agent is needed to run the suite.
 
 The full end-to-end check, against real repos and a real tmux server:
 
@@ -744,14 +762,15 @@ GOOS=linux GOARCH=amd64 go build -o tspace-linux ./cmd/tspace
 
 ## Current limitations
 
-- **Unix only.** tmux is required; there is no Windows path.
+- **Unix only.** A multiplexer (tmux, zellij or an adapter's) is required for
+  sessions; there is no Windows path.
 - **Submodules** are detected and reported, but not recursed into.
 - **No notifications.** `internal/status` is the single place one would attach.
 - **Extra windows are not remembered.** `tspace window` adds to the running
   session only; after `stop`, `start` recreates the root and repository
   windows, not the extras.
 - **Agent windows get no `TSPACE_*` variables.** Shells from `tspace shell` and hooks
-  do; tmux windows, including `tspace window`, start from tmux's environment.
+  do; session windows, including `tspace window`, start from the multiplexer's environment.
 - **Briefs and handoffs render with control characters stripped.** The stored
   Markdown keeps every byte; what reaches the terminal cannot move the cursor or
   retitle the tab, because a brief is usually pasted in from somewhere else.
@@ -763,7 +782,8 @@ GOOS=linux GOARCH=amd64 go build -o tspace-linux ./cmd/tspace
   original sketch do not, and nothing writes notes on your behalf.
 - **Little configuration.** `TSPACE_ROOT` chooses the state directory, and
   `$TSPACE_ROOT/config.json` holds the default task-root agent, the registered
-  repositories and the branch prefix. Nothing else is configurable.
+  repositories, the branch prefix and the multiplexer. Nothing else is
+  configurable.
 - Existing sessions from the old `aw@...` or `aw-...` naming schemes require manual inspection
   and stopping or renaming before starting their replacement.
 
@@ -781,7 +801,8 @@ agent coordination is not part of the current workspace workflow.
 - `tspace run TASK "prompt"` to coordinate agents across repositories
 - Notifications when an agent finishes or blocks
 - GitHub/PR integration: PRs, CI status, merge readiness
-- More runtimes — zellij, plain subprocess, remote
+- More built-in runtimes — plain subprocess, remote (anything else can already
+  be an adapter)
 
 ## License
 

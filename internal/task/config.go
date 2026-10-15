@@ -25,6 +25,14 @@ type Config struct {
 	// pointer because an empty prefix — branches named after the task alone —
 	// is a real choice, distinct from never having set one.
 	BranchPrefix *string `json:"branch_prefix,omitempty"`
+	// Multiplexer names the terminal multiplexer sessions run in: a built-in
+	// ("tmux", the default, or "zellij") or any name with an adapter. Unlike
+	// the defaults above it is not recorded on tasks: it is where tspace looks
+	// for every task's session.
+	Multiplexer string `json:"multiplexer,omitempty"`
+	// Adapters maps a multiplexer name to the command of its adapter, for
+	// adapters not on PATH as tspace-mux-NAME.
+	Adapters map[string][]string `json:"adapters,omitempty"`
 }
 
 // DefaultBranchPrefix prefixes a task's branch when the config names none.
