@@ -33,8 +33,8 @@ func (a *App) newDashCmd() *cobra.Command {
 			"  x             stop the task, after confirming (tspace stop)\n" +
 			"  c             clear the row's signal\n" +
 			"  q             quit\n\n" +
-			"Inside tmux, enter switches the client to the window and dash keeps\n" +
-			"running in its own.\n\n" +
+			"Inside the multiplexer, enter switches the client to the window and\n" +
+			"dash keeps running in its own.\n\n" +
 			"dash needs a terminal. In a script, use `tspace status --json`.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -60,7 +60,7 @@ func (a *App) newDashCmd() *cobra.Command {
 					return nil
 				}
 
-				// Outside tmux, attaching needs the whole terminal, so the
+				// Outside the multiplexer, attaching needs the whole terminal, so the
 				// dashboard steps aside and comes back when the user detaches.
 				target := *m.attach
 				m.attach = nil
@@ -336,8 +336,8 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// focus shows a window: by switching the client when dash is inside tmux, and
-// otherwise by asking the program to quit and attach.
+// focus shows a window: by switching the client when dash is inside the
+// multiplexer, and otherwise by asking the program to quit and attach.
 func (m dashModel) focus(row dashRow) tea.Cmd {
 	return func() tea.Msg {
 		focused, err := m.app.Runtime.Focus(m.ctx, m.app.Runtime.SessionName(row.Task), row.Window)

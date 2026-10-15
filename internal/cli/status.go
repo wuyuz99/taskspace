@@ -137,7 +137,7 @@ func (a *App) newStatusCmd() *cobra.Command {
 			"  dead        the window is there but its command has exited; see tspace restart\n" +
 			"  no-window   the session is up without a window for this row\n" +
 			"  no-session  nothing is running for the task; see tspace start\n" +
-			"  unknown     tmux could not be queried; the reason is printed below\n\n" +
+			"  unknown     the multiplexer could not be queried; the reason is printed below\n\n" +
 			"GIT is missing (no worktree yet; see tspace start), error, clean or dirty,\n" +
 			"followed by stashes, commits ahead of and behind the upstream, and commits\n" +
 			"not pushed anywhere.\n\n" +

@@ -1,13 +1,15 @@
 // Package runtime owns persistent terminal sessions.
 //
-// tmux is the only implementation in v0.1, but the interface is sized so that
-// zellij or a plain detached subprocess can be added without the rest of tspace
-// learning about them. Nothing outside this package should know what tmux is.
+// A Runtime is one terminal multiplexer. tmux and zellij are built in (see
+// registry.go); any other is reached through an external adapter speaking the
+// protocol in adapter.go. Nothing outside this package should know which
+// multiplexer is in use.
 package runtime
 
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -75,6 +77,21 @@ type Runtime interface {
 	Select(ctx context.Context, session, window string) error
 	// State reports what is observably running.
 	State(ctx context.Context, session string) (SessionState, error)
+}
+
+// launchArgv is the argv a window runs: its command, or for an empty Command
+// the user's interactive shell (shell overrides $SHELL).
+func launchArgv(w Window, shell string) []string {
+	if len(w.Command) > 0 {
+		return w.Command
+	}
+	if shell != "" {
+		return []string{shell}
+	}
+	if s := os.Getenv("SHELL"); s != "" {
+		return []string{s}
+	}
+	return []string{"/bin/sh"}
 }
 
 // WindowName returns the window identifier a repo is given, so that callers

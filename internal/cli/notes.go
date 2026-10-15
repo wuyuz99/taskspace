@@ -210,10 +210,10 @@ func (a *App) newTaskNoteCmd(handoff bool) *cobra.Command {
 // displayText strips the control characters a terminal would act on.
 //
 // A brief is imported from an arbitrary file, and it is printed on the way into
-// attach, open and shell — the moment before the terminal is handed to tmux. An
-// escape sequence in one would retitle the tab or worse, so nothing but tabs
-// and newlines survives to the screen. The stored note keeps every byte: this
-// is a rendering rule, not a validation rule.
+// attach, open and shell — the moment before the terminal is handed to the
+// multiplexer. An escape sequence in one would retitle the tab or worse, so
+// nothing but tabs and newlines survives to the screen. The stored note keeps
+// every byte: this is a rendering rule, not a validation rule.
 func displayText(s string) string {
 	return strings.Map(func(r rune) rune {
 		if r == '\n' || r == '\t' {

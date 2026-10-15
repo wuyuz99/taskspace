@@ -29,11 +29,13 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 		Long: "start creates any missing worktrees and brings up the task's session.\n" +
 			"It is safe to re-run: existing worktrees are reused and running agents\n" +
 			"are left alone.\n\n" +
-			"The session is a detached tmux session with the task-root window first,\n" +
-			"then one window per repository, each running its agent or a shell. start\n" +
-			"returns as soon as they are up; it does not wait for the agents and needs\n" +
-			"no terminal. Naming REPOs starts only those, without the root window.\n\n" +
-			"Without tmux, start still creates the worktrees and then fails;\n" +
+			"The session is a detached session in the configured multiplexer (tmux\n" +
+			"unless `tspace config multiplexer` says otherwise), with the task-root\n" +
+			"window first, then one window per repository, each running its agent or a\n" +
+			"shell. start returns as soon as they are up; it does not wait for the\n" +
+			"agents and needs no terminal. Naming REPOs starts only those, without the\n" +
+			"root window.\n\n" +
+			"Without the multiplexer, start still creates the worktrees and then fails;\n" +
 			"--no-runtime creates them and stops there, successfully.",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -108,7 +110,7 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 				return nil
 			}
 			if withRoot {
-				// tmux cannot open a window in a directory that does not exist.
+				// A multiplexer cannot open a window in a directory that does not exist.
 				if err := os.MkdirAll(a.Store.TaskDir(t.Name), 0755); err != nil {
 					return err
 				}
@@ -290,8 +292,9 @@ func (a *App) newAttachCmd() *cobra.Command {
 		Use:   "attach TASK",
 		Short: "Attach to the task's session",
 		Long: "attach prints the task's brief and handoff, then hands the terminal to the\n" +
-			"task's tmux session; inside tmux it switches the current client instead.\n" +
-			"Detach with the tmux prefix and d, which leaves everything running.\n\n" +
+			"task's session; inside the same multiplexer it switches the current\n" +
+			"client instead. Detach with the multiplexer's detach key (tmux: the\n" +
+			"prefix, then d; zellij: Ctrl-o, then d), which leaves everything running.\n\n" +
 			"The session must already be up (`tspace start TASK`), and attach needs a TTY.\n" +
 			"To look at a task without one, use `tspace status TASK`.",
 		Args: cobra.ExactArgs(1),
