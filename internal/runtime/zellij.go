@@ -224,7 +224,7 @@ func (z *Zellij) layout(windows []Window) string {
 	b.WriteString("        pane size=2 borderless=true {\n            plugin location=\"zellij:status-bar\"\n        }\n")
 	b.WriteString("    }\n")
 	for _, w := range windows {
-		argv := launchArgv(w, z.Shell)
+		argv := z.launchArgv(w)
 		fmt.Fprintf(&b, "    tab name=%s", kdlString(WindowName(w.Name)))
 		if w.Dir != "" {
 			fmt.Fprintf(&b, " cwd=%s", kdlString(w.Dir))
@@ -303,7 +303,7 @@ func (z *Zellij) newTab(ctx context.Context, session string, w Window) error {
 		args = append(args, "--close-on-exit")
 	}
 	args = append(args, "--")
-	args = append(args, launchArgv(w, z.Shell)...)
+	args = append(args, z.launchArgv(w)...)
 	if _, err := z.action(ctx, session, args...); err != nil {
 		return fmt.Errorf("create zellij tab %s in %s: %w", w.Name, session, err)
 	}
@@ -358,7 +358,7 @@ func (z *Zellij) Restart(ctx context.Context, session string, w Window) error {
 		}
 	}
 
-	want := strings.Join(launchArgv(w, z.Shell), " ")
+	want := strings.Join(z.launchArgv(w), " ")
 	for _, p := range tab {
 		if p.Held && p.TerminalCommand == want {
 			_, err := z.action(ctx, session, "send-keys", "--pane-id", p.target(), "Enter")
@@ -607,4 +607,16 @@ func commandName(cmdline string) string {
 		return ""
 	}
 	return filepath.Base(fields[0])
+}
+
+// launchDelay holds every command back briefly before it runs. zellij can
+// miss the exit of a command that dies while its pane is still being set up —
+// about one in fifteen session starts — and then reports the pane as running
+// forever, which would hide exactly the agent that crashed on launch.
+const launchDelay = "0.25"
+
+// launchArgv is the window's command behind the launch delay. The wrapper
+// execs the command, so the pane's process is the command itself once it runs.
+func (z *Zellij) launchArgv(w Window) []string {
+	return append([]string{"sh", "-c", "sleep " + launchDelay + `; exec "$@"`, "sh"}, launchArgv(w, z.Shell)...)
 }
