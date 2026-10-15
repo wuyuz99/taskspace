@@ -52,7 +52,10 @@ func TestRealZellijLifecycle(t *testing.T) {
 				return
 			}
 			if time.Now().After(deadline) {
-				t.Fatalf("%s: %+v", what, st)
+				// zellij's own view, for diagnosing a CI-only failure.
+				panes, _ := exec.Command("zellij", "--session", s, "action", "list-panes", "--all", "--json").CombinedOutput()
+				tabs, _ := exec.Command("zellij", "--session", s, "action", "list-tabs", "--all", "--json").CombinedOutput()
+				t.Fatalf("%s: %+v\npanes: %s\ntabs: %s", what, st, panes, tabs)
 			}
 			time.Sleep(50 * time.Millisecond)
 		}
