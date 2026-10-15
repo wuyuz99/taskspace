@@ -13,7 +13,7 @@ import (
 const zellijPanesJSON = `[
   {"id":1,"is_plugin":true,"exited":false,"is_held":false,"tab_id":0,"tab_position":0,"tab_name":"_root"},
   {"id":0,"is_plugin":false,"exited":false,"is_held":false,"tab_id":0,"tab_position":0,"tab_name":"_root","pane_command":"/usr/bin/claude --model opus","terminal_command":"claude --model opus"},
-  {"id":2,"is_plugin":false,"exited":true,"is_held":true,"tab_id":1,"tab_position":1,"tab_name":"backend","pane_command":null,"terminal_command":"codex"}
+  {"id":2,"is_plugin":false,"exited":true,"is_held":true,"tab_id":1,"tab_position":1,"tab_name":"backend","pane_command":null,"terminal_command":"sh -c sleep 0.25; exec \"$@\" sh codex"}
 ]`
 
 func zellijWith(f *tsexec.Fake) *Zellij {
@@ -90,10 +90,10 @@ func TestZellijStartCreatesSessionFromOneLayout(t *testing.T) {
 	}
 	for _, want := range []string{
 		`tab name="_root" cwd="/wt/t"`,
-		`pane command="claude"`,
-		`args "say \"hi\""`,
+		`pane command="sh"`,
+		`args "-c" "sleep 0.25; exec \"$@\"" "sh" "claude" "say \"hi\""`,
 		`tab name="a~2eb" cwd="/wt/t/a.b"`,
-		`pane command="/bin/bash"`,
+		`args "-c" "sleep 0.25; exec \"$@\"" "sh" "/bin/bash"`,
 		`zellij:tab-bar`,
 	} {
 		if !strings.Contains(layout, want) {
@@ -144,7 +144,7 @@ func TestZellijAddsTabsOnlyWithAClient(t *testing.T) {
 		t.Fatal(err)
 	}
 	cmds := strings.Join(f.Commands(), "\n")
-	if strings.Count(cmds, "new-tab") != 1 || !strings.Contains(cmds, "--session tspace@t action new-tab --no-focus --name frontend --cwd /wt/f -- codex") {
+	if strings.Count(cmds, "new-tab") != 1 || !strings.Contains(cmds, "--session tspace@t action new-tab --no-focus --name frontend --cwd /wt/f -- sh -c sleep 0.25; exec \"$@\" sh codex") {
 		t.Errorf("want only the missing frontend tab, got:\n%s", cmds)
 	}
 }
