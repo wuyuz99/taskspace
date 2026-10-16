@@ -92,7 +92,7 @@ func (a *Adapter) Available(ctx context.Context) error {
 }
 
 // SessionName implements Runtime.
-func (a *Adapter) SessionName(task string) string { return "tspace@" + sanitize(task) }
+func (a *Adapter) SessionName(task string) string { return sessionName(task) }
 
 // WindowName implements Runtime.
 func (a *Adapter) WindowName(repo string) string { return WindowName(repo) }
@@ -157,10 +157,7 @@ func (a *Adapter) Start(ctx context.Context, session string, windows []Window) e
 		}
 		windows = windows[1:]
 	}
-	for _, w := range windows {
-		if _, present := st.Panes[WindowName(w.Name)]; present {
-			continue
-		}
+	for _, w := range missingWindows(st, windows) {
 		if err := a.windowCall(ctx, "new-window", session, w); err != nil {
 			return fmt.Errorf("create window %s in %s: %w", w.Name, session, err)
 		}
@@ -174,11 +171,8 @@ func (a *Adapter) OpenWindow(ctx context.Context, session string, w Window) erro
 	if err != nil {
 		return err
 	}
-	if !st.Exists {
-		return fmt.Errorf("session is missing; run tspace start for this task first")
-	}
-	if _, present := st.Panes[WindowName(w.Name)]; present {
-		return fmt.Errorf("window %s already exists in %s; use restart to relaunch it", w.Name, session)
+	if err := checkOpen(st, session, w); err != nil {
+		return err
 	}
 	if err := a.windowCall(ctx, "new-window", session, w); err != nil {
 		return fmt.Errorf("create window %s in %s: %w", w.Name, session, err)
@@ -192,18 +186,10 @@ func (a *Adapter) Restart(ctx context.Context, session string, w Window) error {
 	if err != nil {
 		return err
 	}
-	if !st.Exists {
-		return fmt.Errorf("session is missing; run tspace start for this task first")
+	if err := checkRestart(st, w); err != nil {
+		return err
 	}
-	p, ok := st.Panes[WindowName(w.Name)]
-	if !ok {
-		return fmt.Errorf("window %s is missing; run tspace start for this repository first", w.Name)
-	}
-	if !p.Dead {
-		return fmt.Errorf("refusing to restart %s: a pane is still running", w.Name)
-	}
-	err = a.windowCall(ctx, "respawn", session, w)
-	return err
+	return a.windowCall(ctx, "respawn", session, w)
 }
 
 // Stop implements Runtime.

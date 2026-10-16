@@ -45,7 +45,9 @@ tspace config multiplexer wezterm ~/bin/wez-adapter --x   # runs this instead
 ```
 
 Giving a command for a built-in name (`tspace config multiplexer tmux ~/bin/my-tmux`)
-replaces the built-in support.
+replaces the built-in support. Choosing the name again without a command
+(`tspace config multiplexer tmux`, or `--unset` for tmux) forgets the command,
+going back to the built-in support, or to `tspace-mux-NAME` for other names.
 
 The adapter only translates. tspace checks the adapter's own state report
 before every change, so an adapter never has to decide whether a window may be

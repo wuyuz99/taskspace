@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -9,12 +10,15 @@ import (
 )
 
 // zellijPanesJSON is trimmed `zellij action list-panes --all --json` output:
-// a plugin pane, a live agent, and a held pane whose command exited.
-const zellijPanesJSON = `[
+// a plugin pane, a live agent, and a held pane whose command, codex in /wt/b,
+// exited.
+var zellijPanesJSON = fmt.Sprintf(`[
   {"id":1,"is_plugin":true,"exited":false,"is_held":false,"tab_id":0,"tab_position":0,"tab_name":"_root"},
   {"id":0,"is_plugin":false,"exited":false,"is_held":false,"tab_id":0,"tab_position":0,"tab_name":"_root","pane_command":"/usr/bin/claude --model opus","terminal_command":"claude --model opus"},
-  {"id":2,"is_plugin":false,"exited":true,"is_held":true,"tab_id":1,"tab_position":1,"tab_name":"backend","pane_command":null,"terminal_command":"sh -c sleep 0.25; exec \"$@\" sh codex"}
-]`
+  {"id":2,"is_plugin":false,"exited":true,"is_held":true,"tab_id":1,"tab_position":1,"tab_name":"backend","pane_command":null,"terminal_command":%q}
+]`, strings.Join(NewZellij(nil).launchArgv(backend), " "))
+
+var backend = Window{Name: "backend", Dir: "/wt/b", Command: []string{"codex"}}
 
 func zellijWith(f *tsexec.Fake) *Zellij {
 	z := NewZellij(f)
@@ -91,9 +95,10 @@ func TestZellijStartCreatesSessionFromOneLayout(t *testing.T) {
 	for _, want := range []string{
 		`tab name="_root" cwd="/wt/t"`,
 		`pane command="sh"`,
-		`args "-c" "sleep 0.25; exec \"$@\"" "sh" "claude" "say \"hi\""`,
+		`args "-c" "sleep 0.25; exec \"$@\"" "tspace-`,
+		`" "claude" "say \"hi\""`,
 		`tab name="a~2eb" cwd="/wt/t/a.b"`,
-		`args "-c" "sleep 0.25; exec \"$@\"" "sh" "/bin/bash"`,
+		`" "/bin/bash"`,
 		`zellij:tab-bar`,
 	} {
 		if !strings.Contains(layout, want) {
@@ -144,7 +149,8 @@ func TestZellijAddsTabsOnlyWithAClient(t *testing.T) {
 		t.Fatal(err)
 	}
 	cmds := strings.Join(f.Commands(), "\n")
-	if strings.Count(cmds, "new-tab") != 1 || !strings.Contains(cmds, "--session tspace@t action new-tab --no-focus --name frontend --cwd /wt/f -- sh -c sleep 0.25; exec \"$@\" sh codex") {
+	if strings.Count(cmds, "new-tab") != 1 || !strings.Contains(cmds, "--session tspace@t action new-tab --no-focus --name frontend --cwd /wt/f -- sh -c sleep 0.25; exec \"$@\" tspace-") ||
+		!strings.HasSuffix(cmds, " codex") {
 		t.Errorf("want only the missing frontend tab, got:\n%s", cmds)
 	}
 }
@@ -166,7 +172,7 @@ func TestZellijRestartRerunsHeldPaneInPlace(t *testing.T) {
 	if err := z.Restart(ctx(), "tspace@t", Window{Name: "_root", Command: []string{"claude", "--model", "opus"}}); err == nil {
 		t.Error("Restart of a live window succeeded")
 	}
-	if err := z.Restart(ctx(), "tspace@t", Window{Name: "backend", Command: []string{"codex"}}); err != nil {
+	if err := z.Restart(ctx(), "tspace@t", backend); err != nil {
 		t.Fatal(err)
 	}
 	if !f.Ran("--session tspace@t action send-keys --pane-id terminal_2 Enter") {
@@ -175,8 +181,49 @@ func TestZellijRestartRerunsHeldPaneInPlace(t *testing.T) {
 
 	// A changed command means a new tab, which needs a client.
 	f.RespondOut("list-clients", "CLIENT_ID ZELLIJ_PANE_ID RUNNING_COMMAND\n")
-	if err := z.Restart(ctx(), "tspace@t", Window{Name: "backend", Command: []string{"codex", "--new"}}); err == nil {
+	if err := z.Restart(ctx(), "tspace@t", Window{Name: "backend", Dir: "/wt/b", Command: []string{"codex", "--new"}}); err == nil {
 		t.Error("Restart with a changed command and no client succeeded")
+	}
+	// So does a changed directory: rerunning in place would use the old one.
+	if err := z.Restart(ctx(), "tspace@t", Window{Name: "backend", Dir: "/wt/moved", Command: []string{"codex"}}); err == nil {
+		t.Error("Restart with a changed directory and no client succeeded")
+	}
+}
+
+func TestZellijLaunchFingerprintKeepsArgvApart(t *testing.T) {
+	z := zellijWith(tsexec.NewFake())
+	a := strings.Join(z.launchArgv(Window{Command: []string{"a b"}}), " ")
+	b := strings.Join(z.launchArgv(Window{Command: []string{"a", "b"}}), " ")
+	if a == b {
+		t.Errorf("[\"a b\"] and [\"a\" \"b\"] launch as the same command line: %s", a)
+	}
+}
+
+func TestZellijStateListsSessionsOnlyWhenNeeded(t *testing.T) {
+	f := tsexec.NewFake().RespondOut("list-panes", zellijPanesJSON)
+	if _, err := zellijWith(f).State(ctx(), "tspace@t"); err != nil {
+		t.Fatal(err)
+	}
+	if f.Ran("list-sessions") {
+		t.Errorf("list-sessions run although list-panes answered: %v", f.Commands())
+	}
+
+	f = tsexec.NewFake().Fail("list-panes", "Session not found", 1).RespondOut("list-sessions", "tspace@other [Created 1s ago]\n")
+	st, err := zellijWith(f).State(ctx(), "tspace@t")
+	if err != nil || st.Exists {
+		t.Errorf("State of a missing session = %+v, %v; want missing, nil", st, err)
+	}
+}
+
+func TestZellijCreateFromInsideZellijIsNotNested(t *testing.T) {
+	t.Setenv("ZELLIJ", "0")
+	t.Setenv("ZELLIJ_SESSION_NAME", "elsewhere")
+	f := tsexec.NewFake().Fail("list-sessions", "No active zellij sessions found.", 1).RespondOut("query-tab-names", "_root\n")
+	if err := zellijWith(f).Start(ctx(), "tspace@t", []Window{{Name: "_root"}}); err != nil {
+		t.Fatal(err)
+	}
+	if !f.Ran("env -u ZELLIJ -u ZELLIJ_SESSION_NAME -u ZELLIJ_PANE_ID zellij --layout") {
+		t.Errorf("session created with the current session's environment: %v", f.Commands())
 	}
 }
 
@@ -217,6 +264,40 @@ func TestZellijFocusSwitchesSessionInsideZellij(t *testing.T) {
 	}
 	if !f.Ran("zellij action switch-session tspace@t --tab-position 1") {
 		t.Errorf("no switch-session: %v", f.Commands())
+	}
+}
+
+func TestZellijFocusRefusesMissingTabInCurrentSession(t *testing.T) {
+	t.Setenv("ZELLIJ", "0")
+	t.Setenv("ZELLIJ_SESSION_NAME", "tspace@t")
+	f := tsexec.NewFake().RespondOut("list-panes", zellijPanesJSON)
+	ok, err := zellijWith(f).Focus(ctx(), "tspace@t", "missing")
+	if err == nil || ok {
+		t.Errorf("Focus(missing) = %v, %v; want an error", ok, err)
+	}
+	if f.Ran("go-to-tab-name") {
+		t.Errorf("switched to a tab that does not exist: %v", f.Commands())
+	}
+}
+
+func TestZellijAttachInsideZellijLandsOnSelectedTab(t *testing.T) {
+	t.Setenv("ZELLIJ", "0")
+	t.Setenv("ZELLIJ_SESSION_NAME", "elsewhere")
+	f := tsexec.NewFake().
+		RespondOut("list-sessions", "tspace@t [Created 1s ago]\n").
+		RespondOut("list-panes", zellijPanesJSON)
+	z := zellijWith(f)
+	if err := z.Select(ctx(), "tspace@t", "backend"); err != nil {
+		t.Fatal(err)
+	}
+	if err := z.Attach(ctx(), "tspace@t"); err != nil {
+		t.Fatal(err)
+	}
+	if !f.Ran("zellij action switch-session tspace@t --tab-position 1") {
+		t.Errorf("switch-session ignored the selected tab: %v", f.Commands())
+	}
+	if w := z.takeSelected("tspace@t"); w != "" {
+		t.Errorf("selection %q left behind after Attach", w)
 	}
 }
 
