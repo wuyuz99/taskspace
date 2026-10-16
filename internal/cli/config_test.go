@@ -180,6 +180,32 @@ func TestConfigMultiplexer(t *testing.T) {
 	if c, _ := h.app.Store.LoadConfig(); c.Multiplexer != "" || len(c.Adapters["wez"]) == 0 {
 		t.Fatalf("--unset: %+v", c)
 	}
+
+	// Choosing a name again without a command drops the command given before,
+	// which for a built-in name means going back to the built-in support.
+	for _, args := range [][]string{
+		{"multiplexer", "zellij", "/opt/try-zellij"},
+		{"multiplexer", "zellij"},
+		{"multiplexer", "tmux", "/opt/try-tmux"},
+		{"multiplexer", "--unset"},
+	} {
+		if err := h.exec(t, h.app.newConfigCmd(), args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c, _ = h.app.Store.LoadConfig()
+	if _, ok := c.Adapters["zellij"]; ok {
+		t.Fatalf("zellij adapter kept after choosing zellij alone: %+v", c)
+	}
+	if _, ok := c.Adapters["tmux"]; ok {
+		t.Fatalf("tmux adapter kept after --unset: %+v", c)
+	}
+	if err := h.exec(t, h.app.newConfigCmd(), "multiplexer", "wez"); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := h.app.Store.LoadConfig(); c.Adapters != nil {
+		t.Fatalf("empty adapter map kept: %+v", c)
+	}
 }
 
 func TestBadMultiplexerKeepsOtherCommandsWorking(t *testing.T) {

@@ -23,7 +23,8 @@ func (a *App) newConfigMultiplexerCmd() *cobra.Command {
 			"tspace's adapter protocol (see docs/MULTIPLEXERS.md). A NAME that is not\n" +
 			"built in runs tspace-mux-NAME from PATH, or the COMMAND given here:\n\n" +
 			"  tspace config multiplexer wezterm ~/bin/tspace-wezterm --flag\n\n" +
-			"A COMMAND given for a built-in name replaces the built-in support.\n" +
+			"A COMMAND given for a built-in name replaces the built-in support;\n" +
+			"choosing the name again without one, or --unset for tmux, goes back to it.\n" +
 			"$TSPACE_MULTIPLEXER overrides the choice for one shell or command.\n\n" +
 			"The choice applies to every task at once: tspace looks for each task's\n" +
 			"session in the chosen multiplexer, so stop running sessions before switching.",
@@ -42,20 +43,23 @@ func (a *App) newConfigMultiplexerCmd() *cobra.Command {
 
 			prev := multiplexerName(c)
 			name := runtime.Default
-			if unset {
-				c.Multiplexer = ""
-			} else {
+			if !unset {
 				name = args[0]
 				if err := runtime.ValidateName(name); err != nil {
 					return err
 				}
-				c.Multiplexer = name
-				if len(args) > 1 {
-					if c.Adapters == nil {
-						c.Adapters = map[string][]string{}
-					}
-					command := append([]string{expandHome(args[1])}, args[2:]...)
-					c.Adapters[name] = command
+			}
+			c.Multiplexer = name
+			// The command given, or its absence, is what NAME runs from now on.
+			if len(args) > 1 {
+				if c.Adapters == nil {
+					c.Adapters = map[string][]string{}
+				}
+				c.Adapters[name] = append([]string{expandHome(args[1])}, args[2:]...)
+			} else {
+				delete(c.Adapters, name)
+				if len(c.Adapters) == 0 {
+					c.Adapters = nil
 				}
 			}
 			if name == runtime.Default {

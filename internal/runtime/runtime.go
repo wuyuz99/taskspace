@@ -94,6 +94,51 @@ func launchArgv(w Window, shell string) []string {
 	return []string{"/bin/sh"}
 }
 
+// sessionName is the session a task runs in. Every runtime uses it: tspace
+// finds a task's existing session by this name, so the scheme must not differ
+// between multiplexers.
+func sessionName(task string) string { return "tspace@" + sanitize(task) }
+
+// missingWindows returns the windows st has no pane for.
+func missingWindows(st SessionState, windows []Window) []Window {
+	var missing []Window
+	for _, w := range windows {
+		if _, present := st.Panes[WindowName(w.Name)]; !present {
+			missing = append(missing, w)
+		}
+	}
+	return missing
+}
+
+// checkOpen refuses to open w unless its session exists and has no window of
+// that name. Multiplexers allow duplicate names, and every later lookup is by
+// name, so a duplicate would make restart act on the wrong window.
+func checkOpen(st SessionState, session string, w Window) error {
+	if !st.Exists {
+		return fmt.Errorf("session is missing; run tspace start for this task first")
+	}
+	if _, present := st.Panes[WindowName(w.Name)]; present {
+		return fmt.Errorf("window %s already exists in %s; use restart to relaunch it", w.Name, session)
+	}
+	return nil
+}
+
+// checkRestart refuses to restart w unless it exists and nothing in it is
+// still running: restarting must never discard a live agent.
+func checkRestart(st SessionState, w Window) error {
+	if !st.Exists {
+		return fmt.Errorf("session is missing; run tspace start for this task first")
+	}
+	p, ok := st.Panes[WindowName(w.Name)]
+	if !ok {
+		return fmt.Errorf("window %s is missing; run tspace start for this repository first", w.Name)
+	}
+	if !p.Dead {
+		return fmt.Errorf("refusing to restart %s: a pane is still running", w.Name)
+	}
+	return nil
+}
+
 // WindowName returns the window identifier a repo is given, so that callers
 // outside this package (status, in particular) can look a repo's pane back up
 // without duplicating the sanitizing rules.

@@ -43,7 +43,7 @@ func (t *Tmux) Available(ctx context.Context) error {
 }
 
 // SessionName implements Runtime.
-func (t *Tmux) SessionName(task string) string { return "tspace@" + sanitize(task) }
+func (t *Tmux) SessionName(task string) string { return sessionName(task) }
 func (t *Tmux) WindowName(repo string) string  { return WindowName(repo) }
 
 // target builds an exact-match tmux target. The '=' prefix disables tmux's
@@ -104,10 +104,7 @@ func (t *Tmux) Start(ctx context.Context, session string, windows []Window) erro
 		windows = windows[1:]
 	}
 
-	for _, w := range windows {
-		if _, present := st.Panes[WindowName(w.Name)]; present {
-			continue
-		}
+	for _, w := range missingWindows(st, windows) {
 		if err := t.openWindow(ctx, session, w); err != nil {
 			return err
 		}
@@ -174,15 +171,8 @@ func (t *Tmux) Restart(ctx context.Context, session string, w Window) error {
 	if err != nil {
 		return err
 	}
-	if !st.Exists {
-		return fmt.Errorf("session is missing; run tspace start for this task first")
-	}
-	p, ok := st.Panes[WindowName(w.Name)]
-	if !ok {
-		return fmt.Errorf("window %s is missing; run tspace start for this repository first", w.Name)
-	}
-	if !p.Dead {
-		return fmt.Errorf("refusing to restart %s: a pane is still running", w.Name)
+	if err := checkRestart(st, w); err != nil {
+		return err
 	}
 	if err := t.setRemainOnExit(ctx, session, w.Name); err != nil {
 		return err
