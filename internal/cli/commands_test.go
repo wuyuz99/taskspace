@@ -238,7 +238,9 @@ func TestPostCreateRunsOnceWithItsEnvironment(t *testing.T) {
 	if _, err := h.app.Store.Create("PAY-4"); err != nil {
 		t.Fatal(err)
 	}
-	hook := `printf '%s|%s|%s' "$TSPACE_TASK" "$TSPACE_REPO" "$TSPACE_REPO_PATH" > hook.txt`
+	hook := `printf '%s|%s|%s|%s' "$TSPACE_TASK" "$TSPACE_REPO" "$TSPACE_REPO_PATH" "$TSPACE_WINDOW" > hook.txt`
+	// Run from another window, the hook must not claim to be that window.
+	t.Setenv(envWindow, "_root")
 	if err := h.exec(t, h.app.newRepoCmd(), "add", "PAY-4", h.repo, "--post-create", hook); err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +260,7 @@ func TestPostCreateRunsOnceWithItsEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("hook did not run in the worktree: %v", err)
 	}
-	if want := "PAY-4|" + name + "|" + r.Path; string(b) != want {
+	if want := "PAY-4|" + name + "|" + r.Path + "|"; string(b) != want {
 		t.Errorf("hook saw %q, want %q", b, want)
 	}
 }

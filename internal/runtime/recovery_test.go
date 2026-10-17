@@ -32,7 +32,7 @@ func TestRestartRefusesLiveOrMissingWindow(t *testing.T) {
 		if err := NewTmux(f).Restart(ctx(), "tspace-task", Window{Name: "backend"}); err == nil {
 			t.Fatal("expected refusal")
 		}
-		if f.Ran("respawn-window") {
+		if f.Ran("respawn-window") || f.Ran("respawn-pane") {
 			t.Fatal("refusal changed window")
 		}
 	}
@@ -47,7 +47,7 @@ func TestRestartDeadWindowDoesNotForce(t *testing.T) {
 	if err := NewTmux(f).Restart(ctx(), "tspace-task", Window{Name: "backend", Dir: "/work", Command: []string{"sleep", "10"}}); err != nil {
 		t.Fatal(err)
 	}
-	if !f.Ran("respawn-window -t =tspace-task:=backend -c /work sleep 10") || f.Ran("respawn-window -k") {
+	if !f.Ran("respawn-pane -t =tspace-task:=backend -c /work sleep 10") || f.Ran("respawn-pane -k") || f.Ran("respawn-window") {
 		t.Fatalf("unsafe argv: %v", f.Commands())
 	}
 }
@@ -155,17 +155,40 @@ func TestRealTmuxNewWindowsStayInTheBackground(t *testing.T) {
 	tm := NewTmux(r)
 	t.Cleanup(func() { r.Run(ctx(), "", "tmux", "kill-server") })
 	s := tm.SessionName("bg")
-	if err := tm.Start(ctx(), s, []Window{{Name: "_root", Dir: dir, Command: []string{"sleep", "60"}}, {Name: "backend", Dir: dir}}); err != nil {
+	if err := tm.Start(ctx(), s, []Window{{Name: "_root", Dir: dir, Command: []string{"sleep", "60"}}, {Name: "backend", Dir: dir, Command: []string{"false"}}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := tm.OpenWindow(ctx(), s, Window{Name: "_main-shell", Dir: dir, Transient: true}); err != nil {
 		t.Fatal(err)
 	}
-	res, err := r.Run(ctx(), "", "tmux", "list-windows", "-t", target(s), "-F", "#{window_active} #{window_name}")
-	if err != nil {
+	rootActive := func(after string) {
+		t.Helper()
+		res, err := r.Run(ctx(), "", "tmux", "list-windows", "-t", target(s), "-F", "#{window_active} #{window_name}")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(res.Stdout, "1 _root\n") {
+			t.Fatalf("after %s, _root is not the active window:\n%s", after, res.Stdout)
+		}
+	}
+	rootActive("opening a window")
+
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		st, err := tm.State(ctx(), s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st.Panes["backend"].Dead {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("backend never exited")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err := tm.Restart(ctx(), s, Window{Name: "backend", Dir: dir, Command: []string{"sleep", "60"}}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(res.Stdout, "1 _root\n") {
-		t.Fatalf("_root is not the active window:\n%s", res.Stdout)
-	}
+	rootActive("restarting a window")
 }

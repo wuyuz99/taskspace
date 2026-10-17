@@ -165,7 +165,9 @@ func (t *Tmux) launchFresh(ctx context.Context, session string, w Window) error 
 }
 
 // Restart never uses -k: tmux itself refuses to replace a live pane even if
-// another process starts one after our observation. Old dead-pane output is replaced.
+// another process starts one after our observation. Old dead-pane output is
+// replaced. It is respawn-pane for the same reason as in launchFresh: an
+// attached client must not be switched to the restarted window.
 func (t *Tmux) Restart(ctx context.Context, session string, w Window) error {
 	if err := t.checkLegacySession(ctx, session); err != nil {
 		return err
@@ -180,7 +182,7 @@ func (t *Tmux) Restart(ctx context.Context, session string, w Window) error {
 	if err := t.setRemainOnExit(ctx, session, w.Name); err != nil {
 		return err
 	}
-	args := []string{"respawn-window", "-t", windowTarget(session, WindowName(w.Name))}
+	args := []string{"respawn-pane", "-t", windowTarget(session, WindowName(w.Name))}
 	if w.Dir != "" {
 		args = append(args, "-c", w.Dir)
 	}

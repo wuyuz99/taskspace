@@ -64,8 +64,11 @@ func (a *App) newShellCmd() *cobra.Command {
 			shell := osexec.CommandContext(cmd.Context(), sh)
 			shell.Dir = r.Worktree
 			shell.Stdin, shell.Stdout, shell.Stderr = os.Stdin, os.Stdout, os.Stderr
+			// Not a window of the session: an empty TSPACE_WINDOW stops signal
+			// trusting the window this was run from, and it goes by directory.
 			shell.Env = append(os.Environ(),
 				"TSPACE_TASK="+t.Name,
+				envWindow+"=",
 				"TSPACE_REPO="+name,
 				"TSPACE_WORKTREE="+r.Worktree,
 				"TSPACE_TASK_DIR="+a.Store.TaskDir(t.Name),
