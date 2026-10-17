@@ -422,3 +422,44 @@ func samePath(a, b string) bool {
 	bi, err2 := os.Stat(b)
 	return err1 == nil && err2 == nil && os.SameFile(ai, bi)
 }
+
+// After clean the worktree is gone, so rm has nothing to say about it.
+func TestRepoRmAfterCleanSaysNothingOfTheWorktree(t *testing.T) {
+	h := newHarness(t)
+	tk := h.startedTask(t, "PAY-7")
+	repo := tk.RepoNames()[0]
+	if err := h.exec(t, h.app.newCleanCmd(), tk.Name); err != nil {
+		t.Fatal(err)
+	}
+	h.errb.Reset()
+	if err := h.exec(t, h.app.newRepoCmd(), "rm", tk.Name, repo); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(h.errb.String(), "left in place") {
+		t.Errorf("rm spoke of a worktree clean removed: %q", h.errb.String())
+	}
+}
+
+// Adding a repo back after rm finds its branch in the old worktree, which
+// start reuses, so there is nothing to warn about.
+func TestRepoAddBackAfterRmDoesNotWarnStartWillRefuse(t *testing.T) {
+	h := newHarness(t)
+	tk := h.startedTask(t, "PAY-7")
+	repo := tk.RepoNames()[0]
+	if err := h.exec(t, h.app.newRepoCmd(), "rm", tk.Name, repo); err != nil {
+		t.Fatal(err)
+	}
+	h.errb.Reset()
+	if err := h.exec(t, h.app.newRepoCmd(), "add", tk.Name, h.repo, "--name", repo, "--branch", tk.Repos[repo].Branch); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(h.errb.String(), "will refuse") {
+		t.Errorf("add warned start will refuse: %q", h.errb.String())
+	}
+	if !strings.Contains(h.out.String(), "start will reuse that worktree") {
+		t.Errorf("out = %q", h.out.String())
+	}
+	if err := h.exec(t, h.app.newStartCmd(), tk.Name, "--no-runtime"); err != nil {
+		t.Fatalf("start after add back: %v", err)
+	}
+}

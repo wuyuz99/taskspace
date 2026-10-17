@@ -325,9 +325,16 @@ func (a *App) addRepo(ctx context.Context, t *task.Task, c *task.Config, path st
 				name, branch, fetchNote(fetchErr), base)
 		}
 	}
+	worktree := a.Store.WorktreePath(t.Name, name)
 	if local {
+		// Checked out at this repo's own worktree path, as after repo rm and
+		// add again, start reuses the worktree; only elsewhere does it refuse.
 		if wt, err := a.Git.FindWorktreeForBranch(ctx, canonical, branch); err == nil && wt != nil {
-			a.warnf("note: %s is checked out at %s; start will refuse until it is switched away there\n", branch, wt.Path)
+			if own, err := a.Git.FindWorktree(ctx, canonical, worktree); err == nil && own != nil && own.Branch == branch {
+				a.printf("note: %s is already checked out at %s; start will reuse that worktree\n", branch, own.Path)
+			} else {
+				a.warnf("note: %s is checked out at %s; start will refuse until it is switched away there\n", branch, wt.Path)
+			}
 		}
 	}
 
@@ -335,7 +342,7 @@ func (a *App) addRepo(ctx context.Context, t *task.Task, c *task.Config, path st
 		Path:       canonical,
 		Branch:     branch,
 		Base:       base,
-		Worktree:   a.Store.WorktreePath(t.Name, name),
+		Worktree:   worktree,
 		Agent:      opts.Agent,
 		PostCreate: opts.PostCreate,
 	})
@@ -346,7 +353,7 @@ func (a *App) addRepo(ctx context.Context, t *task.Task, c *task.Config, path st
 	if local || remote != "" {
 		a.printf("  base:     %s\n", base)
 	}
-	a.printf("  worktree: %s\n", a.Store.WorktreePath(t.Name, name))
+	a.printf("  worktree: %s\n", worktree)
 	return nil
 }
 
@@ -379,7 +386,10 @@ func (a *App) newRepoRmCmd() *cobra.Command {
 				return err
 			}
 			a.printf("removed %s from %s\n", args[1], t.Name)
-			a.warnf("note: the worktree at %s was left in place\n", r.Worktree)
+			// After clean there is no worktree left to speak of.
+			if _, err := os.Stat(r.Worktree); err == nil {
+				a.warnf("note: the worktree at %s was left in place\n", r.Worktree)
+			}
 			return nil
 		},
 	}
