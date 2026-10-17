@@ -146,10 +146,12 @@ func (a *App) dashLoad(ctx context.Context) dashData {
 		if ts.RuntimeErr != nil {
 			d.Warn = append(d.Warn, fmt.Sprintf("%s: runtime could not be queried: %v", ts.Task, ts.RuntimeErr))
 		}
-		d.Rows = append(d.Rows, dashRow{
-			Task: ts.Task, Window: task.RootWindowName, Agent: ts.Root.Agent,
-			Runtime: ts.Root.Runtime, Git: "-", Signal: ts.Root.Signal, Dir: a.Store.TaskDir(ts.Task),
-		})
+		if ts.Root != nil {
+			d.Rows = append(d.Rows, dashRow{
+				Task: ts.Task, Window: task.RootWindowName, Agent: ts.Root.Agent,
+				Runtime: ts.Root.Runtime, Git: "-", Signal: ts.Root.Signal, Dir: a.Store.TaskDir(ts.Task),
+			})
+		}
 		for _, r := range ts.Repos {
 			if r.Err != nil {
 				d.Warn = append(d.Warn, fmt.Sprintf("%s/%s: %v", r.Task, r.Repo, r.Err))
@@ -480,11 +482,14 @@ func (m dashModel) View() string {
 func (m dashModel) table(b *strings.Builder, now time.Time) {
 	cells := make([][]string, 0, len(m.data.Rows)+1)
 	cells = append(cells, []string{"TASK", "REPO", "AGENT", "RUNTIME", "SIGNAL", "GIT"})
-	for _, r := range m.data.Rows {
-		// The task is named once, on its root row, so each task reads as a group.
+	for i, r := range m.data.Rows {
+		// The task is named once, on its first row, so each task reads as a group.
 		name, repo := "", r.Window
+		if i == 0 || m.data.Rows[i-1].Task != r.Task {
+			name = r.Task
+		}
 		if r.root() {
-			name, repo = r.Task, "(root)"
+			repo = "(root)"
 		}
 		cells = append(cells, []string{name, repo, r.Agent, string(r.Runtime), signalSummary(r.Signal, now), r.Git})
 	}

@@ -100,7 +100,11 @@ func (a *App) newTaskUpdateCmd() *cobra.Command {
 			}
 			a.printf("updated task %s\n", t.Name)
 			if setAgent {
-				a.printf("  agent: %s (applies on window creation or explicit restart)\n", agentDisplay(task.Repo{Agent: t.Agent}))
+				window := t.AgentWindow()
+				if window == t.AgentRepo && len(t.Repos[window].Agent) > 0 {
+					a.warnf("note: %s has an agent of its own, which its window keeps running\n", window)
+				}
+				a.printf("  agent: %s (window %s; applies on window creation or explicit restart)\n", agentDisplay(task.Repo{Agent: t.Agent}), window)
 			}
 			return nil
 		}}

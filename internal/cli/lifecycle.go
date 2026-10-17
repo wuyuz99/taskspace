@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	osexec "os/exec"
+	"slices"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -58,7 +59,8 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 			var windows []runtime.Window
 			// The root window comes first, so a fresh session opens on the agent
 			// that can see every repository. Naming repositories starts only those.
-			withRoot := len(args) == 1
+			// A single-repo task has none: its agent runs in the repository.
+			withRoot := len(args) == 1 && t.HasRootWindow()
 			if withRoot {
 				windows = append(windows, a.rootWindow(t))
 			}
@@ -95,12 +97,7 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 					}
 				}
 
-				windows = append(windows, runtime.Window{
-					Name:    name,
-					Dir:     r.Worktree,
-					Command: r.Agent,
-					Env:     windowEnv(t.Name, name),
-				})
+				windows = append(windows, a.repoWindow(t, name))
 			}
 
 			if changed {
@@ -119,6 +116,9 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 				}
 				a.printf("%-12s %s at %s\n", "(root)", t.AgentLabel(), a.Store.TaskDir(t.Name))
 			}
+			if t.AgentRepo != "" && slices.Contains(names, t.AgentRepo) {
+				a.printf("%-12s runs the task's agent: %s\n", t.AgentRepo, agentDisplay(task.Repo{Agent: t.RepoAgent(t.AgentRepo)}))
+			}
 			if err := a.Runtime.Available(ctx); err != nil {
 				a.warnf("worktrees are ready, but the runtime is unavailable: %v\n", err)
 				return err
@@ -134,6 +134,9 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 				if err := a.Store.ClearSignals(t.Name); err != nil {
 					a.warnf("tspace: %v\n", err)
 				}
+			}
+			if err := a.ensureContextDir(t); err != nil {
+				return err
 			}
 			if err := a.Runtime.Start(ctx, session, windows); err != nil {
 				return err
@@ -166,6 +169,15 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 			"create worktrees but do not start the session")
 	}
 	return cmd
+}
+
+// ensureContextDir creates the notes directory an agent in AgentRepo's window
+// is pointed at, which an agent such as Claude Code refuses if it is missing.
+func (a *App) ensureContextDir(t *task.Task) error {
+	if t.AgentRepo == "" {
+		return nil
+	}
+	return os.MkdirAll(a.Store.ContextDir(t.Name), 0o755)
 }
 
 // checkLaunched reports what start launched that is already gone. Start
@@ -293,18 +305,24 @@ func (a *App) newRestartCmd() *cobra.Command {
 			var w runtime.Window
 			label := t.Name
 			if root {
+				if !t.HasRootWindow() {
+					return fmt.Errorf("task %s has no root window; its agent runs in %s: tspace restart %s %s", t.Name, t.AgentRepo, t.Name, t.AgentRepo)
+				}
 				w = a.rootWindow(t)
 				if info, err := os.Stat(w.Dir); err != nil || !info.IsDir() {
 					return fmt.Errorf("task directory %s is missing; run: tspace start %s", w.Dir, t.Name)
 				}
 				label += " root window"
 			} else {
-				r, name, err := a.worktreeDir(t, args[1])
+				_, name, err := a.worktreeDir(t, args[1])
 				if err != nil {
 					return err
 				}
-				w = runtime.Window{Name: name, Dir: r.Worktree, Command: r.Agent, Env: windowEnv(t.Name, name)}
+				w = a.repoWindow(t, name)
 				label += "/" + name
+			}
+			if err := a.ensureContextDir(t); err != nil {
+				return err
 			}
 			if err := a.Runtime.Restart(cmd.Context(), a.Runtime.SessionName(t.Name), w); err != nil {
 				return err

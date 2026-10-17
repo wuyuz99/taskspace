@@ -73,8 +73,9 @@ type TaskStatus struct {
 	Task    string
 	Session string
 	Running bool
-	// Root is the task-root window, which has a process but no worktree.
-	Root  RootStatus
+	// Root is the task-root window, which has a process but no worktree. It
+	// is nil for a single-repo task, whose agent runs in the repository.
+	Root  *RootStatus
 	Repos []RepoStatus
 	// RuntimeErr is set when the runtime could not be queried at all.
 	RuntimeErr error
@@ -143,10 +144,12 @@ func (a *Aggregator) Task(ctx context.Context, t *task.Task) TaskStatus {
 		return nil
 	}
 
-	out.Root = RootStatus{
-		Agent:   t.AgentLabel(),
-		Runtime: a.windowState(sess, task.RootWindowName, runtimeUnknown),
-		Signal:  signal(task.RootWindowName),
+	if t.HasRootWindow() {
+		out.Root = &RootStatus{
+			Agent:   t.AgentLabel(),
+			Runtime: a.windowState(sess, task.RootWindowName, runtimeUnknown),
+			Signal:  signal(task.RootWindowName),
+		}
 	}
 
 	names := t.RepoNames()
@@ -160,6 +163,7 @@ func (a *Aggregator) Task(ctx context.Context, t *task.Task) TaskStatus {
 		go func() {
 			defer wg.Done()
 			rows[i] = a.repoStatus(ctx, t.Name, name, repo, sess, runtimeUnknown)
+			rows[i].Agent = task.Repo{Agent: t.RepoAgent(name)}.AgentLabel()
 			rows[i].Signal = signal(name)
 		}()
 	}

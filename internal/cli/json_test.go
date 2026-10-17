@@ -37,7 +37,8 @@ func TestStatusJSON(t *testing.T) {
 	if len(got) != 1 || got[0].Task != "PAY-142" || got[0].Session != "tspace-PAY-142" || got[0].Running {
 		t.Fatalf("task: %+v", got)
 	}
-	if got[0].Root.Agent != "shell" || got[0].Root.Runtime != "no-session" {
+	// One repository: the agent runs in it, and there is no root window.
+	if got[0].Root != nil {
 		t.Fatalf("root: %+v", got[0].Root)
 	}
 	if len(got[0].Repos) != 1 {

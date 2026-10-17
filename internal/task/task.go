@@ -31,6 +31,16 @@ type Task struct {
 	// opens in the directory holding every worktree, where one agent can reach
 	// every repository. Empty means the user's shell.
 	Agent []string `json:"agent,omitempty"`
+	// AgentRepo, when set, is the repository whose window runs Agent, in its
+	// worktree, in place of a task-root window. task create sets it for a task
+	// with one repository, so its agent works in the code rather than a
+	// directory above it.
+	AgentRepo string `json:"agent_repo,omitempty"`
+	// RootWindow says the task has a task-root window although AgentRepo runs
+	// its agent; that window runs a shell. It is set when a second repository
+	// is added, or by task create --with-root, and never cleared on its own: a
+	// running root window must not vanish because a repository went.
+	RootWindow bool `json:"root_window,omitempty"`
 
 	// Legacy fields, read once and cleared by Store.MigrateNotes. Records
 	// written before notes became files carried the Markdown inline. Nothing
@@ -75,7 +85,47 @@ func (r Repo) AgentLabel() string {
 const RootWindowName = "_root"
 
 // AgentLabel renders the root window's agent for display.
-func (t *Task) AgentLabel() string { return Repo{Agent: t.Agent}.AgentLabel() }
+func (t *Task) AgentLabel() string { return Repo{Agent: t.RootAgent()}.AgentLabel() }
+
+// HasRootWindow reports whether the task's session has a task-root window.
+func (t *Task) HasRootWindow() bool { return t.AgentRepo == "" || t.RootWindow }
+
+// RootAgent is the command of the task-root window: the task's agent, unless
+// that runs in AgentRepo's window, which leaves the root window a shell.
+func (t *Task) RootAgent() []string {
+	if t.AgentRepo != "" {
+		return nil
+	}
+	return t.Agent
+}
+
+// RepoAgent is the command a repository's window runs: its own agent, or
+// for AgentRepo without one, the task's.
+func (t *Task) RepoAgent(name string) []string {
+	r := t.Repos[name]
+	if name == t.AgentRepo && len(r.Agent) == 0 {
+		return t.Agent
+	}
+	return r.Agent
+}
+
+// AgentWindow names the window running the task's agent.
+func (t *Task) AgentWindow() string {
+	if t.AgentRepo != "" {
+		return t.AgentRepo
+	}
+	return RootWindowName
+}
+
+// RemoveRepo forgets a repository. Removing AgentRepo moves the task's agent
+// back to the task-root window, which keeps existing from then on.
+func (t *Task) RemoveRepo(name string) {
+	delete(t.Repos, name)
+	if name == t.AgentRepo {
+		t.AgentRepo = ""
+		t.RootWindow = true
+	}
+}
 
 // New returns an empty task with the given name.
 func New(name string) *Task {

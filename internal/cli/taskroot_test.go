@@ -131,7 +131,7 @@ func TestStartOpensRootWindowFirst(t *testing.T) {
 
 func TestOpenPointsAtRootRestart(t *testing.T) {
 	h := newHarness(t)
-	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-142", "--agent", "claude", "--repo", "backend="+h.repo); err != nil {
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-142", "--with-root", "--agent", "claude", "--repo", "backend="+h.repo); err != nil {
 		t.Fatal(err)
 	}
 	h.app.Runtime = &openRuntime{}
@@ -145,7 +145,7 @@ func TestOpenPointsAtRootRestart(t *testing.T) {
 
 func TestRestartRoot(t *testing.T) {
 	h := newHarness(t)
-	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-142", "--agent", "claude", "--repo", "backend="+h.repo); err != nil {
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-142", "--with-root", "--agent", "claude", "--repo", "backend="+h.repo); err != nil {
 		t.Fatal(err)
 	}
 	rt := &restartRuntime{}
@@ -249,7 +249,7 @@ func TestShellWithoutRepoOpensRootOfMultiRepoTask(t *testing.T) {
 
 func TestProjectRecipeCarriesRootAgent(t *testing.T) {
 	h := newHarness(t)
-	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-142", "--agent", "claude", "--repo", "backend="+h.repo); err != nil {
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-142", "--with-root", "--agent", "claude", "--repo", "backend="+h.repo); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.exec(t, h.app.newProjectCmd(), "save", "payments", "--from", "PAY-142"); err != nil {
@@ -285,7 +285,7 @@ func TestProjectRecipeCarriesRootAgent(t *testing.T) {
 
 func TestStatusLeadsWithRootRow(t *testing.T) {
 	h := newHarness(t)
-	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-142", "--agent", "claude", "--repo", "backend="+h.repo); err != nil {
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-142", "--with-root", "--agent", "claude", "--repo", "backend="+h.repo); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.exec(t, h.app.newStatusCmd(), "PAY-142"); err != nil {
