@@ -307,3 +307,127 @@ func TestTaskAgentIsOptionalInRecords(t *testing.T) {
 		t.Fatalf("round trip: %v %v", got, err)
 	}
 }
+
+func TestOpenAndInitUseTheDefaultRoot(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "state")
+	t.Setenv("TSPACE_ROOT", dir)
+	s, err := Open()
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if s.Root() != dir {
+		t.Fatalf("Root = %q, want %q", s.Root(), dir)
+	}
+	if err := s.Init(); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	for _, d := range []string{s.TasksDir(), s.WorktreesDir()} {
+		if info, err := os.Stat(d); err != nil || !info.IsDir() {
+			t.Errorf("%s not created: %v", d, err)
+		}
+	}
+	// Init is idempotent.
+	if err := s.Init(); err != nil {
+		t.Fatalf("second Init: %v", err)
+	}
+}
+
+func TestDefaultRootFallsBackToHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("TSPACE_ROOT", "   ")
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	got, err := DefaultRoot()
+	if err != nil {
+		t.Fatalf("DefaultRoot: %v", err)
+	}
+	if want := filepath.Join(home, ".tspace"); got != want {
+		t.Errorf("DefaultRoot = %q, want %q", got, want)
+	}
+}
+
+func TestDefaultRootMakesARelativeRootAbsolute(t *testing.T) {
+	t.Setenv("TSPACE_ROOT", "rel-state")
+	got, err := DefaultRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !filepath.IsAbs(got) || filepath.Base(got) != "rel-state" {
+		t.Errorf("DefaultRoot = %q, want an absolute path ending in rel-state", got)
+	}
+}
+
+func TestSkippedErrorListsAndUnwrapsEveryEntry(t *testing.T) {
+	first, second := errors.New("bad one"), errors.New("bad two")
+	err := SkippedError{Errs: []error{first, second}}.orNil()
+	if got := err.Error(); got != "skipped unreadable entries: bad one; bad two" {
+		t.Errorf("Error() = %q", got)
+	}
+	if !errors.Is(err, first) || !errors.Is(err, second) {
+		t.Error("errors.Is does not see the skipped entries")
+	}
+	if (SkippedError{}).orNil() != nil {
+		t.Error("an empty SkippedError is not nil")
+	}
+}
+
+func TestStoreFailuresAreReported(t *testing.T) {
+	// A file where the state root should be makes every directory unwritable.
+	root := filepath.Join(t.TempDir(), "root")
+	mustWrite(t, root, "")
+	s := NewStore(root)
+	if err := s.Init(); err == nil {
+		t.Error("Init succeeded under a file")
+	}
+	if err := s.Save(New("t")); err == nil {
+		t.Error("Save succeeded under a file")
+	}
+	if _, err := s.Create("t"); err == nil {
+		t.Error("Create succeeded under a file")
+	}
+	if err := s.Save(New("../escape")); err == nil {
+		t.Error("Save accepted an unsafe name")
+	}
+	if _, err := s.Create("../escape"); err == nil {
+		t.Error("Create accepted an unsafe name")
+	}
+	if err := s.Delete("../escape"); err == nil {
+		t.Error("Delete accepted an unsafe name")
+	}
+}
+
+func TestSaveAndDeleteRefuseADirectoryInPlaceOfARecord(t *testing.T) {
+	s := newTestStore(t)
+	// A directory with the record's name cannot be replaced or removed as a file.
+	dir := filepath.Join(s.TasksDir(), "t.json")
+	if err := os.MkdirAll(filepath.Join(dir, "inner"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Save(New("t")); err == nil {
+		t.Error("Save replaced a directory")
+	}
+	if err := s.Delete("t"); err == nil || errors.Is(err, ErrNotFound) {
+		t.Errorf("Delete of a non-empty directory = %v, want a real error", err)
+	}
+	if _, err := s.Load("t"); err == nil || errors.Is(err, ErrNotFound) {
+		t.Errorf("Load of a directory = %v, want a read error", err)
+	}
+	// Whatever failed, no temp file is left behind.
+	entries, _ := os.ReadDir(s.TasksDir())
+	if len(entries) != 1 {
+		t.Errorf("tasks dir holds %d entries, want only the directory", len(entries))
+	}
+}
+
+func TestDeleteRemovesTheRecord(t *testing.T) {
+	s := newTestStore(t)
+	if _, err := s.Create("t"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Delete("t"); err != nil {
+		t.Fatal(err)
+	}
+	if s.Exists("t") {
+		t.Fatal("record survived Delete")
+	}
+}

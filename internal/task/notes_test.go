@@ -214,3 +214,43 @@ func TestRemoveNotesLeavesWorktreesAlone(t *testing.T) {
 		t.Fatalf("worktree was removed with the notes: %v", err)
 	}
 }
+
+func TestNoteFailuresAreReported(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.WriteNote("../escape", BriefFile, "x"); err == nil {
+		t.Error("WriteNote accepted an unsafe task name")
+	}
+	if _, err := s.RemoveNotes("../escape"); err == nil {
+		t.Error("RemoveNotes accepted an unsafe task name")
+	}
+
+	// A file where .context should be.
+	if err := os.MkdirAll(s.TaskDir("t"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(s.ContextDir("t"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.WriteNote("t", BriefFile, "x"); err == nil {
+		t.Error("WriteNote wrote under a file")
+	}
+	if _, err := s.MigrateNotes(&Task{Name: "t", LegacyBrief: "old"}); err == nil {
+		t.Error("MigrateNotes hid a read failure")
+	}
+
+	// A non-empty directory where the note should be can be neither replaced
+	// nor cleared.
+	s = newTestStore(t)
+	if err := os.MkdirAll(filepath.Join(s.NotePath("t", BriefFile), "inner"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.WriteNote("t", BriefFile, "x"); err == nil {
+		t.Error("WriteNote replaced a directory")
+	}
+	if err := s.WriteNote("t", BriefFile, ""); err == nil {
+		t.Error("WriteNote cleared a directory")
+	}
+	if _, err := s.ReadNote("t", BriefFile); err == nil {
+		t.Error("ReadNote read a directory")
+	}
+}

@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	tsexec "github.com/wuyuz99/taskspace/internal/exec"
 )
 
 func TestValidateAcceptsRepoAndCanonicalizes(t *testing.T) {
@@ -153,5 +155,52 @@ func TestParseWorktreeList(t *testing.T) {
 	}
 	if !got[2].Detached || got[2].Branch != "" {
 		t.Errorf("[2] = %+v, want detached with no branch", got[2])
+	}
+}
+
+func TestAvailable(t *testing.T) {
+	if err := testGit(t).Available(ctx()); err != nil {
+		t.Fatalf("Available with git on PATH: %v", err)
+	}
+	f := tsexec.NewFake()
+	f.Fail("git --version", "not found", 127)
+	if err := New(f).Available(ctx()); err == nil || !strings.Contains(err.Error(), "git is required") {
+		t.Fatalf("Available without git = %v", err)
+	}
+}
+
+func TestDeleteBranch(t *testing.T) {
+	g := testGit(t)
+	repo := initRepo(t)
+
+	// A merged branch goes with -d.
+	runGit(t, repo, "branch", "merged")
+	if err := g.DeleteBranch(ctx(), repo, "merged", false); err != nil {
+		t.Fatalf("DeleteBranch(merged): %v", err)
+	}
+	if ok, _ := g.BranchExists(ctx(), repo, "merged"); ok {
+		t.Fatal("merged branch survived")
+	}
+
+	// An unmerged branch is refused without force: git's own safety check is
+	// the last line of defence if a caller's check was wrong.
+	runGit(t, repo, "checkout", "-b", "unmerged")
+	writeFile(t, filepath.Join(repo, "work.txt"), "work\n")
+	runGit(t, repo, "add", "work.txt")
+	runGit(t, repo, "commit", "-m", "work")
+	runGit(t, repo, "checkout", "main")
+	err := g.DeleteBranch(ctx(), repo, "unmerged", false)
+	if err == nil || !strings.Contains(err.Error(), "delete branch unmerged") {
+		t.Fatalf("DeleteBranch(unmerged, no force) = %v, want a refusal", err)
+	}
+	if ok, _ := g.BranchExists(ctx(), repo, "unmerged"); !ok {
+		t.Fatal("unmerged branch deleted without force")
+	}
+
+	if err := g.DeleteBranch(ctx(), repo, "unmerged", true); err != nil {
+		t.Fatalf("DeleteBranch(unmerged, force): %v", err)
+	}
+	if ok, _ := g.BranchExists(ctx(), repo, "unmerged"); ok {
+		t.Fatal("forced delete left the branch")
 	}
 }
