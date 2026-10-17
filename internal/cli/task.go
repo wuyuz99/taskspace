@@ -66,9 +66,6 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 			if err := task.ValidateName("task", name); err != nil {
 				return err
 			}
-			if start && len(repos)+len(args[1:]) == 0 && !cmd.Flags().Changed("project") {
-				return fmt.Errorf("--start needs a repository to start; name one, or add it later and run: tspace start %s", name)
-			}
 			if a.Store.Exists(name) {
 				return fmt.Errorf("%q: %w", name, task.ErrExists)
 			}
@@ -139,6 +136,9 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 			} else if len(t.Repos) == 1 && t.CanRunAgentIn(t.RepoNames()[0]) {
 				t.AgentRepo = t.RepoNames()[0]
 			}
+			if start && len(t.Repos) == 0 {
+				return fmt.Errorf("--start needs a repository to start; name one, or add it later and run: tspace start %s", name)
+			}
 			if err := a.Store.CreatePrepared(t); err != nil {
 				return err
 			}
@@ -171,7 +171,7 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 	cmd.Flags().StringArrayVar(&repos, "repo", nil,
 		"attach a repository, the same as a REPO argument (repeatable)")
 	cmd.Flags().StringVar(&project, "project", "", "snapshot a saved project recipe into this task")
-	cmd.Flags().BoolVar(&start, "start", false, "start the task once it is created, as `tspace start NAME`")
+	cmd.Flags().BoolVar(&start, "start", false, "start the task once it is created, as tspace start NAME does")
 	cmd.Flags().BoolVar(&withRoot, "with-root", false,
 		"give a single-repository task a task-root window for its agent, as with several")
 	details.flags(cmd)
@@ -382,10 +382,9 @@ func (a *App) newTaskRmCmd() *cobra.Command {
 			// worktrees are still on disk, so the brief describing them stays
 			// too — the same reasoning as `repo rm` leaving a worktree behind.
 			if force {
-				if err := a.Store.Delete(t.Name); err != nil {
+				if err := a.deleteRecord(t); err != nil {
 					return err
 				}
-				a.printf("removed task %s\n", t.Name)
 				if note, err := a.Store.ReadNote(t.Name, task.BriefFile); err == nil && note.Text != "" {
 					a.warnf("note: the task's notes were left at %s\n", a.Store.ContextDir(t.Name))
 				}
@@ -401,10 +400,9 @@ func (a *App) newTaskRmCmd() *cobra.Command {
 
 // deleteTask removes a task whose worktrees are gone: its record and its notes.
 func (a *App) deleteTask(t *task.Task) error {
-	if err := a.Store.Delete(t.Name); err != nil {
+	if err := a.deleteRecord(t); err != nil {
 		return err
 	}
-	a.printf("removed task %s\n", t.Name)
 	held, err := a.Store.RemoveNotes(t.Name)
 	if err != nil {
 		return err
@@ -412,6 +410,15 @@ func (a *App) deleteTask(t *task.Task) error {
 	if len(held) > 0 {
 		a.printf("deleted its notes (%s)\n", joinNames(held))
 	}
+	return nil
+}
+
+// deleteRecord removes the task's record alone.
+func (a *App) deleteRecord(t *task.Task) error {
+	if err := a.Store.Delete(t.Name); err != nil {
+		return err
+	}
+	a.printf("removed task %s\n", t.Name)
 	return nil
 }
 

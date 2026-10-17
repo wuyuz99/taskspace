@@ -2,6 +2,7 @@ package cli
 
 import (
 	"os"
+	osexec "os/exec"
 	"strings"
 	"testing"
 
@@ -97,5 +98,51 @@ func TestCleanRmOfTaskWithoutRepos(t *testing.T) {
 	}
 	if h.app.Store.Exists("PAY-1") {
 		t.Fatal("record still there")
+	}
+}
+
+// A task emptied by repo rm may still have a session and worktrees on disk:
+// clean --rm stops the one and keeps the record while the others remain.
+func TestCleanRmOfEmptiedTask(t *testing.T) {
+	h := newHarness(t)
+	tk := h.startedTask(t, "PAY-1")
+	repo := tk.RepoNames()[0]
+	if err := h.exec(t, h.app.newRepoCmd(), "rm", "PAY-1", repo); err != nil {
+		t.Fatal(err)
+	}
+	rt := &layoutRuntime{running: true}
+	h.app.Runtime = rt
+	err := h.exec(t, h.app.newCleanCmd(), "PAY-1", "--rm")
+	if err == nil || !strings.Contains(err.Error(), "kept the record of PAY-1") || !strings.Contains(err.Error(), repo) {
+		t.Fatalf("clean --rm = %v", err)
+	}
+	if !rt.stopped {
+		t.Error("session left running")
+	}
+	if !h.app.Store.Exists("PAY-1") {
+		t.Fatal("record deleted while a worktree is left")
+	}
+}
+
+// A branch --delete-branch had to keep outlives the record, and clean says so.
+func TestCleanRmWarnsAboutKeptBranch(t *testing.T) {
+	h := newHarness(t)
+	tk := h.startedTask(t, "PAY-1")
+	wt := tk.Repos[tk.RepoNames()[0]].Worktree
+	if err := os.WriteFile(wt+"/new.txt", []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"add", "new.txt"}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "unpushed"}} {
+		c := osexec.Command("git", args...)
+		c.Dir = wt
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	if err := h.exec(t, h.app.newCleanCmd(), "PAY-1", "--delete-branch", "--rm"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.errb.String(), "kept branch") || !strings.Contains(h.errb.String(), "no task will refer to it") {
+		t.Fatalf("stderr:\n%s", h.errb.String())
 	}
 }
