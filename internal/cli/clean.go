@@ -21,7 +21,7 @@ type cleanPlan struct {
 }
 
 func (a *App) newCleanCmd() *cobra.Command {
-	var deleteBranch, force bool
+	var deleteBranch, force, rm bool
 
 	cmd := &cobra.Command{
 		Use:   "clean TASK",
@@ -31,7 +31,8 @@ func (a *App) newCleanCmd() *cobra.Command {
 			"files or stashes: refusing is always better than losing code. Branches\n" +
 			"are left alone unless --delete-branch, and even then only when their\n" +
 			"work is merged into the base branch or pushed to an upstream.\n\n" +
-			"The task record survives; use `tspace task rm` to remove that.",
+			"The task record survives; use `tspace task rm` to remove that, or --rm to\n" +
+			"remove it here once the worktrees are gone, finishing the task in one step.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -41,6 +42,9 @@ func (a *App) newCleanCmd() *cobra.Command {
 			}
 			if len(t.Repos) == 0 {
 				a.printf("task %s has no repositories\n", t.Name)
+				if rm {
+					return a.deleteTask(t)
+				}
 				return nil
 			}
 
@@ -102,6 +106,10 @@ func (a *App) newCleanCmd() *cobra.Command {
 			// them is not, and only `tspace task rm` deletes it.
 			_ = os.Remove(a.Store.TaskDir(t.Name))
 
+			if rm {
+				a.printf("\ncleaned %s\n", t.Name)
+				return a.deleteTask(t)
+			}
 			a.printf("\ncleaned %s; the task record is still there (tspace task rm %s to remove it)\n",
 				t.Name, t.Name)
 			return nil
@@ -111,6 +119,8 @@ func (a *App) newCleanCmd() *cobra.Command {
 		"also delete task branches whose work is merged or pushed")
 	cmd.Flags().BoolVar(&force, "force", false,
 		"discard uncommitted work and unmerged branches")
+	cmd.Flags().BoolVar(&rm, "rm", false,
+		"also delete the task record and its notes, as `tspace task rm`")
 	return cmd
 }
 
