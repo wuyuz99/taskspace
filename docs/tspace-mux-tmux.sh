@@ -53,9 +53,9 @@ new-session | new-window | respawn)
 	[ "$keep" = keep ] && tmux set-option -w -t "$w" remain-on-exit on
 	if [ "$op" = respawn ]; then
 		# No -k: tmux itself refuses to replace a pane that is still alive.
-		tmux respawn-window -t "$w" -c "$PWD" "$@"
+		# respawn-pane: respawn-window would make the window the active one.
+		tmux respawn-pane -t "$w" -c "$PWD" "$@"
 	else
-		# respawn-pane: respawn-window would make the new window the active one.
 		tmux respawn-pane -k -t "$w" -c "$PWD" "$@"
 	fi
 	;;
