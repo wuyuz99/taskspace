@@ -714,7 +714,7 @@ as your clone last fetched it; `git fetch` first if the merge just happened.
 `tspace clean` and `tspace task rm` are deliberately different. `clean` tears down
 worktrees and keeps the record; `task rm` deletes the record and refuses while
 worktrees exist. `clean --rm` does both for a finished task, deleting the record
-only once every worktree is safely gone.
+only once every worktree is gone: safely, unless `--force` discarded their work.
 
 ## Commands
 
