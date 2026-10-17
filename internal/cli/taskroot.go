@@ -71,11 +71,20 @@ func (a *App) rootWindow(t *task.Task) runtime.Window {
 // agents find them at ../.context, or through TSPACE_CONTEXT_DIR.
 func (a *App) repoWindow(t *task.Task, name string) runtime.Window {
 	argv := t.RepoAgent(name)
-	if name == t.AgentRepo && len(argv) > 0 && isClaude(argv[0]) && !slices.Contains(argv, "--add-dir") {
-		argv = append(append([]string(nil), argv...), "--add-dir", a.Store.ContextDir(t.Name))
+	if name == t.AgentRepo {
+		argv = a.withNotes(t, argv)
 	}
 	env := append(windowEnv(t.Name, name), "TSPACE_CONTEXT_DIR="+a.Store.ContextDir(t.Name))
 	return runtime.Window{Name: name, Dir: t.Repos[name].Worktree, Command: argv, Env: env}
+}
+
+// withNotes points a Claude Code agent started in a worktree at the task's
+// .context directory with --add-dir, unless it already names one.
+func (a *App) withNotes(t *task.Task, argv []string) []string {
+	if len(argv) == 0 || !isClaude(argv[0]) || slices.Contains(argv, "--add-dir") {
+		return argv
+	}
+	return append(append([]string(nil), argv...), "--add-dir", a.Store.ContextDir(t.Name))
 }
 
 func isClaude(program string) bool {

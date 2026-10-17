@@ -63,7 +63,7 @@ func TestTaskJSON(t *testing.T) {
 		t.Fatalf("empty list: %q", got)
 	}
 
-	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-142", "--repo", "backend="+h.repo,
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-142", "--with-root", "--repo", "backend="+h.repo,
 		"--title", "Checkout", "--agent", "claude", "--agent=--model", "--agent", "opus"); err != nil {
 		t.Fatal(err)
 	}

@@ -65,7 +65,7 @@ func TestWindowOpensBesideExistingWindows(t *testing.T) {
 	}
 
 	want := []runtime.Window{
-		{Name: "_backend-claude", Dir: tk.Repos["backend"].Worktree, Command: []string{"claude"}},
+		{Name: "_backend-claude", Dir: tk.Repos["backend"].Worktree, Command: []string{"claude", "--add-dir", h.app.Store.ContextDir("PAY-9")}},
 		{Name: "_frontend-npm", Dir: tk.Repos["frontend"].Worktree, Command: []string{"npm", "run", "dev"}},
 		{Name: "_frontend-npm-2", Dir: tk.Repos["frontend"].Worktree, Command: []string{"npm", "run", "dev"}},
 		{Name: "_staging", Dir: h.app.Store.TaskDir("PAY-9"), Transient: true},

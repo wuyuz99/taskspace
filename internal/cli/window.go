@@ -79,6 +79,9 @@ func (a *App) newWindowCmd() *cobra.Command {
 				if argv, err = a.taskAgent(t); err != nil {
 					return err
 				}
+				if place != "root" {
+					argv = a.withNotes(t, argv)
+				}
 			}
 
 			ctx := cmd.Context()

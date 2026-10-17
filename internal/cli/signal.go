@@ -144,6 +144,8 @@ func (a *App) signalTarget(taskName, repo string, root bool) (*task.Task, string
 		return nil, "", err
 	}
 	switch {
+	case root && !t.HasRootWindow():
+		return nil, "", fmt.Errorf("task %s has no root window; its agent runs in %s: use --repo %s", t.Name, t.AgentRepo, t.AgentRepo)
 	case root:
 		return t, task.RootWindowName, nil
 	case repo != "":
@@ -154,6 +156,10 @@ func (a *App) signalTarget(taskName, repo string, root bool) (*task.Task, string
 	}
 	if _, ok := t.Repo(here); ok {
 		return t, here, nil
+	}
+	// Without a root window, the task directory stands for the agent's.
+	if !t.HasRootWindow() {
+		return t, t.AgentRepo, nil
 	}
 	return t, task.RootWindowName, nil
 }

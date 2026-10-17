@@ -53,10 +53,17 @@ func (a *App) newRepoUpdateCmd() *cobra.Command {
 			if !ok {
 				return fmt.Errorf("task %q has no repo named %q", t.Name, args[1])
 			}
-			if setAgent {
+			// The agent repository's window runs the task's agent, so that is
+			// what its agent flags change.
+			taskAgent := args[1] == t.AgentRepo
+			switch {
+			case taskAgent && setAgent:
+				t.Agent = agent
+			case taskAgent && shell:
+				t.Agent = nil
+			case setAgent:
 				r.Agent = agent
-			}
-			if shell {
+			case shell:
 				r.Agent = nil
 			}
 			if setHook {
@@ -68,7 +75,11 @@ func (a *App) newRepoUpdateCmd() *cobra.Command {
 			}
 			a.printf("updated %s/%s\n", t.Name, args[1])
 			if setAgent || shell {
-				a.printf("  agent: %s (applies on window creation or explicit restart)\n", agentDisplay(r))
+				which := ""
+				if taskAgent {
+					which = "; the task's agent, which runs in this window"
+				}
+				a.printf("  agent: %s (applies on window creation or explicit restart%s)\n", agentDisplay(task.Repo{Agent: t.RepoAgent(args[1])}), which)
 			}
 			if setHook {
 				a.printf("  post_create: %s (applies to newly created worktrees)\n", dash(hook))
@@ -136,7 +147,7 @@ func (a *App) newRepoAddCmd() *cobra.Command {
 			running := a.sessionRunning(ctx, t)
 			openRoot := false
 			switch {
-			case first && t.HasRootWindow() && !t.RootWindow && !running:
+			case first && t.HasRootWindow() && !t.RootWindow && !running && t.CanRunAgentIn(t.RepoNames()[0]):
 				// Nothing has run in a root window that the agent could be
 				// moved out of, so this task starts as a single-repo one.
 				t.AgentRepo = t.RepoNames()[0]
@@ -433,6 +444,9 @@ func (a *App) newRepoRmCmd() *cobra.Command {
 			r, ok := t.Repo(args[1])
 			if !ok {
 				return fmt.Errorf("task %q has no repo named %q", t.Name, args[1])
+			}
+			if args[1] == t.AgentRepo && a.sessionRunning(cmd.Context(), t) {
+				return fmt.Errorf("the task's agent runs in %s's window; stop the task first: tspace stop %s", args[1], t.Name)
 			}
 			t.RemoveRepo(args[1])
 			if err := a.Store.Save(t); err != nil {
