@@ -129,6 +129,9 @@ tspace stop checkout-redesign
 
 # tear the worktrees down, safely
 tspace clean checkout-redesign
+
+# or, when the task is finished, tear it down and delete its record too
+tspace clean checkout-redesign --rm
 ```
 
 Repositories can also be given as paths (`tspace task create T ~/src/backend`), and
@@ -710,7 +713,8 @@ as your clone last fetched it; `git fetch` first if the merge just happened.
 
 `tspace clean` and `tspace task rm` are deliberately different. `clean` tears down
 worktrees and keeps the record; `task rm` deletes the record and refuses while
-worktrees exist.
+worktrees exist. `clean --rm` does both for a finished task, deleting the record
+only once every worktree is safely gone.
 
 ## Commands
 
@@ -722,7 +726,7 @@ worktrees exist.
 | `tspace config branch-prefix [PREFIX / --unset]` | Set the prefix of new task branches (default `agent/`) |
 | `tspace project save NAME --from TASK [--replace]` | Save a reusable repository recipe |
 | `tspace project list` / `tspace project show NAME` | Inspect saved recipes |
-| `tspace task create NAME [REPO...] [--agent CMD / --shell]` | Create a task; each REPO is `REPO[@BRANCH][:BASE]` |
+| `tspace task create NAME [REPO...] [--agent CMD / --shell] [--start]` | Create a task; each REPO is `REPO[@BRANCH][:BASE]`; `--start` starts it too |
 | `tspace task update NAME [--agent CMD / --shell] [--title ...]` | Update a task's root agent and details |
 | `tspace task list [--json]` | List tasks |
 | `tspace task show NAME [--json]` | Show a task's repos in detail |
@@ -742,7 +746,7 @@ worktrees exist.
 | `tspace status [TASK] [--json / --watch]` | Runtime, git and signal state |
 | `tspace dash` | Live full-screen view of every task; attach, start, restart, stop |
 | `tspace signal STATE [MESSAGE] [--task --repo / --root]` | Report an agent as `working`, `blocked`, `done` or `failed` |
-| `tspace clean TASK [--delete-branch] [--force]` | Remove worktrees, safely |
+| `tspace clean TASK [--delete-branch] [--force] [--rm]` | Remove worktrees, safely; `--rm` deletes the task record too |
 
 `--no-title` (or `TSPACE_NO_TITLE=1`) suppresses terminal tab titling.
 
