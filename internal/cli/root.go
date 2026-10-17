@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"runtime/debug"
+	"time"
 
 	"github.com/spf13/cobra"
 	tsexec "github.com/wuyuz99/taskspace/internal/exec"
@@ -43,7 +44,14 @@ type App struct {
 	Err     io.Writer
 
 	noTitle bool
+	// settle is how long start waits before checking that what it launched
+	// is still running.
+	settle time.Duration
 }
+
+// launchSettle is long enough for an agent that dies on launch, or a session
+// that goes with it, to have done so.
+const launchSettle = time.Second
 
 // NewApp wires the default implementations together.
 func NewApp() (*App, error) {
@@ -58,6 +66,7 @@ func NewApp() (*App, error) {
 		Runtime: configuredRuntime(store, runner),
 		Out:     os.Stdout,
 		Err:     os.Stderr,
+		settle:  launchSettle,
 	}, nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	osexec "os/exec"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/wuyuz99/taskspace/internal/runtime"
@@ -32,8 +33,9 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 			"The session is a detached session in the configured multiplexer (tmux\n" +
 			"unless `tspace config multiplexer` says otherwise), with the task-root\n" +
 			"window first, then one window per repository, each running its agent or a\n" +
-			"shell. start returns as soon as they are up; it does not wait for the\n" +
-			"agents and needs no terminal. Naming REPOs starts only those, without the\n" +
+			"shell. start checks a second later that the session and its windows are\n" +
+			"still there, reporting any that exited on launch; it does not wait for the\n" +
+			"agents beyond that and needs no terminal. Naming REPOs starts only those, without the\n" +
 			"root window.\n\n" +
 			"Without the multiplexer, start still creates the worktrees and then fails;\n" +
 			"--no-runtime creates them and stops there, successfully.",
@@ -123,9 +125,12 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 			}
 
 			session := a.Runtime.SessionName(t.Name)
+			// Unreadable, the session counts as new: checkLaunched then waits,
+			// and no signals are cleared on a guess.
+			before, err := a.Runtime.State(ctx, session)
 			// Signals left by a session that is gone describe agents that are
 			// no longer there.
-			if running, err := a.Runtime.HasSession(ctx, session); err == nil && !running {
+			if err == nil && !before.Exists {
 				if err := a.Store.ClearSignals(t.Name); err != nil {
 					a.warnf("tspace: %v\n", err)
 				}
@@ -133,22 +138,12 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 			if err := a.Runtime.Start(ctx, session, windows); err != nil {
 				return err
 			}
+			if err := a.checkLaunched(ctx, t, session, before, windows, names); err != nil {
+				return err
+			}
 			if open {
 				a.printf("\nworkspace: %s\n", t.Name)
 				a.printTaskContext(t)
-				st, err := a.Runtime.State(ctx, session)
-				if err != nil {
-					a.warnf("could not inspect agent state: %v\n", err)
-				} else {
-					if pane, ok := st.Pane(a.Runtime.WindowName(task.RootWindowName)); ok && pane.Dead {
-						a.warnf("the root window has exited; inspect its output, then run: tspace restart %s --root\n", t.Name)
-					}
-					for _, name := range names {
-						if pane, ok := st.Pane(a.Runtime.WindowName(name)); ok && pane.Dead {
-							a.warnf("%s has exited; inspect its output, then run: tspace restart %s %s\n", name, t.Name, name)
-						}
-					}
-				}
 				setTitle(a.Out, "tspace: "+t.Name, a.noTitle)
 				return a.Runtime.Attach(ctx, session)
 			}
@@ -171,6 +166,42 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 			"create worktrees but do not start the session")
 	}
 	return cmd
+}
+
+// checkLaunched reports what start launched that is already gone. Start
+// returns once the windows exist, which says nothing about whether their
+// commands survive the first second, and a session can go with them.
+func (a *App) checkLaunched(ctx context.Context, t *task.Task, session string, before runtime.SessionState, windows []runtime.Window, names []string) error {
+	launched := !before.Exists
+	for _, w := range windows {
+		if _, ok := before.Pane(a.Runtime.WindowName(w.Name)); !ok {
+			launched = true
+		}
+	}
+	if launched && a.settle > 0 {
+		select {
+		case <-time.After(a.settle):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	st, err := a.Runtime.State(ctx, session)
+	if err != nil {
+		a.warnf("could not inspect agent state: %v\n", err)
+		return nil
+	}
+	if !st.Exists {
+		return fmt.Errorf("session %s exited right after it started; check the agent commands with `tspace task show %s`, then run start again", session, t.Name)
+	}
+	if pane, ok := st.Pane(a.Runtime.WindowName(task.RootWindowName)); ok && pane.Dead {
+		a.warnf("the root window has exited; inspect its output, then run: tspace restart %s --root\n", t.Name)
+	}
+	for _, name := range names {
+		if pane, ok := st.Pane(a.Runtime.WindowName(name)); ok && pane.Dead {
+			a.warnf("%s has exited; inspect its output, then run: tspace restart %s %s\n", name, t.Name, name)
+		}
+	}
+	return nil
 }
 
 // runPostCreate runs the repo's provisioning hook in its new worktree.

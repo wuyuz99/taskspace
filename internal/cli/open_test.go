@@ -55,7 +55,7 @@ func TestOpenPreparesAndResumesWorkspace(t *testing.T) {
 	if err := h.exec(t, h.app.newOpenCmd(), "PAY-142"); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(rt.calls, ",") != "start,state,attach" {
+	if strings.Join(rt.calls, ",") != "state,start,state,attach" {
 		t.Fatalf("calls: %v", rt.calls)
 	}
 	if !strings.Contains(h.out.String(), "Expired cards") || !strings.Contains(h.out.String(), "Frontend next") {
@@ -88,7 +88,7 @@ func TestOpenFailureDoesNotAttach(t *testing.T) {
 	if err := h.exec(t, h.app.newOpenCmd(), "t"); !errors.Is(err, rt.startErr) {
 		t.Fatalf("error: %v", err)
 	}
-	if strings.Join(rt.calls, ",") != "start" {
+	if strings.Join(rt.calls, ",") != "state,start" {
 		t.Fatalf("attached after failure: %v", rt.calls)
 	}
 	rt.startErr = nil

@@ -373,3 +373,34 @@ func TestStartTellsEachWindowWhichItIs(t *testing.T) {
 		}
 	}
 }
+
+// start must not say the session is up when it died on launch.
+func TestStartReportsASessionThatDiedOnLaunch(t *testing.T) {
+	h := newHarness(t)
+	tk := h.startedTask(t, "PAY-142")
+	rt := h.app.Runtime.(*stubRuntime)
+	rt.vanished = true
+	err := h.exec(t, h.app.newStartCmd(), tk.Name)
+	if err == nil || !strings.Contains(err.Error(), "exited right after it started") {
+		t.Fatalf("start = %v, want the session reported gone", err)
+	}
+	if strings.Contains(h.out.String(), "is up") {
+		t.Fatalf("start claimed the session is up:\n%s", h.out.String())
+	}
+}
+
+func TestStartWarnsAboutWindowsThatExitedOnLaunch(t *testing.T) {
+	h := newHarness(t)
+	tk := h.startedTask(t, "PAY-142")
+	repo := tk.RepoNames()[0]
+	rt := h.app.Runtime.(*stubRuntime)
+	rt.dead = map[string]bool{task.RootWindowName: true, repo: true}
+	if err := h.exec(t, h.app.newStartCmd(), tk.Name); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"root window has exited", repo + " has exited"} {
+		if !strings.Contains(h.errb.String(), want) {
+			t.Errorf("stderr lacks %q:\n%s", want, h.errb.String())
+		}
+	}
+}
