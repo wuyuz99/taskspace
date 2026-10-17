@@ -611,8 +611,10 @@ tspace signal done
 ```
 
 The states are `working`, `blocked`, `done` and `failed`. Run inside a task,
-`tspace signal` works out which window it is from the current directory, so it
-needs no arguments in an agent's hooks. For Claude Code, in the worktree's
+`tspace signal` works out which window it is from `TSPACE_TASK` and
+`TSPACE_WINDOW`, which tspace sets in every window it launches (or, without
+them, from the current directory), so it needs no arguments in an agent's
+hooks, and a root agent that `cd`s into a worktree still reports for the root. For Claude Code, in the worktree's
 `.claude/settings.json`:
 
 ```json

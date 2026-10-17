@@ -349,3 +349,16 @@ func TestLaunchArgvFallsBackToShell(t *testing.T) {
 		t.Errorf("launchArgv = %v, want [claude -p]", got)
 	}
 }
+
+func TestLaunchArgvSetsWindowEnv(t *testing.T) {
+	tm := NewTmux(tsexec.NewFake())
+	tm.Shell = "/bin/zsh"
+	w := Window{Name: "infra", Env: []string{"TSPACE_TASK=PAY-142", "TSPACE_WINDOW=infra"}}
+	if got := strings.Join(tm.launchArgv(w), " "); got != "env TSPACE_TASK=PAY-142 TSPACE_WINDOW=infra /bin/zsh" {
+		t.Errorf("launchArgv = %q", got)
+	}
+	w.Command = []string{"claude", "-p"}
+	if got := strings.Join(tm.launchArgv(w), " "); got != "env TSPACE_TASK=PAY-142 TSPACE_WINDOW=infra claude -p" {
+		t.Errorf("launchArgv = %q", got)
+	}
+}

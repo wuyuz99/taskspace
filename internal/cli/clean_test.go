@@ -19,7 +19,10 @@ import (
 
 // stubRuntime stands in for tmux so the safety-critical CLI paths can be tested
 // on any machine.
-type stubRuntime struct{ stopped bool }
+type stubRuntime struct {
+	stopped bool
+	started []runtime.Window
+}
 
 func (s *stubRuntime) Available(context.Context) error { return nil }
 func (s *stubRuntime) SessionName(t string) string     { return "tspace-" + t }
@@ -27,7 +30,10 @@ func (s *stubRuntime) WindowName(repo string) string   { return repo }
 func (s *stubRuntime) HasSession(context.Context, string) (bool, error) {
 	return false, nil
 }
-func (s *stubRuntime) Start(context.Context, string, []runtime.Window) error    { return nil }
+func (s *stubRuntime) Start(_ context.Context, _ string, w []runtime.Window) error {
+	s.started = append(s.started, w...)
+	return nil
+}
 func (s *stubRuntime) OpenWindow(context.Context, string, runtime.Window) error { return nil }
 func (s *stubRuntime) Restart(context.Context, string, runtime.Window) error    { return nil }
 func (s *stubRuntime) Stop(context.Context, string) error {
@@ -55,6 +61,10 @@ func newHarness(t *testing.T) *harness {
 	if _, err := osexec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
 	}
+
+	// A test run from inside a tspace window must not report for that window.
+	t.Setenv(envTask, "")
+	t.Setenv(envWindow, "")
 
 	root := t.TempDir()
 	if resolved, err := filepath.EvalSymlinks(root); err == nil {

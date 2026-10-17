@@ -308,3 +308,68 @@ func chdir(t *testing.T, dir string) {
 	}
 	t.Cleanup(func() { _ = os.Chdir(old) })
 }
+
+// A root agent that cd's into a worktree still reports for the root window.
+func TestSignalPrefersTheWindowItWasLaunchedIn(t *testing.T) {
+	h := newHarness(t)
+	tk := h.startedTask(t, "PAY-142")
+	repo := tk.RepoNames()[0]
+	chdir(t, tk.Repos[repo].Worktree)
+
+	t.Setenv(envTask, "PAY-142")
+	t.Setenv(envWindow, task.RootWindowName)
+	if err := h.exec(t, h.app.newSignalCmd(), "blocked"); err != nil {
+		t.Fatal(err)
+	}
+	got := h.signals(t, "PAY-142")
+	if got[task.RootWindowName].State != task.SignalBlocked {
+		t.Fatalf("root signal: %+v", got)
+	}
+	if _, ok := got[repo]; ok {
+		t.Fatalf("the repo window got the root agent's signal: %+v", got)
+	}
+
+	// Explicit flags win over the environment.
+	if err := h.exec(t, h.app.newSignalCmd(), "done", "--repo", repo); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.signals(t, "PAY-142")[repo]; got.State != task.SignalDone {
+		t.Fatalf("--repo signal: %+v", got)
+	}
+
+	// A window the task no longer has, or no window at all, falls back to the directory.
+	for _, window := range []string{"gone", ""} {
+		t.Setenv(envWindow, window)
+		if err := h.exec(t, h.app.newSignalCmd(), "working"); err != nil {
+			t.Fatal(err)
+		}
+		if got := h.signals(t, "PAY-142")[repo]; got.State != task.SignalWorking {
+			t.Fatalf("TSPACE_WINDOW=%q: %+v", window, got)
+		}
+		if err := h.app.Store.ClearSignal("PAY-142", repo); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestStartTellsEachWindowWhichItIs(t *testing.T) {
+	h := newHarness(t)
+	tk := h.startedTask(t, "PAY-142")
+	if err := h.exec(t, h.app.newStartCmd(), tk.Name); err != nil {
+		t.Fatal(err)
+	}
+	rt := h.app.Runtime.(*stubRuntime)
+	want := map[string]bool{task.RootWindowName: true}
+	for _, name := range tk.RepoNames() {
+		want[name] = true
+	}
+	if len(rt.started) != len(want) {
+		t.Fatalf("started %d windows, want %d", len(rt.started), len(want))
+	}
+	for _, w := range rt.started {
+		env := strings.Join(w.Env, " ")
+		if env != "TSPACE_TASK=PAY-142 TSPACE_WINDOW="+w.Name || !want[w.Name] {
+			t.Errorf("window %s env = %q", w.Name, env)
+		}
+	}
+}

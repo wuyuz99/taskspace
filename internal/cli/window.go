@@ -116,7 +116,8 @@ func (a *App) newWindowCmd() *cobra.Command {
 				}
 			}
 
-			w := runtime.Window{Name: window, Dir: dir, Command: argv, Transient: len(argv) == 0}
+			// An extra window has no signal of its own, so its agent falls back to the directory.
+			w := runtime.Window{Name: window, Dir: dir, Command: argv, Transient: len(argv) == 0, Env: windowEnv(t.Name, "")}
 			if err := a.Runtime.OpenWindow(ctx, session, w); err != nil {
 				return err
 			}
