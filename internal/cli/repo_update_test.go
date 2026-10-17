@@ -10,6 +10,11 @@ import (
 func TestRepoUpdatePreservesWorkspaceAndSnapshots(t *testing.T) {
 	h := newHarness(t)
 	tk := h.startedTask(t, "PAY-142")
+	// A repository with a window of its own, not the one running the task's agent.
+	tk.AgentRepo, tk.RootWindow = "", true
+	if err := h.app.Store.Save(tk); err != nil {
+		t.Fatal(err)
+	}
 	name := tk.RepoNames()[0]
 	before := tk.Repos[name]
 	wip := filepath.Join(before.Worktree, "wip.txt")

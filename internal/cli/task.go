@@ -131,7 +131,7 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 			}
 			if withRoot {
 				t.RootWindow = true
-			} else if len(t.Repos) == 1 {
+			} else if len(t.Repos) == 1 && t.CanRunAgentIn(t.RepoNames()[0]) {
 				t.AgentRepo = t.RepoNames()[0]
 			}
 			if err := a.Store.CreatePrepared(t); err != nil {
@@ -223,7 +223,7 @@ func (a *App) describeTask(t *task.Task) taskJSON {
 		r := t.Repos[name]
 		out.Repos = append(out.Repos, taskRepoJSON{
 			Name: name, Path: r.Path, Branch: r.Branch, Base: r.Base, Worktree: r.Worktree,
-			Agent: append([]string{}, r.Agent...), PostCreate: r.PostCreate,
+			Agent: append([]string{}, t.RepoAgent(name)...), PostCreate: r.PostCreate,
 		})
 	}
 	return out

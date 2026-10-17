@@ -291,3 +291,106 @@ func TestDashNamesSingleRepoTask(t *testing.T) {
 		t.Fatalf("view:\n%s", view)
 	}
 }
+
+// The agent repository's agent is the task's: --shell makes its window a
+// shell, and --agent replaces what runs there.
+func TestRepoUpdateOfAgentRepoChangesTheTaskAgent(t *testing.T) {
+	h := newHarness(t)
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--agent", "claude", "--repo", "backend="+h.repo); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newRepoCmd(), "update", "PAY-1", "backend", "--shell"); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.load(t, "PAY-1").RepoAgent("backend"); len(got) != 0 {
+		t.Fatalf("after --shell backend runs %v", got)
+	}
+	if err := h.exec(t, h.app.newRepoCmd(), "update", "PAY-1", "backend", "--agent", "codex"); err != nil {
+		t.Fatal(err)
+	}
+	tk := h.load(t, "PAY-1")
+	if !slices.Equal(tk.Agent, []string{"codex"}) || len(tk.Repos["backend"].Agent) != 0 {
+		t.Fatalf("agent=%v repo agent=%v", tk.Agent, tk.Repos["backend"].Agent)
+	}
+}
+
+// A repository with an agent of its own keeps the root layout, so the
+// task's agent still has somewhere to run.
+func TestRepoWithItsOwnAgentKeepsTheRootWindow(t *testing.T) {
+	h := newHarness(t)
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1"); err != nil {
+		t.Fatal(err)
+	}
+	h.app.Runtime = &layoutRuntime{}
+	if err := h.exec(t, h.app.newRepoCmd(), "add", "PAY-1", h.repo, "--name", "backend", "--agent", "codex"); err != nil {
+		t.Fatal(err)
+	}
+	if tk := h.load(t, "PAY-1"); tk.AgentRepo != "" || !tk.HasRootWindow() {
+		t.Fatalf("agent_repo=%q root=%v", tk.AgentRepo, tk.HasRootWindow())
+	}
+}
+
+func TestRepoRmRefusesToOrphanARunningAgent(t *testing.T) {
+	h := newHarness(t)
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--agent", "claude", "--repo", "backend="+h.repo); err != nil {
+		t.Fatal(err)
+	}
+	h.app.Runtime = &layoutRuntime{running: true}
+	if err := h.exec(t, h.app.newRepoCmd(), "rm", "PAY-1", "backend"); err == nil || !strings.Contains(err.Error(), "tspace stop PAY-1") {
+		t.Fatalf("rm = %v", err)
+	}
+	if _, ok := h.load(t, "PAY-1").Repo("backend"); !ok {
+		t.Fatal("refused rm still removed the repo")
+	}
+}
+
+// Emptied by repo rm, a root-layout task keeps its root window: its agent's
+// history is in the task directory.
+func TestEmptiedTaskKeepsTheRootLayout(t *testing.T) {
+	h := newHarness(t)
+	other := mkRepo(t)
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--agent", "claude", "--repo", "backend="+h.repo, "--repo", "frontend="+other); err != nil {
+		t.Fatal(err)
+	}
+	h.app.Runtime = &layoutRuntime{}
+	for _, name := range []string{"backend", "frontend"} {
+		if err := h.exec(t, h.app.newRepoCmd(), "rm", "PAY-1", name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := h.exec(t, h.app.newRepoCmd(), "add", "PAY-1", h.repo, "--name", "backend"); err != nil {
+		t.Fatal(err)
+	}
+	if tk := h.load(t, "PAY-1"); tk.AgentRepo != "" {
+		t.Fatalf("agent moved into %s", tk.AgentRepo)
+	}
+}
+
+// With no root window, the task directory means the agent's window, and
+// --root has nothing to report for.
+func TestSignalWithoutRootWindow(t *testing.T) {
+	h := newHarness(t)
+	h.startedTask(t, "PAY-1")
+	tk := h.load(t, "PAY-1")
+	chdir(t, h.app.Store.TaskDir("PAY-1"))
+	if err := h.exec(t, h.app.newSignalCmd(), "blocked"); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.signals(t, "PAY-1")[tk.AgentRepo]; got.State != task.SignalBlocked {
+		t.Fatalf("signals: %+v", h.signals(t, "PAY-1"))
+	}
+	if err := h.exec(t, h.app.newSignalCmd(), "done", "--root"); err == nil || !strings.Contains(err.Error(), "--repo "+tk.AgentRepo) {
+		t.Fatalf("--root = %v", err)
+	}
+}
+
+func TestTaskJSONReportsTheAgentWindow(t *testing.T) {
+	h := newHarness(t)
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--agent", "claude", "--repo", "backend="+h.repo); err != nil {
+		t.Fatal(err)
+	}
+	got := h.app.describeTask(h.load(t, "PAY-1"))
+	if got.AgentWindow != "backend" || got.RootWindow || !slices.Equal(got.Repos[0].Agent, []string{"claude"}) {
+		t.Fatalf("json: %+v", got)
+	}
+}

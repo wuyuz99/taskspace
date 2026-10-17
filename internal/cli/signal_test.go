@@ -27,7 +27,7 @@ func (h *harness) signals(t *testing.T, name string) map[string]task.Signal {
 // A hook has no arguments to spare, so the directory says which window it is.
 func TestSignalFindsItsWindowFromTheDirectory(t *testing.T) {
 	h := newHarness(t)
-	tk := h.startedTask(t, "PAY-142")
+	tk := h.startedRootTask(t, "PAY-142")
 	repo := tk.RepoNames()[0]
 
 	sub := filepath.Join(tk.Repos[repo].Worktree, "deep", "inside")

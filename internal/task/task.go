@@ -118,13 +118,24 @@ func (t *Task) AgentWindow() string {
 }
 
 // RemoveRepo forgets a repository. Removing AgentRepo moves the task's agent
-// back to the task-root window, which keeps existing from then on.
+// back to the task-root window. Either way the task keeps a root window from
+// then on: one may have run an agent whose history is in the task directory,
+// so a later first repository must not move the agent into a worktree.
 func (t *Task) RemoveRepo(name string) {
 	delete(t.Repos, name)
 	if name == t.AgentRepo {
 		t.AgentRepo = ""
+	}
+	if t.AgentRepo == "" {
 		t.RootWindow = true
 	}
+}
+
+// CanRunAgentIn reports whether repository name can be AgentRepo: one with
+// an agent of its own would leave the task's agent nowhere to run.
+func (t *Task) CanRunAgentIn(name string) bool {
+	r, ok := t.Repos[name]
+	return ok && len(r.Agent) == 0
 }
 
 // New returns an empty task with the given name.
