@@ -8,7 +8,6 @@ import (
 	"os"
 	osexec "os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -188,11 +187,14 @@ func (z *Zellij) create(ctx context.Context, session string, windows []Window) e
 	}
 	// attach returns before the server has read the layout, and a server that
 	// finds no layout file quietly uses the default one, so the file must
-	// outlive the tabs' creation.
-	first := WindowName(windows[0].Name)
+	// outlive the tabs' creation. Tab names show up before their panes do, so
+	// the wait is for every window's pane: until then State would report the
+	// windows missing, and a second Start would try to add them again. The
+	// launch delay keeps even a pane that closes on exit around long enough to
+	// be seen.
 	for deadline := time.Now().Add(layoutTimeout); ; {
-		res, err := z.action(ctx, session, "query-tab-names")
-		if err == nil && slices.Contains(strings.Fields(res.Stdout), first) {
+		panes, exists, err := z.panes(ctx, session)
+		if err == nil && len(missingWindows(paneState(session, panes, exists), windows)) == 0 {
 			return nil
 		}
 		if time.Now().After(deadline) {
