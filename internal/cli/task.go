@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"text/tabwriter"
@@ -29,7 +30,7 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 	var project string
 	var details taskDetails
 	var agent agentOptions
-	var withRoot bool
+	var withRoot, start bool
 
 	cmd := &cobra.Command{
 		Use:   "create NAME [REPO...]",
@@ -50,7 +51,8 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 			"--with-root keeps the task-root window for a single-repository task too.\n\n" +
 			"--brief-file stores the task's instructions where its agents will look\n" +
 			"for them; see `tspace task brief --help`.\n\n" +
-			"No worktree is created until `tspace start` or `tspace open`.",
+			"No worktree is created until `tspace start` or `tspace open`; --start runs\n" +
+			"`tspace start NAME` straight after, which needs no terminal.",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			brief, err := details.readBrief()
@@ -134,6 +136,9 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 			} else if len(t.Repos) == 1 && t.CanRunAgentIn(t.RepoNames()[0]) {
 				t.AgentRepo = t.RepoNames()[0]
 			}
+			if start && len(t.Repos) == 0 {
+				return fmt.Errorf("--start needs a repository to start; name one, or add it later and run: tspace start %s", name)
+			}
 			if err := a.Store.CreatePrepared(t); err != nil {
 				return err
 			}
@@ -154,12 +159,19 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 				}
 				a.printf("  agent: %s (%s%s)\n", shellJoin(t.Agent), where, from)
 			}
+			if start {
+				a.printf("\n")
+				if err := a.runCmd(cmd.Context(), (*App).newStartCmd, t.Name); err != nil {
+					return fmt.Errorf("task %s was created, but starting it failed: %w", t.Name, err)
+				}
+			}
 			return nil
 		},
 	}
 	cmd.Flags().StringArrayVar(&repos, "repo", nil,
 		"attach a repository, the same as a REPO argument (repeatable)")
 	cmd.Flags().StringVar(&project, "project", "", "snapshot a saved project recipe into this task")
+	cmd.Flags().BoolVar(&start, "start", false, "start the task once it is created, as tspace start NAME does")
 	cmd.Flags().BoolVar(&withRoot, "with-root", false,
 		"give a single-repository task a task-root window for its agent, as with several")
 	details.flags(cmd)
@@ -366,33 +378,58 @@ func (a *App) newTaskRmCmd() *cobra.Command {
 				}
 			}
 
-			if err := a.Store.Delete(t.Name); err != nil {
-				return err
-			}
-			a.printf("removed task %s\n", t.Name)
-
 			// Notes go with the record, as they always have. With --force the
 			// worktrees are still on disk, so the brief describing them stays
 			// too — the same reasoning as `repo rm` leaving a worktree behind.
 			if force {
+				if err := a.deleteRecord(t); err != nil {
+					return err
+				}
 				if note, err := a.Store.ReadNote(t.Name, task.BriefFile); err == nil && note.Text != "" {
 					a.warnf("note: the task's notes were left at %s\n", a.Store.ContextDir(t.Name))
 				}
 				return nil
 			}
-			held, err := a.Store.RemoveNotes(t.Name)
-			if err != nil {
-				return err
-			}
-			if len(held) > 0 {
-				a.printf("deleted its notes (%s)\n", joinNames(held))
-			}
-			return nil
+			return a.deleteTask(t)
 		},
 	}
 	cmd.Flags().BoolVar(&force, "force", false,
 		"delete the record even if worktrees still exist on disk")
 	return cmd
+}
+
+// deleteTask removes a task whose worktrees are gone: its record and its notes.
+func (a *App) deleteTask(t *task.Task) error {
+	if err := a.deleteRecord(t); err != nil {
+		return err
+	}
+	held, err := a.Store.RemoveNotes(t.Name)
+	if err != nil {
+		return err
+	}
+	if len(held) > 0 {
+		a.printf("deleted its notes (%s)\n", joinNames(held))
+	}
+	return nil
+}
+
+// deleteRecord removes the task's record alone.
+func (a *App) deleteRecord(t *task.Task) error {
+	if err := a.Store.Delete(t.Name); err != nil {
+		return err
+	}
+	a.printf("removed task %s\n", t.Name)
+	return nil
+}
+
+// runCmd runs another command as if it had been typed, with this App's output.
+func (a *App) runCmd(ctx context.Context, build func(*App) *cobra.Command, args ...string) error {
+	c := build(a)
+	c.SetArgs(args)
+	c.SetOut(a.Out)
+	c.SetErr(a.Err)
+	c.SilenceUsage, c.SilenceErrors = true, true
+	return c.ExecuteContext(ctx)
 }
 
 func agentDisplay(r task.Repo) string {

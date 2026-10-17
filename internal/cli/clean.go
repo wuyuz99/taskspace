@@ -21,7 +21,7 @@ type cleanPlan struct {
 }
 
 func (a *App) newCleanCmd() *cobra.Command {
-	var deleteBranch, force bool
+	var deleteBranch, force, rm bool
 
 	cmd := &cobra.Command{
 		Use:   "clean TASK",
@@ -31,7 +31,8 @@ func (a *App) newCleanCmd() *cobra.Command {
 			"files or stashes: refusing is always better than losing code. Branches\n" +
 			"are left alone unless --delete-branch, and even then only when their\n" +
 			"work is merged into the base branch or pushed to an upstream.\n\n" +
-			"The task record survives; use `tspace task rm` to remove that.",
+			"The task record survives; use `tspace task rm` to remove that, or --rm to\n" +
+			"remove it here once the worktrees are gone, finishing the task in one step.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -41,7 +42,13 @@ func (a *App) newCleanCmd() *cobra.Command {
 			}
 			if len(t.Repos) == 0 {
 				a.printf("task %s has no repositories\n", t.Name)
-				return nil
+				if !rm {
+					return nil
+				}
+				if err := a.stopForClean(ctx, t); err != nil {
+					return err
+				}
+				return a.finishTask(t)
 			}
 
 			plans, err := a.inspectForClean(ctx, t, deleteBranch)
@@ -57,12 +64,8 @@ func (a *App) newCleanCmd() *cobra.Command {
 
 			// Stop the runtime only once the safety checks have passed, so a
 			// refused clean does not disrupt running agents as a side effect.
-			session := a.Runtime.SessionName(t.Name)
-			if running, err := a.Runtime.HasSession(ctx, session); err == nil && running {
-				if err := a.Runtime.Stop(ctx, session); err != nil {
-					return err
-				}
-				a.printf("stopped session %s\n", session)
+			if err := a.stopForClean(ctx, t); err != nil {
+				return err
 			}
 
 			for _, p := range plans {
@@ -83,6 +86,9 @@ func (a *App) newCleanCmd() *cobra.Command {
 				}
 				if !p.Discard.Safe() && !force {
 					a.warnf("%-12s kept branch %s (%s)\n", p.Name, p.Repo.Branch, p.Discard.Reason())
+					if rm {
+						a.warnf("%-12s no task will refer to it once the record is gone; it is in %s\n", "", p.Repo.Path)
+					}
 					continue
 				}
 				if err := a.Git.DeleteBranch(ctx, p.Repo.Path, p.Repo.Branch, true); err != nil {
@@ -99,9 +105,13 @@ func (a *App) newCleanCmd() *cobra.Command {
 			// Tidy the now-empty workspace directory, but never recursively:
 			// this fails, deliberately, while the task's .context notes are
 			// still there. Worktrees are disposable; the brief that describes
-			// them is not, and only `tspace task rm` deletes it.
+			// them is not, and only task rm or an explicit --rm deletes it.
 			_ = os.Remove(a.Store.TaskDir(t.Name))
 
+			if rm {
+				a.printf("\ncleaned %s\n", t.Name)
+				return a.finishTask(t)
+			}
 			a.printf("\ncleaned %s; the task record is still there (tspace task rm %s to remove it)\n",
 				t.Name, t.Name)
 			return nil
@@ -111,7 +121,42 @@ func (a *App) newCleanCmd() *cobra.Command {
 		"also delete task branches whose work is merged or pushed")
 	cmd.Flags().BoolVar(&force, "force", false,
 		"discard uncommitted work and unmerged branches")
+	cmd.Flags().BoolVar(&rm, "rm", false,
+		"also delete the task record and its notes, as tspace task rm does")
 	return cmd
+}
+
+// stopForClean ends the task's session if it is running.
+func (a *App) stopForClean(ctx context.Context, t *task.Task) error {
+	session := a.Runtime.SessionName(t.Name)
+	if running, err := a.Runtime.HasSession(ctx, session); err == nil && running {
+		if err := a.Runtime.Stop(ctx, session); err != nil {
+			return err
+		}
+		a.printf("stopped session %s\n", session)
+	}
+	return nil
+}
+
+// finishTask deletes a cleaned task's record and notes, but only if nothing
+// else is left in its directory: a worktree repo rm left behind is work the
+// record is the last pointer to.
+func (a *App) finishTask(t *task.Task) error {
+	entries, err := os.ReadDir(a.Store.TaskDir(t.Name))
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	var left []string
+	for _, e := range entries {
+		if e.Name() != ".context" {
+			left = append(left, e.Name())
+		}
+	}
+	if len(left) > 0 {
+		return fmt.Errorf("kept the record of %s: %s still holds %s, which clean did not create; remove it, then run: tspace task rm %s",
+			t.Name, a.Store.TaskDir(t.Name), joinNames(left), t.Name)
+	}
+	return a.deleteTask(t)
 }
 
 // inspectForClean gathers the full picture before anything is removed, so that
