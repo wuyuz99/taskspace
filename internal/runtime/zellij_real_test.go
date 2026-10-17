@@ -40,6 +40,11 @@ func TestRealZellijLifecycle(t *testing.T) {
 	if err := z.Start(ctx(), s, windows); err != nil {
 		t.Fatal(err)
 	}
+	// Start returns only once every window can be seen, so a status or a
+	// second start straight away finds them all.
+	if st, err := z.State(ctx(), s); err != nil || len(missingWindows(st, windows)) != 0 {
+		t.Fatalf("windows missing right after Start: %+v, %v", st, err)
+	}
 	waitFor := func(what string, ok func(SessionState) bool) {
 		t.Helper()
 		deadline := time.Now().Add(5 * time.Second)

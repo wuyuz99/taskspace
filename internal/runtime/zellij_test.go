@@ -1,10 +1,12 @@
 package runtime
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	tsexec "github.com/wuyuz99/taskspace/internal/exec"
 )
@@ -19,6 +21,15 @@ var zellijPanesJSON = fmt.Sprintf(`[
 ]`, strings.Join(NewZellij(nil).launchArgv(backend), " "))
 
 var backend = Window{Name: "backend", Dir: "/wt/b", Command: []string{"codex"}}
+
+// terminalPanes is list-panes output holding one live terminal pane per tab.
+func terminalPanes(tabs ...string) string {
+	var panes []string
+	for i, tab := range tabs {
+		panes = append(panes, fmt.Sprintf(`{"id":%d,"is_plugin":false,"exited":false,"tab_id":%d,"tab_position":%d,"tab_name":%q,"pane_command":"sh"}`, i, i, i, tab))
+	}
+	return "[" + strings.Join(panes, ",") + "]"
+}
 
 func zellijWith(f *tsexec.Fake) *Zellij {
 	z := NewZellij(f)
@@ -73,7 +84,7 @@ func TestZellijStateGroupsPanesByTab(t *testing.T) {
 }
 
 func TestZellijStartCreatesSessionFromOneLayout(t *testing.T) {
-	f := tsexec.NewFake().Fail("list-sessions", "No active zellij sessions found.", 1).RespondOut("query-tab-names", "_root\na~2eb\n")
+	f := tsexec.NewFake().Fail("list-sessions", "No active zellij sessions found.", 1).RespondOut("list-panes", terminalPanes("_root", "a~2eb"))
 	var layout string
 	z := zellijWith(f)
 	windows := []Window{
@@ -107,9 +118,22 @@ func TestZellijStartCreatesSessionFromOneLayout(t *testing.T) {
 	}
 }
 
+func TestZellijStartWaitsForEveryPane(t *testing.T) {
+	// The tab names are up, but only _root has its pane yet.
+	f := tsexec.NewFake().Fail("list-sessions", "No active zellij sessions found.", 1).
+		RespondOut("query-tab-names", "_root\nb\n").
+		RespondOut("list-panes", terminalPanes("_root"))
+	z := zellijWith(f)
+	c, cancel := context.WithTimeout(ctx(), 200*time.Millisecond)
+	defer cancel()
+	if err := z.Start(c, "tspace@t", []Window{{Name: "_root"}, {Name: "b"}}); err == nil {
+		t.Fatal("Start returned before every window had its pane")
+	}
+}
+
 func TestZellijStartReplacesExitedSession(t *testing.T) {
 	f := tsexec.NewFake().RespondOut("list-sessions", "tspace@t [Created 1d ago] (EXITED - attach to resurrect)\n").
-		RespondOut("query-tab-names", "_root\n")
+		RespondOut("list-panes", terminalPanes("_root"))
 	if err := zellijWith(f).Start(ctx(), "tspace@t", []Window{{Name: "_root"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +242,7 @@ func TestZellijStateListsSessionsOnlyWhenNeeded(t *testing.T) {
 func TestZellijCreateFromInsideZellijIsNotNested(t *testing.T) {
 	t.Setenv("ZELLIJ", "0")
 	t.Setenv("ZELLIJ_SESSION_NAME", "elsewhere")
-	f := tsexec.NewFake().Fail("list-sessions", "No active zellij sessions found.", 1).RespondOut("query-tab-names", "_root\n")
+	f := tsexec.NewFake().Fail("list-sessions", "No active zellij sessions found.", 1).RespondOut("list-panes", terminalPanes("_root"))
 	if err := zellijWith(f).Start(ctx(), "tspace@t", []Window{{Name: "_root"}}); err != nil {
 		t.Fatal(err)
 	}
