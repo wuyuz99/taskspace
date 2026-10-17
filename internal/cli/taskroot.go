@@ -58,5 +58,5 @@ func defaultsToRoot(t *task.Task, repoArg string) bool {
 
 // rootWindow is the task's window at its workspace root.
 func (a *App) rootWindow(t *task.Task) runtime.Window {
-	return runtime.Window{Name: task.RootWindowName, Dir: a.Store.TaskDir(t.Name), Command: t.Agent}
+	return runtime.Window{Name: task.RootWindowName, Dir: a.Store.TaskDir(t.Name), Command: t.Agent, Env: windowEnv(t.Name, task.RootWindowName)}
 }

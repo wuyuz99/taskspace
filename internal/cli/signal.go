@@ -13,6 +13,20 @@ import (
 // signalMessageMax keeps a message to what a status line can show.
 const signalMessageMax = 200
 
+// Every window tspace launches is told which task and window it is, so that
+// signal reports for the window the agent runs in wherever it has cd'd to.
+const (
+	envTask   = "TSPACE_TASK"
+	envWindow = "TSPACE_WINDOW"
+)
+
+// windowEnv is the environment a task's window is launched with. An empty
+// window names none, which a window started from inside another one needs, so
+// as not to inherit that one's.
+func windowEnv(taskName, window string) []string {
+	return []string{envTask + "=" + taskName, envWindow + "=" + window}
+}
+
 func (a *App) newSignalCmd() *cobra.Command {
 	var taskName, repo string
 	var root, clear bool
@@ -27,8 +41,11 @@ func (a *App) newSignalCmd() *cobra.Command {
 			"  blocked  waiting on a person: a question, a permission, a decision\n" +
 			"  done     finished what it was asked\n" +
 			"  failed   gave up\n\n" +
-			"Run from inside a task, it knows where it is: in a worktree it reports for\n" +
-			"that repository, and at the task root for the root window.\n\n" +
+			"Run from inside a task, it knows where it is. tspace launches every window\n" +
+			"with TSPACE_TASK and TSPACE_WINDOW set, so an agent reports for its own\n" +
+			"window wherever it has cd'd to. Without them, the directory decides: in a\n" +
+			"worktree it reports for that repository, and at the task root for the root\n" +
+			"window.\n\n" +
 			"  tspace signal blocked 'migration needs a decision: drop or keep the column?'\n" +
 			"  tspace signal done\n" +
 			"  tspace signal working --task PAY-142 --repo backend\n\n" +
@@ -99,10 +116,18 @@ func (a *App) newSignalCmd() *cobra.Command {
 
 // signalTarget resolves which window a signal is about.
 //
-// The agent calling this is a hook with no arguments to spare, so the current
-// directory answers by default: worktrees/TASK/REPO/... is that repository,
-// and anywhere else under worktrees/TASK is the root window.
+// The agent calling this is a hook with no arguments to spare. The window it
+// was launched in answers first, from TSPACE_TASK and TSPACE_WINDOW: an agent
+// may cd anywhere, so its directory says where it is working, not which
+// window it is. Without them the current directory answers:
+// worktrees/TASK/REPO/... is that repository, and anywhere else under
+// worktrees/TASK is the root window.
 func (a *App) signalTarget(taskName, repo string, root bool) (*task.Task, string, error) {
+	if !root && repo == "" {
+		if t, window, ok := a.launchedWindow(taskName); ok {
+			return t, window, nil
+		}
+	}
 	here := ""
 	if taskName == "" {
 		dir, err := os.Getwd()
@@ -131,6 +156,29 @@ func (a *App) signalTarget(taskName, repo string, root bool) (*task.Task, string
 		return t, here, nil
 	}
 	return t, task.RootWindowName, nil
+}
+
+// launchedWindow is the window the environment says this process runs in, if
+// it names one of taskName's (any task's, for an empty taskName) that still exists.
+func (a *App) launchedWindow(taskName string) (*task.Task, string, bool) {
+	envName, window := os.Getenv(envTask), os.Getenv(envWindow)
+	if envName == "" || window == "" || (taskName != "" && taskName != envName) {
+		return nil, "", false
+	}
+	if task.ValidateName("task", envName) != nil {
+		return nil, "", false
+	}
+	t, err := a.Store.Load(envName)
+	if err != nil {
+		return nil, "", false
+	}
+	if window == task.RootWindowName {
+		return t, window, true
+	}
+	if _, ok := t.Repo(window); ok {
+		return t, window, true
+	}
+	return nil, "", false
 }
 
 // locate reads a task name, and the directory below it, out of a path inside

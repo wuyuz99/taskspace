@@ -97,6 +97,7 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 					Name:    name,
 					Dir:     r.Worktree,
 					Command: r.Agent,
+					Env:     windowEnv(t.Name, name),
 				})
 			}
 
@@ -270,7 +271,7 @@ func (a *App) newRestartCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				w = runtime.Window{Name: name, Dir: r.Worktree, Command: r.Agent}
+				w = runtime.Window{Name: name, Dir: r.Worktree, Command: r.Agent, Env: windowEnv(t.Name, name)}
 				label += "/" + name
 			}
 			if err := a.Runtime.Restart(cmd.Context(), a.Runtime.SessionName(t.Name), w); err != nil {

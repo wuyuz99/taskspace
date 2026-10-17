@@ -24,6 +24,8 @@ type Window struct {
 	// open, dead, so a crashed agent's last output can still be read; an
 	// ad-hoc shell the user typed `exit` into has nothing left to show.
 	Transient bool
+	// Env is extra environment for Command, as NAME=VALUE.
+	Env []string
 }
 
 // PaneState is what we can actually observe about a running window.
@@ -80,18 +82,25 @@ type Runtime interface {
 }
 
 // launchArgv is the argv a window runs: its command, or for an empty Command
-// the user's interactive shell (shell overrides $SHELL).
+// the user's interactive shell (shell overrides $SHELL), behind env(1) when the
+// window has environment of its own. env execs the command, so the pane's
+// process is still the command itself.
 func launchArgv(w Window, shell string) []string {
-	if len(w.Command) > 0 {
-		return w.Command
+	var argv []string
+	switch {
+	case len(w.Command) > 0:
+		argv = w.Command
+	case shell != "":
+		argv = []string{shell}
+	case os.Getenv("SHELL") != "":
+		argv = []string{os.Getenv("SHELL")}
+	default:
+		argv = []string{"/bin/sh"}
 	}
-	if shell != "" {
-		return []string{shell}
+	if len(w.Env) == 0 {
+		return argv
 	}
-	if s := os.Getenv("SHELL"); s != "" {
-		return []string{s}
-	}
-	return []string{"/bin/sh"}
+	return append(append([]string{"env"}, w.Env...), argv...)
 }
 
 // sessionName is the session a task runs in. Every runtime uses it: tspace
