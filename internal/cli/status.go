@@ -19,7 +19,7 @@ type statusJSON struct {
 	Session      string           `json:"session"`
 	Running      bool             `json:"running"`
 	RuntimeError string           `json:"runtime_error,omitempty"`
-	Root         statusRootJSON   `json:"root"`
+	Root         *statusRootJSON  `json:"root"`
 	Repos        []statusRepoJSON `json:"repos"`
 }
 
@@ -61,8 +61,11 @@ func (a *App) printStatusJSON(tasks []*task.Task, results []status.TaskStatus) e
 			Task:    ts.Task,
 			Session: ts.Session,
 			Running: ts.Running,
-			Root:    statusRootJSON{Agent: ts.Root.Agent, Runtime: string(ts.Root.Runtime), Signal: ts.Root.Signal},
 			Repos:   make([]statusRepoJSON, 0, len(ts.Repos)),
+		}
+		// A single-repo task has no root window: "root" is null.
+		if ts.Root != nil {
+			row.Root = &statusRootJSON{Agent: ts.Root.Agent, Runtime: string(ts.Root.Runtime), Signal: ts.Root.Signal}
 		}
 		if ts.RuntimeErr != nil {
 			row.RuntimeError = ts.RuntimeErr.Error()
@@ -211,7 +214,7 @@ func printStatusTable(out, errOut io.Writer, results []status.TaskStatus) {
 	// with no signals reads as it always has.
 	signals := false
 	for _, ts := range results {
-		signals = signals || ts.Root.Signal != nil
+		signals = signals || (ts.Root != nil && ts.Root.Signal != nil)
 		for _, r := range ts.Repos {
 			signals = signals || r.Signal != nil
 		}
@@ -235,7 +238,9 @@ func printStatusTable(out, errOut io.Writer, results []status.TaskStatus) {
 	for _, ts := range results {
 		// The root window has a process but no worktree, so it has no
 		// branch or git state of its own; its repositories follow it.
-		row(tw, ts.Root.Signal, ts.Task, "(root)", "-", ts.Root.Agent, string(ts.Root.Runtime), "-")
+		if ts.Root != nil {
+			row(tw, ts.Root.Signal, ts.Task, "(root)", "-", ts.Root.Agent, string(ts.Root.Runtime), "-")
+		}
 		for _, r := range ts.Repos {
 			empty = false
 			row(tw, r.Signal, r.Task, r.Repo, dash(r.Branch), r.Agent, string(r.Runtime), gitSummary(r))

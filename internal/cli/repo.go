@@ -113,9 +113,14 @@ func (a *App) newRepoAddCmd() *cobra.Command {
 			".env, node_modules or venv of its own. It is given TSPACE_TASK, TSPACE_REPO,\n" +
 			"TSPACE_REPO_PATH (the source repository), TSPACE_WORKTREE, TSPACE_TASK_DIR and\n" +
 			"TSPACE_CONTEXT_DIR. A failing hook is reported and the worktree is kept.\n\n" +
-			"Nothing is created on disk here — `tspace start` makes the worktrees.",
+			"The first repository of a task with none, and no session, runs the task's\n" +
+			"agent in its own window, as `tspace task create` does for one. Adding a\n" +
+			"second to such a task leaves that agent where it is and gives the task a\n" +
+			"root window with a shell, opened at once if the session is running.\n\n" +
+			"Nothing else is created on disk here — `tspace start` makes the worktrees.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
 			t, err := a.loadTask(args[0])
 			if err != nil {
 				return err
@@ -124,10 +129,32 @@ func (a *App) newRepoAddCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := a.addRepoSpec(cmd.Context(), t, c, args[1], opts); err != nil {
+			first := len(t.Repos) == 0
+			if err := a.addRepoSpec(ctx, t, c, args[1], opts); err != nil {
 				return err
 			}
-			return a.Store.Save(t)
+			running := a.sessionRunning(ctx, t)
+			openRoot := false
+			switch {
+			case first && t.HasRootWindow() && !t.RootWindow && !running:
+				// Nothing has run in a root window that the agent could be
+				// moved out of, so this task starts as a single-repo one.
+				t.AgentRepo = t.RepoNames()[0]
+				a.printf("  agent:    %s (runs in this worktree)\n", agentDisplay(task.Repo{Agent: t.RepoAgent(t.AgentRepo)}))
+			case !t.HasRootWindow() && len(t.Repos) > 1:
+				t.RootWindow = true
+				openRoot = running
+				if !running {
+					a.printf("the next start opens a root window for %s; its agent stays in %s\n", t.Name, t.AgentRepo)
+				}
+			}
+			if err := a.Store.Save(t); err != nil {
+				return err
+			}
+			if openRoot {
+				a.openRootWindow(ctx, t)
+			}
+			return nil
 		},
 	}
 	cmd.Flags().StringVar(&opts.Name, "name", "", "repo name (default: the registered name or the directory's base name)")
@@ -137,6 +164,32 @@ func (a *App) newRepoAddCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.PostCreate, "post-create", "",
 		`shell command run once in a new worktree, e.g. 'cp "$TSPACE_REPO_PATH/.env" . && pnpm install'`)
 	return cmd
+}
+
+// sessionRunning reports whether the task's session is up. A runtime that
+// cannot be asked has nothing running that tspace could act on.
+func (a *App) sessionRunning(ctx context.Context, t *task.Task) bool {
+	if a.Runtime == nil || a.Runtime.Available(ctx) != nil {
+		return false
+	}
+	running, err := a.Runtime.HasSession(ctx, a.Runtime.SessionName(t.Name))
+	return err == nil && running
+}
+
+// openRootWindow adds the task-root window to a running session, for a task
+// that just gained one. Failing is only a warning: the record says the
+// window exists, so the next start creates it.
+func (a *App) openRootWindow(ctx context.Context, t *task.Task) {
+	w := a.rootWindow(t)
+	err := os.MkdirAll(w.Dir, 0o755)
+	if err == nil {
+		err = a.Runtime.OpenWindow(ctx, a.Runtime.SessionName(t.Name), w)
+	}
+	if err != nil {
+		a.warnf("could not open the root window now (%v); the next tspace start %s will\n", err, t.Name)
+		return
+	}
+	a.printf("opened the root window for %s (a shell at %s); its agent stays in %s\n", t.Name, w.Dir, t.AgentRepo)
 }
 
 // repoSpec is one repository as typed on the command line:
@@ -381,7 +434,7 @@ func (a *App) newRepoRmCmd() *cobra.Command {
 			if !ok {
 				return fmt.Errorf("task %q has no repo named %q", t.Name, args[1])
 			}
-			delete(t.Repos, args[1])
+			t.RemoveRepo(args[1])
 			if err := a.Store.Save(t); err != nil {
 				return err
 			}

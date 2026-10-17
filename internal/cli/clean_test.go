@@ -150,6 +150,18 @@ func (h *harness) startedTask(t *testing.T, name string) *task.Task {
 	return tk
 }
 
+// startedRootTask is startedTask with a task-root window, as a task with
+// several repositories has.
+func (h *harness) startedRootTask(t *testing.T, name string) *task.Task {
+	t.Helper()
+	tk := h.startedTask(t, name)
+	tk.RootWindow = true
+	if err := h.app.Store.Save(tk); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	return tk
+}
+
 func TestCleanRefusesDirtyWorktree(t *testing.T) {
 	h := newHarness(t)
 	tk := h.startedTask(t, "dirty-task")

@@ -187,8 +187,9 @@ then the `--project` recipe's agent, then this default, and otherwise your
 shell. The result is recorded on the task, as recipes are, so changing the
 default later leaves existing tasks alone; use `tspace task update TASK --agent` for
 those. The default is stored in `$TSPACE_ROOT/config.json`. It sets only the
-task-root agent; repository windows remain shells unless given their own
-`--agent`.
+task's agent, which runs in the root window, or in a single-repository task's
+one repository window; other repository windows remain shells unless given their
+own `--agent`.
 
 ### Open more windows as you go
 
@@ -339,7 +340,9 @@ cat ../.context/TASK.md
 ```
 
 The agent in the `_root` window starts one level up, so for it the same file is
-`.context/TASK.md`.
+`.context/TASK.md`. The agent of a single-repository task runs in the worktree;
+Claude Code is started with `--add-dir` pointing at `.context`, so it can read
+the notes without asking.
 
 `tspace shell` and `post_create` hooks also get `TSPACE_CONTEXT_DIR`. Nothing stops you
 editing, grepping, or diffing these files directly; `tspace` only reads and writes
@@ -410,6 +413,16 @@ has none. Then comes one window per repo, named after the repo. No repository
 can be called `_root`: repository names start with a letter or digit. Closing
 `tspace` never stops an agent.
 
+**Single-repository tasks** have no `_root` window. A task created with one
+repository (or given its first one with `tspace repo add` before it ever ran)
+starts its agent in that repository's window, in the worktree, where the code
+is. `tspace task create --with-root` keeps the root window instead. When
+`tspace repo add` brings a second repository, the agent stays where it is, so
+`claude --continue` still finds its conversation, and the task gains a `_root`
+window running a shell: opened straight away if the session is running, else
+by the next `start`. Removing repositories again never takes that window away.
+`tspace task show` says which window runs the agent.
+
 ### Enter the whole workspace
 
 `tspace open TASK` prepares missing worktrees and session windows, prints the task
@@ -418,8 +431,8 @@ Existing windows are preserved. Dead windows get an explicit `tspace restart` hi
 opening does not restart them automatically. Setup hooks run only for newly
 created worktrees, as with `tspace start`. Add at least one repository before opening.
 
-`tspace start TASK` and `tspace open TASK` create the `_root` window along with the
-repository windows. `tspace start TASK REPO...` starts only the named repositories.
+`tspace start TASK` and `tspace open TASK` create the `_root` window, if the task
+has one, along with the repository windows. `tspace start TASK REPO...` starts only the named repositories.
 A session started before root windows existed gains one, as its last window,
 on the next full `start` or `open`.
 
@@ -580,11 +593,11 @@ TASK               REPO      BRANCH                   AGENT   RUNTIME     GIT
 checkout-redesign  (root)    -                        claude  running     -
 checkout-redesign  backend   agent/checkout-redesign  shell   running     dirty (3 files)
 checkout-redesign  frontend  agent/checkout-redesign  codex   dead        clean, ahead 2
-payments-fix       (root)    -                        shell   no-session  -
 payments-fix       backend   agent/payments-fix       codex   no-session  missing
 ```
 
-Each task's first row is its `_root` window. It has a runtime state but no git
+A task's first row is its `_root` window; `payments-fix` has one repository,
+so its agent runs there and it has none. It has a runtime state but no git
 state of its own: whatever its agent changes shows up in the repositories' rows.
 
 - **RUNTIME** — `running`, `dead`, `no-window`, `no-session`, `unknown`
@@ -647,8 +660,7 @@ tspace dash  2 tasks · 1 blocked · 1 dead  22:53:17
   checkout-redesign  (root)    claude  running     working 40s  -
                      backend   claude  running     done 12m     dirty (3 files)
 >                    frontend  codex   running     blocked 3m   clean, ahead 2
-  payments-fix       (root)    shell   no-session  -            -
-                     backend   codex   dead        -            missing
+  payments-fix       backend   codex   dead        -            missing
 
 checkout-redesign/frontend  agent/checkout-redesign
   /home/me/.tspace/worktrees/checkout-redesign/frontend

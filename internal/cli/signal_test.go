@@ -83,7 +83,7 @@ func TestSignalFindsItsWindowFromTheDirectory(t *testing.T) {
 
 func TestStatusShowsSignalsOnlyWhenThereAreSome(t *testing.T) {
 	h := newHarness(t)
-	tk := h.startedTask(t, "PAY-142")
+	tk := h.startedRootTask(t, "PAY-142")
 	repo := tk.RepoNames()[0]
 
 	if err := h.exec(t, h.app.newStatusCmd()); err != nil {
@@ -219,7 +219,7 @@ func drive(t *testing.T, m dashModel, msg tea.Msg) dashModel {
 
 func TestDash(t *testing.T) {
 	h := newHarness(t)
-	tk := h.startedTask(t, "PAY-142")
+	tk := h.startedRootTask(t, "PAY-142")
 	repo := tk.RepoNames()[0]
 	if err := h.exec(t, h.app.newTaskCmd(), "handoff", "PAY-142", "# Notes\n\nmigration half done"); err != nil {
 		t.Fatal(err)
@@ -354,7 +354,7 @@ func TestSignalPrefersTheWindowItWasLaunchedIn(t *testing.T) {
 
 func TestStartTellsEachWindowWhichItIs(t *testing.T) {
 	h := newHarness(t)
-	tk := h.startedTask(t, "PAY-142")
+	tk := h.startedRootTask(t, "PAY-142")
 	if err := h.exec(t, h.app.newStartCmd(), tk.Name); err != nil {
 		t.Fatal(err)
 	}
@@ -368,7 +368,7 @@ func TestStartTellsEachWindowWhichItIs(t *testing.T) {
 	}
 	for _, w := range rt.started {
 		env := strings.Join(w.Env, " ")
-		if env != "TSPACE_TASK=PAY-142 TSPACE_WINDOW="+w.Name || !want[w.Name] {
+		if !strings.HasPrefix(env+" ", "TSPACE_TASK=PAY-142 TSPACE_WINDOW="+w.Name+" ") || !want[w.Name] {
 			t.Errorf("window %s env = %q", w.Name, env)
 		}
 	}
@@ -391,7 +391,7 @@ func TestStartReportsASessionThatDiedOnLaunch(t *testing.T) {
 
 func TestStartWarnsAboutWindowsThatExitedOnLaunch(t *testing.T) {
 	h := newHarness(t)
-	tk := h.startedTask(t, "PAY-142")
+	tk := h.startedRootTask(t, "PAY-142")
 	repo := tk.RepoNames()[0]
 	rt := h.app.Runtime.(*stubRuntime)
 	rt.dead = map[string]bool{task.RootWindowName: true, repo: true}

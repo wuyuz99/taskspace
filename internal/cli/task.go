@@ -29,6 +29,7 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 	var project string
 	var details taskDetails
 	var agent agentOptions
+	var withRoot bool
 
 	cmd := &cobra.Command{
 		Use:   "create NAME [REPO...]",
@@ -39,9 +40,14 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 			"  tspace task create PAY-142 backend frontend@feature/x infra:develop\n\n" +
 			"NAME starts with a letter or digit and holds only letters, digits, '.',\n" +
 			"'_' and '-'. It names the task's directory, session and default branch.\n\n" +
-			"The task-root window runs the agent from `tspace config agent`, or a shell.\n" +
-			"--agent overrides it, one flag per word of the command:\n\n" +
+			"The task's agent is the one from `tspace config agent`, or a shell. --agent\n" +
+			"overrides it, one flag per word of the command:\n\n" +
 			"  tspace task create PAY-142 backend --agent claude --agent=--model --agent opus\n\n" +
+			"With several repositories, or none yet, the agent runs in a task-root window\n" +
+			"that sees every worktree. With one, the session has no root window: the\n" +
+			"agent runs in that repository's worktree, and keeps running there when\n" +
+			"`tspace repo add` brings a second, which opens a root window with a shell.\n" +
+			"--with-root keeps the task-root window for a single-repository task too.\n\n" +
 			"--brief-file stores the task's instructions where its agents will look\n" +
 			"for them; see `tspace task brief --help`.\n\n" +
 			"No worktree is created until `tspace start` or `tspace open`.",
@@ -123,6 +129,11 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 					agentFrom = "tspace config"
 				}
 			}
+			if withRoot {
+				t.RootWindow = true
+			} else if len(t.Repos) == 1 {
+				t.AgentRepo = t.RepoNames()[0]
+			}
 			if err := a.Store.CreatePrepared(t); err != nil {
 				return err
 			}
@@ -137,7 +148,11 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 				if agentFrom != "" {
 					from = ", from " + agentFrom
 				}
-				a.printf("  agent: %s (task root%s)\n", shellJoin(t.Agent), from)
+				where := "task root"
+				if t.AgentRepo != "" {
+					where = "in " + t.AgentRepo + "'s worktree"
+				}
+				a.printf("  agent: %s (%s%s)\n", shellJoin(t.Agent), where, from)
 			}
 			return nil
 		},
@@ -145,6 +160,8 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 	cmd.Flags().StringArrayVar(&repos, "repo", nil,
 		"attach a repository, the same as a REPO argument (repeatable)")
 	cmd.Flags().StringVar(&project, "project", "", "snapshot a saved project recipe into this task")
+	cmd.Flags().BoolVar(&withRoot, "with-root", false,
+		"give a single-repository task a task-root window for its agent, as with several")
 	details.flags(cmd)
 	agent.flags(cmd)
 	return cmd
@@ -160,6 +177,8 @@ type taskJSON struct {
 	Dir              string         `json:"dir"`
 	ContextDir       string         `json:"context_dir"`
 	Agent            []string       `json:"agent"`
+	AgentWindow      string         `json:"agent_window"`
+	RootWindow       bool           `json:"root_window"`
 	Brief            string         `json:"brief,omitempty"`
 	Handoff          string         `json:"handoff,omitempty"`
 	HandoffUpdatedAt *time.Time     `json:"handoff_updated_at,omitempty"`
@@ -179,15 +198,17 @@ type taskRepoJSON struct {
 // describeTask renders a task's record and notes. An empty agent is the shell.
 func (a *App) describeTask(t *task.Task) taskJSON {
 	out := taskJSON{
-		Name:       t.Name,
-		Title:      t.Title,
-		Ticket:     t.Ticket,
-		TicketURL:  t.TicketURL,
-		Session:    a.Runtime.SessionName(t.Name),
-		Dir:        a.Store.TaskDir(t.Name),
-		ContextDir: a.Store.ContextDir(t.Name),
-		Agent:      append([]string{}, t.Agent...),
-		Repos:      make([]taskRepoJSON, 0, len(t.Repos)),
+		Name:        t.Name,
+		Title:       t.Title,
+		Ticket:      t.Ticket,
+		TicketURL:   t.TicketURL,
+		Session:     a.Runtime.SessionName(t.Name),
+		Dir:         a.Store.TaskDir(t.Name),
+		ContextDir:  a.Store.ContextDir(t.Name),
+		Agent:       append([]string{}, t.Agent...),
+		AgentWindow: t.AgentWindow(),
+		RootWindow:  t.HasRootWindow(),
+		Repos:       make([]taskRepoJSON, 0, len(t.Repos)),
 	}
 	brief, handoff, err := a.notes(t)
 	if err != nil {
@@ -278,7 +299,16 @@ func (a *App) newTaskShowCmd() *cobra.Command {
 			a.printf("session:  %s\n", a.Runtime.SessionName(t.Name))
 			a.printf("workspace: %s\n", a.Store.TaskDir(t.Name))
 			a.printf("context:   %s\n", a.Store.ContextDir(t.Name))
-			a.printf("agent:     %s (window %s, at the workspace root)\n", agentDisplay(task.Repo{Agent: t.Agent}), task.RootWindowName)
+			if t.AgentRepo == "" {
+				a.printf("agent:     %s (window %s, at the workspace root)\n", agentDisplay(task.Repo{Agent: t.Agent}), task.RootWindowName)
+			} else {
+				a.printf("agent:     %s (window %s, in its worktree)\n", agentDisplay(task.Repo{Agent: t.RepoAgent(t.AgentRepo)}), t.AgentRepo)
+				if t.RootWindow {
+					a.printf("root:      shell (window %s, at the workspace root)\n", task.RootWindowName)
+				} else {
+					a.printf("root:      none until a second repository is added\n")
+				}
+			}
 			a.printTaskContext(t)
 			if len(t.Repos) == 0 {
 				a.printf("\nno repositories yet; add one with:\n  tspace repo add %s REPO\n", t.Name)
@@ -294,7 +324,7 @@ func (a *App) newTaskShowCmd() *cobra.Command {
 					a.printf("  base:      %s\n", r.Base)
 				}
 				a.printf("  worktree:  %s\n", r.Worktree)
-				a.printf("  agent:     %s\n", agentDisplay(r))
+				a.printf("  agent:     %s\n", agentDisplay(task.Repo{Agent: t.RepoAgent(name)}))
 				if r.PostCreate != "" {
 					a.printf("  post_create: %s\n", r.PostCreate)
 				}
