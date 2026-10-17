@@ -139,3 +139,33 @@ func TestRealTmuxIsolationAndRecovery(t *testing.T) {
 		t.Fatalf("stopping dotted task affected hyphenated task: %v", err)
 	}
 }
+
+// Opening a window must not make it the active one: an attached client, or
+// the next attach, would land on it.
+func TestRealTmuxNewWindowsStayInTheBackground(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux unavailable")
+	}
+	dir, err := os.MkdirTemp("", "tspace-rt-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	r := isolatedRunner{filepath.Join(dir, "socket")}
+	tm := NewTmux(r)
+	t.Cleanup(func() { r.Run(ctx(), "", "tmux", "kill-server") })
+	s := tm.SessionName("bg")
+	if err := tm.Start(ctx(), s, []Window{{Name: "_root", Dir: dir, Command: []string{"sleep", "60"}}, {Name: "backend", Dir: dir}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tm.OpenWindow(ctx(), s, Window{Name: "_main-shell", Dir: dir, Transient: true}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := r.Run(ctx(), "", "tmux", "list-windows", "-t", target(s), "-F", "#{window_active} #{window_name}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(res.Stdout, "1 _root\n") {
+		t.Fatalf("_root is not the active window:\n%s", res.Stdout)
+	}
+}

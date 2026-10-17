@@ -151,8 +151,11 @@ func (t *Tmux) openWindow(ctx context.Context, session string, w Window) error {
 	return t.launchFresh(ctx, session, w)
 }
 
+// launchFresh runs w's command in its just-created, single-pane window. It is
+// respawn-pane, not respawn-window, because respawn-window makes the window
+// the session's active one, undoing new-window -d.
 func (t *Tmux) launchFresh(ctx context.Context, session string, w Window) error {
-	args := []string{"respawn-window", "-k", "-t", windowTarget(session, WindowName(w.Name))}
+	args := []string{"respawn-pane", "-k", "-t", windowTarget(session, WindowName(w.Name))}
 	if w.Dir != "" {
 		args = append(args, "-c", w.Dir)
 	}

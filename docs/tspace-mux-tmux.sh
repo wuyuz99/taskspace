@@ -55,7 +55,8 @@ new-session | new-window | respawn)
 		# No -k: tmux itself refuses to replace a pane that is still alive.
 		tmux respawn-window -t "$w" -c "$PWD" "$@"
 	else
-		tmux respawn-window -k -t "$w" -c "$PWD" "$@"
+		# respawn-pane: respawn-window would make the new window the active one.
+		tmux respawn-pane -k -t "$w" -c "$PWD" "$@"
 	fi
 	;;
 

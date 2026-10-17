@@ -59,14 +59,14 @@ func TestStartCreatesSessionThenWindows(t *testing.T) {
 	}
 	cmds := strings.Join(f.Commands(), "\n")
 
-	if !strings.Contains(cmds, "new-session -d -s tspace-task -n backend -c /wt/task/backend /bin/sh") || !strings.Contains(cmds, "respawn-window -k -t =tspace-task:=backend -c /wt/task/backend claude") {
+	if !strings.Contains(cmds, "new-session -d -s tspace-task -n backend -c /wt/task/backend /bin/sh") || !strings.Contains(cmds, "respawn-pane -k -t =tspace-task:=backend -c /wt/task/backend claude") {
 		t.Errorf("missing correct new-session; got:\n%s", cmds)
 	}
-	if !strings.Contains(cmds, "respawn-window -k -t =tspace-task:=frontend -c /wt/task/frontend codex --flag") {
+	if !strings.Contains(cmds, "respawn-pane -k -t =tspace-task:=frontend -c /wt/task/frontend codex --flag") {
 		t.Errorf("missing correct new-window for frontend; got:\n%s", cmds)
 	}
 	// A window with no agent gets an interactive shell.
-	if !strings.Contains(cmds, "respawn-window -k -t =tspace-task:=infra -c /wt/task/infra /bin/bash") {
+	if !strings.Contains(cmds, "respawn-pane -k -t =tspace-task:=infra -c /wt/task/infra /bin/bash") {
 		t.Errorf("agent-less window did not launch a shell; got:\n%s", cmds)
 	}
 	// Without remain-on-exit, a crashed agent's traceback disappears with the window.
@@ -132,7 +132,7 @@ func TestOpenWindowRefusesAnExistingName(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("OpenWindow on a live window = %v, want refusal", err)
 	}
-	if f.Ran("new-window") || f.Ran("respawn-window") {
+	if f.Ran("new-window") || f.Ran("respawn-window") || f.Ran("respawn-pane") {
 		t.Errorf("refusal still touched the window: %v", f.Commands())
 	}
 
