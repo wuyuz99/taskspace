@@ -77,6 +77,7 @@ func (a *App) applyBrief(cmd *cobra.Command, t *task.Task, brief string) error {
 func (a *App) newTaskUpdateCmd() *cobra.Command {
 	var d taskDetails
 	var agent agentOptions
+	var resume resumeOptions
 	cmd := &cobra.Command{Use: "update NAME", Short: "Update a task's title, ticket, brief or root agent", Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			brief, err := d.readBrief()
@@ -86,12 +87,20 @@ func (a *App) newTaskUpdateCmd() *cobra.Command {
 			if err := agent.validate(cmd); err != nil {
 				return err
 			}
+			if err := resume.validate(cmd); err != nil {
+				return err
+			}
 			t, err := a.loadTask(args[0])
 			if err != nil {
 				return err
 			}
 			d.apply(cmd, t)
 			setAgent := agent.apply(cmd, t)
+			var resumeCleared bool
+			t.Resume, resumeCleared = resume.apply(cmd, t.Resume, setAgent)
+			if len(t.Resume) > 0 && len(t.Agent) == 0 {
+				return fmt.Errorf("--resume resumes the task's agent, and it has none; give one with --agent")
+			}
 			if err := a.Store.Save(t); err != nil {
 				return err
 			}
@@ -99,6 +108,12 @@ func (a *App) newTaskUpdateCmd() *cobra.Command {
 				return err
 			}
 			a.printf("updated task %s\n", t.Name)
+			if resumeCleared {
+				a.warnf("note: the resume command went with the old agent; set one for this agent with --resume\n")
+			}
+			if resume.changed(cmd) {
+				a.printf("  resume: %s\n", resumeDisplay(t.Resume))
+			}
 			if setAgent {
 				window := t.AgentWindow()
 				if window == t.AgentRepo && len(t.Repos[window].Agent) > 0 {
@@ -110,7 +125,15 @@ func (a *App) newTaskUpdateCmd() *cobra.Command {
 		}}
 	d.flags(cmd)
 	agent.flags(cmd)
+	resume.flags(cmd, true)
 	return cmd
+}
+
+func resumeDisplay(argv []string) string {
+	if len(argv) == 0 {
+		return "none"
+	}
+	return shellJoin(argv)
 }
 
 func (a *App) newTaskNoteCmd(handoff bool) *cobra.Command {

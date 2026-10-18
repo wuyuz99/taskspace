@@ -35,7 +35,7 @@ func (a *App) newConfigCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.AddCommand(a.newConfigAgentCmd(), a.newConfigRepoCmd(), a.newConfigBranchPrefixCmd(), a.newConfigMultiplexerCmd(), a.newConfigHooksCmd())
+	cmd.AddCommand(a.newConfigAgentCmd(), a.newConfigRepoCmd(), a.newConfigBranchPrefixCmd(), a.newConfigMultiplexerCmd(), a.newConfigHooksCmd(), a.newConfigResumeCmd())
 	return cmd
 }
 
@@ -245,6 +245,57 @@ func (a *App) newConfigAgentCmd() *cobra.Command {
 	// Flags after COMMAND belong to the agent, not to tspace.
 	cmd.Flags().SetInterspersed(false)
 	cmd.Flags().BoolVar(&unset, "unset", false, "clear the default, so new tasks' root windows run a shell")
+	return cmd
+}
+
+func (a *App) newConfigResumeCmd() *cobra.Command {
+	var unset bool
+	cmd := &cobra.Command{
+		Use:   "resume [COMMAND [ARGS...] | --unset]",
+		Short: "Show or set how the default agent resumes its conversation",
+		Long: "With a command, new tasks that take the default agent from `tspace config\n" +
+			"agent` record this beside it, for `tspace restart --resume`. A task given\n" +
+			"another agent does not get it: it resumes a different program. Everything\n" +
+			"after COMMAND is passed to it, and {context_dir} and {task_dir} work as for\n" +
+			"the agent:\n\n" +
+			"  tspace config agent claude --add-dir {context_dir}\n" +
+			"  tspace config resume claude --continue --add-dir {context_dir}",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if unset && len(args) > 0 {
+				return fmt.Errorf("choose either a command or --unset")
+			}
+			c, err := a.Store.LoadConfig()
+			if err != nil {
+				return err
+			}
+			switch {
+			case unset:
+				c.Resume = nil
+			case len(args) == 0:
+				a.printf("%s\n", resumeDisplay(c.Resume))
+				return nil
+			case strings.TrimSpace(args[0]) == "":
+				return fmt.Errorf("resume command is empty; use --unset to clear it")
+			default:
+				c.Resume = args
+			}
+			if err := a.Store.SaveConfig(c); err != nil {
+				return err
+			}
+			if unset {
+				a.printf("cleared the default resume command\n")
+				return nil
+			}
+			a.printf("default resume: %s (applies to tasks created from now on with the default agent)\n", shellJoin(c.Resume))
+			if len(c.Agent) == 0 {
+				a.warnf("note: no default agent is set, so no task gets this yet; set one with tspace config agent\n")
+			}
+			return nil
+		},
+	}
+	// Flags after COMMAND belong to it, not to tspace.
+	cmd.Flags().SetInterspersed(false)
+	cmd.Flags().BoolVar(&unset, "unset", false, "clear the default resume command")
 	return cmd
 }
 
