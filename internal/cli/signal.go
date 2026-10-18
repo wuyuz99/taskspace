@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,17 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
+
+// errNotInTask is signal's answer outside every task, which --quiet hides.
+var errNotInTask = errors.New("not inside a task")
+
+type notInTask struct{ dir string }
+
+func (e notInTask) Error() string {
+	return e.dir + " is not inside a task; run this in a task's worktree, or name one with --task"
+}
+
+func (e notInTask) Is(target error) bool { return target == errNotInTask }
 
 // signalMessageMax keeps a message to what a status line can show.
 const signalMessageMax = 200
@@ -83,7 +95,9 @@ func (a *App) newSignalCmd() *cobra.Command {
 
 			t, window, err := a.signalTarget(taskName, repo, root)
 			if err != nil {
-				if quiet {
+				// Only "not in a task" is expected of a hook run in every
+				// session; a typo'd task or a broken record still fails.
+				if quiet && errors.Is(err, errNotInTask) {
 					return nil
 				}
 				return err
@@ -135,21 +149,23 @@ func (a *App) newSignalCmd() *cobra.Command {
 // worktrees/TASK/REPO/... is that repository, and anywhere else under
 // worktrees/TASK is the root window.
 func (a *App) signalTarget(taskName, repo string, root bool) (*task.Task, string, error) {
-	if !root && repo == "" {
-		if t, window, ok := a.launchedWindow(taskName); ok {
+	dir, err := os.Getwd()
+	if err != nil {
+		return nil, "", err
+	}
+	located, here, inTask := a.locate(dir)
+	if !root && repo == "" && inTask {
+		if t, window, ok := a.launchedWindow(taskName, located); ok {
 			return t, window, nil
 		}
 	}
-	here := ""
 	if taskName == "" {
-		dir, err := os.Getwd()
-		if err != nil {
-			return nil, "", err
+		if !inTask {
+			return nil, "", notInTask{dir}
 		}
-		var ok bool
-		if taskName, here, ok = a.locate(dir); !ok {
-			return nil, "", fmt.Errorf("%s is not inside a task; run this in a task's worktree, or name one with --task", dir)
-		}
+		taskName = located
+	} else if taskName != located {
+		here = ""
 	}
 	t, err := a.loadTask(taskName)
 	if err != nil {
@@ -178,9 +194,13 @@ func (a *App) signalTarget(taskName, repo string, root bool) (*task.Task, string
 
 // launchedWindow is the window the environment says this process runs in, if
 // it names one of taskName's (any task's, for an empty taskName) that still exists.
-func (a *App) launchedWindow(taskName string) (*task.Task, string, bool) {
+//
+// The environment is trusted only for a process in that task's directory.
+// It is inherited by everything a window starts, so an agent the user starts
+// in that window after cd'ing elsewhere would otherwise report for it.
+func (a *App) launchedWindow(taskName, located string) (*task.Task, string, bool) {
 	envName, window := os.Getenv(envTask), os.Getenv(envWindow)
-	if envName == "" || window == "" || (taskName != "" && taskName != envName) {
+	if envName == "" || window == "" || envName != located || (taskName != "" && taskName != envName) {
 		return nil, "", false
 	}
 	if task.ValidateName("task", envName) != nil {
