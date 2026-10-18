@@ -24,6 +24,7 @@ func (a *App) newRepoUpdateCmd() *cobra.Command {
 	var agent []string
 	var hook string
 	var shell bool
+	var resume resumeOptions
 	cmd := &cobra.Command{
 		Use:   "update TASK REPO",
 		Short: "Update saved agent and setup settings",
@@ -39,8 +40,11 @@ func (a *App) newRepoUpdateCmd() *cobra.Command {
 			if setAgent && shell {
 				return fmt.Errorf("choose either --agent or --shell")
 			}
-			if !setAgent && !setHook && !shell {
-				return fmt.Errorf("specify --agent, --shell, or --post-create")
+			if !setAgent && !setHook && !shell && !resume.changed(cmd) {
+				return fmt.Errorf("specify --agent, --shell, --resume, --no-resume or --post-create")
+			}
+			if err := resume.validate(cmd); err != nil {
+				return err
 			}
 			if setAgent && (len(agent) == 0 || strings.TrimSpace(agent[0]) == "") {
 				return fmt.Errorf("agent command is empty; use --shell to restore the default shell")
@@ -66,14 +70,29 @@ func (a *App) newRepoUpdateCmd() *cobra.Command {
 			case shell:
 				r.Agent = nil
 			}
+			var resumeCleared bool
+			if taskAgent {
+				t.Resume, resumeCleared = resume.apply(cmd, t.Resume, setAgent || shell)
+			} else {
+				r.Resume, resumeCleared = resume.apply(cmd, r.Resume, setAgent || shell)
+			}
 			if setHook {
 				r.PostCreate = hook
 			}
 			t.SetRepo(args[1], r)
+			if len(t.ResumeFor(args[1])) > 0 && len(t.RepoAgent(args[1])) == 0 {
+				return fmt.Errorf("--resume resumes the window's agent, and %s runs a shell; give one with --agent", args[1])
+			}
 			if err := a.Store.Save(t); err != nil {
 				return err
 			}
 			a.printf("updated %s/%s\n", t.Name, args[1])
+			if resumeCleared {
+				a.warnf("note: the resume command went with the old agent; set one for this agent with --resume\n")
+			}
+			if resume.changed(cmd) {
+				a.printf("  resume: %s\n", resumeDisplay(t.ResumeFor(args[1])))
+			}
 			if setAgent || shell {
 				which := ""
 				if taskAgent {
@@ -89,6 +108,7 @@ func (a *App) newRepoUpdateCmd() *cobra.Command {
 	}
 	cmd.Flags().StringArrayVar(&agent, "agent", nil, "replace the agent command, one flag per word")
 	cmd.Flags().BoolVar(&shell, "shell", false, "clear the agent command and use the default shell")
+	resume.flags(cmd, true)
 	cmd.Flags().StringVar(&hook, "post-create", "", "replace the setup hook; an empty value clears it")
 	return cmd
 }
@@ -98,6 +118,7 @@ type addRepoOptions struct {
 	Branch     string
 	Base       string
 	Agent      []string
+	Resume     []string
 	PostCreate string
 }
 
@@ -140,6 +161,9 @@ func (a *App) newRepoAddCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if len(opts.Resume) > 0 && len(opts.Agent) == 0 {
+				return fmt.Errorf("--resume resumes the repository's agent; give one with --agent")
+			}
 			first := len(t.Repos) == 0
 			if err := a.addRepoSpec(ctx, t, c, args[1], opts); err != nil {
 				return err
@@ -172,6 +196,8 @@ func (a *App) newRepoAddCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.Branch, "branch", "", "branch to use, the same as REPO@BRANCH (default: agent/TASK)")
 	cmd.Flags().StringVar(&opts.Base, "base", "", "ref to branch from, the same as REPO:BASE (default: origin/HEAD, then the local default branch)")
 	cmd.Flags().StringArrayVar(&opts.Agent, "agent", nil, "agent command to run in this worktree, one flag per word")
+	cmd.Flags().StringArrayVar(&opts.Resume, "resume", nil,
+		"command that resumes --agent with its conversation, for restart --resume; one flag per word")
 	cmd.Flags().StringVar(&opts.PostCreate, "post-create", "",
 		`shell command run once in a new worktree, e.g. 'cp "$TSPACE_REPO_PATH/.env" . && pnpm install'`)
 	return cmd
@@ -408,6 +434,7 @@ func (a *App) addRepo(ctx context.Context, t *task.Task, c *task.Config, path st
 		Base:       base,
 		Worktree:   worktree,
 		Agent:      opts.Agent,
+		Resume:     opts.Resume,
 		PostCreate: opts.PostCreate,
 	})
 

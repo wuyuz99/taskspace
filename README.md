@@ -476,8 +476,26 @@ tspace restart PAY-142 --root
 Restart relaunches the configured command only when every pane in that window
 is dead. A live agent or ad-hoc split causes refusal. Missing sessions or
 windows should be created with `tspace start`. Restart replaces dead-window output,
-so inspect it first; it does not resume agent conversation history or rerun setup.
+so inspect it first; it never reruns setup.
 Ordinary `start` continues to preserve existing windows, including dead ones.
+
+`tspace restart TASK REPO --resume` (or `--root --resume`) brings the agent back
+with its conversation instead of starting it fresh. Each agent does that its own
+way and tspace knows none of them, so you tell it, next to the agent, one flag
+per word as for `--agent`:
+
+```bash
+tspace config agent  claude --add-dir {context_dir}      # default for new tasks
+tspace config resume claude --continue --add-dir {context_dir}
+
+tspace task update PAY-142 --resume codex --resume resume --resume=--last
+tspace repo update PAY-142 frontend --resume aider --resume=--restore-chat-history
+```
+
+The default resume command is recorded only on tasks that take the default agent,
+and changing an agent forgets its resume command, so a resume never runs a
+different program than the agent it belongs to. Agents that key a conversation
+to its directory find it again because the window resumes where it ran.
 
 ### Choose a multiplexer
 
@@ -743,6 +761,7 @@ only once every worktree is gone: safely, unless `--force` discarded their work.
 | --- | --- |
 | `tspace init` | Create/report state directories (never required) |
 | `tspace config` / `tspace config agent [CMD ARGS... / --unset]` | Show defaults; set the default task-root agent |
+| `tspace config resume [CMD ARGS... / --unset]` | Set how the default agent resumes, for `restart --resume` |
 | `tspace config repo [NAME [PATH] / NAME --unset]` | Register source repositories by name |
 | `tspace config branch-prefix [PREFIX / --unset]` | Set the prefix of new task branches (default `agent/`) |
 | `tspace project save NAME --from TASK [--replace]` | Save a reusable repository recipe |
@@ -757,7 +776,7 @@ only once every worktree is gone: safely, unless `--force` discarded their work.
 | `tspace repo update TASK REPO [--agent CMD / --shell] [--post-create SH]` | Update saved agent and setup settings |
 | `tspace start TASK [REPO...]` | Create worktrees, launch the session |
 | `tspace open TASK` | Prepare worktrees, show brief/handoff, and attach |
-| `tspace restart TASK REPO` / `tspace restart TASK --root` | Relaunch a dead repository or root window |
+| `tspace restart TASK REPO` / `tspace restart TASK --root` [`--resume`] | Relaunch a dead repository or root window, optionally resuming its conversation |
 | `tspace stop TASK` | Interrupt agents, end the session, keep worktrees |
 | `tspace attach TASK` | Attach (or switch the client when already inside the multiplexer) |
 | `tspace window TASK [REPO / --root] [--agent / -- CMD]` | Open another window in the running session |

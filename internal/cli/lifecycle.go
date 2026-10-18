@@ -282,13 +282,20 @@ func (a *App) newStopCmd() *cobra.Command {
 }
 
 func (a *App) newRestartCmd() *cobra.Command {
-	var root bool
+	var root, resume bool
 	cmd := &cobra.Command{Use: "restart TASK [REPO | --root]", Short: "Relaunch a dead agent or shell",
 		Long: "restart relaunches a dead repository window, or with --root the task-root\n" +
 			"window, using its configured command. A window is dead when `tspace status`\n" +
 			"shows it as such: its command has exited.\n\n" +
 			"It refuses live panes. It replaces the old pane's output, so inspect that\n" +
-			"first. It does not resume agent conversation history or rerun setup hooks.",
+			"first. It never reruns setup hooks.\n\n" +
+			"--resume runs the window's resume command instead, which brings the agent\n" +
+			"back with its conversation. Each agent has its own way of doing that, so\n" +
+			"tspace knows none; it is set with the agent, one flag per word:\n\n" +
+			"  tspace config resume claude --continue          default for new tasks\n" +
+			"  tspace task update PAY-142 --resume codex --resume resume --resume=--last\n" +
+			"  tspace repo update PAY-142 backend --resume aider --resume=--restore-chat-history\n\n" +
+			"An agent resumed in the directory it ran in finds its conversation there.",
 		Args: cobra.RangeArgs(1, 2), RunE: func(cmd *cobra.Command, args []string) error {
 			switch {
 			case root && len(args) == 2:
@@ -319,6 +326,13 @@ func (a *App) newRestartCmd() *cobra.Command {
 				w = a.repoWindow(t, name)
 				label += "/" + name
 			}
+			if resume {
+				argv := t.ResumeFor(w.Name)
+				if len(argv) == 0 {
+					return fmt.Errorf("%s has no resume command; set one with the agent's own, e.g. %s", label, resumeHint(t, w.Name))
+				}
+				w.Command = a.expandArgv(t, argv)
+			}
 			if err := a.ensureContextDir(t); err != nil {
 				return err
 			}
@@ -333,7 +347,16 @@ func (a *App) newRestartCmd() *cobra.Command {
 			return nil
 		}}
 	cmd.Flags().BoolVar(&root, "root", false, "restart the task-root window")
+	cmd.Flags().BoolVar(&resume, "resume", false, "run the window's resume command, bringing the agent back with its conversation")
 	return cmd
+}
+
+// resumeHint is the command that would set a window's resume command.
+func resumeHint(t *task.Task, window string) string {
+	if window == t.AgentWindow() {
+		return "tspace task update " + t.Name + " --resume CMD --resume ARG..."
+	}
+	return "tspace repo update " + t.Name + " " + window + " --resume CMD --resume ARG..."
 }
 
 func (a *App) newAttachCmd() *cobra.Command {

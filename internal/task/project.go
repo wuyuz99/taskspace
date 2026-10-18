@@ -15,19 +15,22 @@ type Project struct {
 	Repos map[string]ProjectRepo `json:"repos"`
 	// Agent is the task-root agent argv. Empty leaves the root window a shell.
 	Agent []string `json:"agent,omitempty"`
+	// Resume is Agent's resume command; see Task.Resume.
+	Resume []string `json:"resume,omitempty"`
 }
 
 type ProjectRepo struct {
 	Path       string   `json:"path"`
 	Base       string   `json:"base,omitempty"`
 	Agent      []string `json:"agent,omitempty"`
+	Resume     []string `json:"resume,omitempty"`
 	PostCreate string   `json:"post_create,omitempty"`
 }
 
 func ProjectFromTask(name string, t *Task) *Project {
-	p := &Project{Name: name, Repos: map[string]ProjectRepo{}, Agent: append([]string(nil), t.Agent...)}
+	p := &Project{Name: name, Repos: map[string]ProjectRepo{}, Agent: append([]string(nil), t.Agent...), Resume: append([]string(nil), t.Resume...)}
 	for repoName, r := range t.Repos {
-		p.Repos[repoName] = ProjectRepo{Path: r.Path, Base: r.Base, Agent: append([]string(nil), r.Agent...), PostCreate: r.PostCreate}
+		p.Repos[repoName] = ProjectRepo{Path: r.Path, Base: r.Base, Agent: append([]string(nil), r.Agent...), Resume: append([]string(nil), r.Resume...), PostCreate: r.PostCreate}
 	}
 	return p
 }

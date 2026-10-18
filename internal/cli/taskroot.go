@@ -49,6 +49,54 @@ func (o *agentOptions) apply(cmd *cobra.Command, t *task.Task) bool {
 	return true
 }
 
+// resumeOptions are the --resume and --no-resume flags, for the command that
+// brings an agent back with its conversation. tspace knows no agent's way of
+// doing that, so it is given like the agent itself, one flag per word:
+//
+//	--agent claude --resume claude --resume=--continue
+type resumeOptions struct {
+	argv []string
+	none bool
+}
+
+func (o *resumeOptions) flags(cmd *cobra.Command, withNone bool) {
+	cmd.Flags().StringArrayVar(&o.argv, "resume", nil,
+		"command that resumes the agent with its conversation, for restart --resume; one flag per word")
+	if withNone {
+		cmd.Flags().BoolVar(&o.none, "no-resume", false, "forget the resume command")
+	}
+}
+
+func (o *resumeOptions) validate(cmd *cobra.Command) error {
+	set := cmd.Flags().Changed("resume")
+	if set && o.none {
+		return fmt.Errorf("choose either --resume or --no-resume")
+	}
+	if set && (len(o.argv) == 0 || strings.TrimSpace(o.argv[0]) == "") {
+		return fmt.Errorf("resume command is empty; use --no-resume to forget it")
+	}
+	return nil
+}
+
+func (o *resumeOptions) changed(cmd *cobra.Command) bool {
+	return cmd.Flags().Changed("resume") || o.none
+}
+
+// apply returns the resume command to record. A changed agent drops the old
+// one, which resumed a different program, unless a new one is given; cleared
+// reports that, so the caller can say so.
+func (o *resumeOptions) apply(cmd *cobra.Command, current []string, agentChanged bool) (resume []string, cleared bool) {
+	switch {
+	case cmd.Flags().Changed("resume"):
+		return o.argv, false
+	case o.none:
+		return nil, false
+	case agentChanged:
+		return nil, len(current) > 0
+	}
+	return current, false
+}
+
 // defaultsToRoot reports whether an omitted repository means the task root.
 // With one repository the worktree is the obvious answer; with none or several,
 // the root is the only directory that stands for the whole task.

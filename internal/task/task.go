@@ -31,6 +31,10 @@ type Task struct {
 	// opens in the directory holding every worktree, where one agent can reach
 	// every repository. Empty means the user's shell.
 	Agent []string `json:"agent,omitempty"`
+	// Resume is the command that brings Agent back with its conversation, for
+	// restart --resume: `claude --continue`, say. Each agent has its own way,
+	// so tspace knows none; empty means the agent cannot be resumed.
+	Resume []string `json:"resume,omitempty"`
 	// AgentRepo, when set, is the repository whose window runs Agent, in its
 	// worktree, in place of a task-root window. task create sets it for a task
 	// with one repository, so its agent works in the code rather than a
@@ -70,6 +74,8 @@ type Repo struct {
 	PostCreate string `json:"post_create,omitempty"`
 	// Agent is the command to launch, as argv. Empty means the user's shell.
 	Agent []string `json:"agent,omitempty"`
+	// Resume brings Agent back with its conversation; see Task.Resume.
+	Resume []string `json:"resume,omitempty"`
 }
 
 // AgentLabel renders the agent for display.
@@ -107,6 +113,19 @@ func (t *Task) RepoAgent(name string) []string {
 		return t.Agent
 	}
 	return r.Agent
+}
+
+// ResumeFor is the command that resumes the agent in a window, or nil if
+// there is none: the task's for the window running the task's agent, else the
+// repository's own.
+func (t *Task) ResumeFor(window string) []string {
+	if window == t.AgentWindow() {
+		return t.Resume
+	}
+	if window == RootWindowName {
+		return nil // a shell, beside an agent that runs in AgentRepo
+	}
+	return t.Repos[window].Resume
 }
 
 // AgentWindow names the window running the task's agent.

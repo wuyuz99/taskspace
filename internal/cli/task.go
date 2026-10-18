@@ -30,6 +30,7 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 	var project string
 	var details taskDetails
 	var agent agentOptions
+	var resume resumeOptions
 	var withRoot, start bool
 
 	cmd := &cobra.Command{
@@ -60,6 +61,9 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 				return err
 			}
 			if err := agent.validate(cmd); err != nil {
+				return err
+			}
+			if err := resume.validate(cmd); err != nil {
 				return err
 			}
 			name := args[0]
@@ -93,6 +97,7 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 					return err
 				}
 				t.Agent = append([]string(nil), p.Agent...)
+				t.Resume = append([]string(nil), p.Resume...)
 				if len(p.Agent) > 0 {
 					agentFrom = "project " + p.Name
 				}
@@ -102,7 +107,7 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 					if err != nil {
 						return err
 					}
-					if err := a.addRepo(cmd.Context(), t, c, r.Path, addRepoOptions{Name: repoName, Base: r.Base, Agent: r.Agent, PostCreate: r.PostCreate}); err != nil {
+					if err := a.addRepo(cmd.Context(), t, c, r.Path, addRepoOptions{Name: repoName, Base: r.Base, Agent: r.Agent, Resume: r.Resume, PostCreate: r.PostCreate}); err != nil {
 						return err
 					}
 				}
@@ -118,9 +123,12 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 					return err
 				}
 			}
+			// A resume command goes with the agent it resumes: the recipe's or
+			// the config's comes along only with that agent.
 			switch {
 			case agent.apply(cmd, t):
 				agentFrom = ""
+				t.Resume = nil
 			case len(t.Agent) == 0:
 				cfg, err := config()
 				if err != nil {
@@ -128,8 +136,13 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 				}
 				if len(cfg.Agent) > 0 {
 					t.Agent = append([]string(nil), cfg.Agent...)
+					t.Resume = append([]string(nil), cfg.Resume...)
 					agentFrom = "tspace config"
 				}
+			}
+			t.Resume, _ = resume.apply(cmd, t.Resume, false)
+			if len(t.Resume) > 0 && len(t.Agent) == 0 {
+				return fmt.Errorf("--resume resumes the task's agent, and it has none; give one with --agent")
 			}
 			if withRoot {
 				t.RootWindow = true
@@ -171,6 +184,7 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 	cmd.Flags().StringArrayVar(&repos, "repo", nil,
 		"attach a repository, the same as a REPO argument (repeatable)")
 	cmd.Flags().StringVar(&project, "project", "", "snapshot a saved project recipe into this task")
+	resume.flags(cmd, true)
 	cmd.Flags().BoolVar(&start, "start", false, "start the task once it is created, as tspace start NAME does")
 	cmd.Flags().BoolVar(&withRoot, "with-root", false,
 		"give a single-repository task a task-root window for its agent, as with several")
@@ -189,6 +203,7 @@ type taskJSON struct {
 	Dir              string         `json:"dir"`
 	ContextDir       string         `json:"context_dir"`
 	Agent            []string       `json:"agent"`
+	Resume           []string       `json:"resume"`
 	AgentWindow      string         `json:"agent_window"`
 	RootWindow       bool           `json:"root_window"`
 	Brief            string         `json:"brief,omitempty"`
@@ -204,6 +219,7 @@ type taskRepoJSON struct {
 	Base       string   `json:"base,omitempty"`
 	Worktree   string   `json:"worktree"`
 	Agent      []string `json:"agent"`
+	Resume     []string `json:"resume"`
 	PostCreate string   `json:"post_create,omitempty"`
 }
 
@@ -218,6 +234,7 @@ func (a *App) describeTask(t *task.Task) taskJSON {
 		Dir:         a.Store.TaskDir(t.Name),
 		ContextDir:  a.Store.ContextDir(t.Name),
 		Agent:       append([]string{}, t.Agent...),
+		Resume:      append([]string{}, t.Resume...),
 		AgentWindow: t.AgentWindow(),
 		RootWindow:  t.HasRootWindow(),
 		Repos:       make([]taskRepoJSON, 0, len(t.Repos)),
@@ -235,7 +252,7 @@ func (a *App) describeTask(t *task.Task) taskJSON {
 		r := t.Repos[name]
 		out.Repos = append(out.Repos, taskRepoJSON{
 			Name: name, Path: r.Path, Branch: r.Branch, Base: r.Base, Worktree: r.Worktree,
-			Agent: append([]string{}, t.RepoAgent(name)...), PostCreate: r.PostCreate,
+			Agent: append([]string{}, t.RepoAgent(name)...), Resume: append([]string{}, t.ResumeFor(name)...), PostCreate: r.PostCreate,
 		})
 	}
 	return out
@@ -321,6 +338,9 @@ func (a *App) newTaskShowCmd() *cobra.Command {
 					a.printf("root:      none until a second repository is added\n")
 				}
 			}
+			if len(t.Resume) > 0 {
+				a.printf("resume:    %s\n", shellJoin(t.Resume))
+			}
 			a.printTaskContext(t)
 			if len(t.Repos) == 0 {
 				a.printf("\nno repositories yet; add one with:\n  tspace repo add %s REPO\n", t.Name)
@@ -337,6 +357,9 @@ func (a *App) newTaskShowCmd() *cobra.Command {
 				}
 				a.printf("  worktree:  %s\n", r.Worktree)
 				a.printf("  agent:     %s\n", agentDisplay(task.Repo{Agent: t.RepoAgent(name)}))
+				if resume := t.ResumeFor(name); len(resume) > 0 && name != t.AgentRepo {
+					a.printf("  resume:    %s\n", shellJoin(resume))
+				}
 				if r.PostCreate != "" {
 					a.printf("  post_create: %s\n", r.PostCreate)
 				}

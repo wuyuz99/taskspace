@@ -18,6 +18,9 @@ import (
 type Config struct {
 	// Agent is the task-root agent for new tasks that name none themselves.
 	Agent []string `json:"agent,omitempty"`
+	// Resume is the default agent's resume command, recorded on a new task
+	// together with Agent, and only when Agent is what the task got.
+	Resume []string `json:"resume,omitempty"`
 	// Repos maps a short name to a source repository's canonical path, so a
 	// task can be given "backend" instead of a path every time.
 	Repos map[string]string `json:"repos,omitempty"`
