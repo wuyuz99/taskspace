@@ -118,14 +118,29 @@ func (t *Task) RepoAgent(name string) []string {
 // ResumeFor is the command that resumes the agent in a window, or nil if
 // there is none: the task's for the window running the task's agent, else the
 // repository's own.
+//
+// It follows RepoAgent and RootAgent, so a resume command always belongs to
+// the program the window runs.
 func (t *Task) ResumeFor(window string) []string {
-	if window == t.AgentWindow() {
+	if window == RootWindowName {
+		if t.AgentRepo != "" {
+			return nil // a shell, beside an agent that runs in AgentRepo
+		}
 		return t.Resume
 	}
-	if window == RootWindowName {
-		return nil // a shell, beside an agent that runs in AgentRepo
+	r := t.Repos[window]
+	if window == t.AgentRepo && len(r.Agent) == 0 {
+		return t.Resume
 	}
-	return t.Repos[window].Resume
+	return r.Resume
+}
+
+// WindowAgent is the command a window runs, root or repository.
+func (t *Task) WindowAgent(window string) []string {
+	if window == RootWindowName {
+		return t.RootAgent()
+	}
+	return t.RepoAgent(window)
 }
 
 // AgentWindow names the window running the task's agent.

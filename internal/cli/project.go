@@ -69,6 +69,9 @@ func (a *App) newProjectCmd() *cobra.Command {
 			}
 			a.printf("project: %s\n", p.Name)
 			a.printf("agent:   %s (task root)\n", agentDisplay(task.Repo{Agent: p.Agent}))
+			if len(p.Resume) > 0 {
+				a.printf("resume:  %s\n", shellJoin(p.Resume))
+			}
 			for _, name := range p.RepoNames() {
 				r := p.Repos[name]
 				base := r.Base
@@ -76,6 +79,9 @@ func (a *App) newProjectCmd() *cobra.Command {
 					base = "auto (resolved when creating a task)"
 				}
 				a.printf("\n%s\n  repo: %s\n  base: %s\n  agent: %s\n", name, r.Path, base, agentDisplay(task.Repo{Agent: r.Agent}))
+				if len(r.Resume) > 0 {
+					a.printf("  resume: %s\n", shellJoin(r.Resume))
+				}
 				if r.PostCreate != "" {
 					a.printf("  post_create: %s\n", r.PostCreate)
 				}

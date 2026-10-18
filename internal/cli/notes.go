@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -95,9 +96,10 @@ func (a *App) newTaskUpdateCmd() *cobra.Command {
 				return err
 			}
 			d.apply(cmd, t)
+			before := t.Agent
 			setAgent := agent.apply(cmd, t)
 			var resumeCleared bool
-			t.Resume, resumeCleared = resume.apply(cmd, t.Resume, setAgent)
+			t.Resume, resumeCleared = resume.apply(cmd, t.Resume, setAgent && !slices.Equal(before, t.Agent))
 			if len(t.Resume) > 0 && len(t.Agent) == 0 {
 				return fmt.Errorf("--resume resumes the task's agent, and it has none; give one with --agent")
 			}
