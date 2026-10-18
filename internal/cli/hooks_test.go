@@ -165,3 +165,90 @@ func TestSignalQuiet(t *testing.T) {
 		t.Fatal("bad state accepted")
 	}
 }
+
+func TestConfigHooksClaudeReviewCases(t *testing.T) {
+	h := newHarness(t)
+	dir := t.TempDir()
+
+	// A command that does more than signal is the user's; && and > stay as typed.
+	path := filepath.Join(dir, "settings.json")
+	mine := `{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "tspace signal done && make lint > /tmp/x"}]}]}}`
+	if err := os.WriteFile(path, []byte(mine), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newConfigCmd(), "hooks", "claude", "--settings", path); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(path)
+	if !strings.Contains(string(b), "tspace signal done && make lint > /tmp/x") || strings.Contains(string(b), `\u00`+"26") {
+		t.Fatalf("user hook changed:\n%s", b)
+	}
+	if c := commands(readSettings(t, path), "Stop"); len(c) != 2 {
+		t.Fatalf("Stop = %v", c)
+	}
+	// Notification asks only for the notifications that need a person.
+	var s struct {
+		Hooks map[string][]claudeHookGroup `json:"hooks"`
+	}
+	if err := json.Unmarshal(b, &s); err != nil {
+		t.Fatal(err)
+	}
+	if g := s.Hooks["Notification"]; len(g) != 1 || g[0].Matcher != "permission_prompt|elicitation_dialog" {
+		t.Fatalf("Notification = %+v", g)
+	}
+
+	// Empty entries and a null hooks value are the user's, not ours.
+	empty := filepath.Join(dir, "empty.json")
+	if err := os.WriteFile(empty, []byte(`{"hooks": {"Stop": []}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.out.Reset()
+	if err := h.exec(t, h.app.newConfigCmd(), "hooks", "claude", "--settings", empty, "--remove"); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(empty); string(b) != `{"hooks": {"Stop": []}}` || !strings.Contains(h.out.String(), "no tspace hooks") {
+		t.Fatalf("remove touched a file with none:\n%s\n%s", b, h.out.String())
+	}
+	null := filepath.Join(dir, "null.json")
+	if err := os.WriteFile(null, []byte(`{"hooks": null}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newConfigCmd(), "hooks", "claude", "--settings", null); err != nil {
+		t.Fatalf("hooks: null refused: %v", err)
+	}
+}
+
+func TestConfigHooksClaudeWritesThroughASymlink(t *testing.T) {
+	h := newHarness(t)
+	dir := t.TempDir()
+	target := filepath.Join(dir, "dotfiles-settings.json")
+	if err := os.WriteFile(target, []byte(`{"model": "opus"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "settings.json")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("no symlinks here: %v", err)
+	}
+	if err := h.exec(t, h.app.newConfigCmd(), "hooks", "claude", "--settings", link); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("link replaced: %v", err)
+	}
+	if c := commands(readSettings(t, target), "Stop"); len(c) != 1 {
+		t.Fatalf("target Stop = %v", c)
+	}
+}
+
+// --quiet hides only "not in a task": a broken hook must still be noticed.
+func TestSignalQuietStillReportsMistakes(t *testing.T) {
+	h := newHarness(t)
+	h.startedTask(t, "PAY-1")
+	chdir(t, t.TempDir())
+	if err := h.exec(t, h.app.newSignalCmd(), "-q", "--task", "PAY-14", "working"); err == nil {
+		t.Fatal("unknown task accepted under --quiet")
+	}
+	if err := h.exec(t, h.app.newSignalCmd(), "-q", "--task", "PAY-1", "--repo", "nope", "working"); err == nil {
+		t.Fatal("unknown repo accepted under --quiet")
+	}
+}

@@ -268,12 +268,28 @@ func TestSignalFromTheAgentRepoWindow(t *testing.T) {
 		k, v, _ := strings.Cut(kv, "=")
 		t.Setenv(k, v)
 	}
-	chdir(t, t.TempDir())
+	// With a root window too, the task directory alone would mean _root: only
+	// the window's environment says backend.
+	tk := h.load(t, "PAY-1")
+	tk.RootWindow = true
+	if err := h.app.Store.Save(tk); err != nil {
+		t.Fatal(err)
+	}
+	chdir(t, h.app.Store.TaskDir("PAY-1"))
 	if err := h.exec(t, h.app.newSignalCmd(), "blocked"); err != nil {
 		t.Fatal(err)
 	}
 	if got := h.signals(t, "PAY-1")["backend"]; got.State != task.SignalBlocked {
 		t.Fatalf("signal: %+v", h.signals(t, "PAY-1"))
+	}
+
+	// Started somewhere else from that window, an agent is not the window's.
+	chdir(t, t.TempDir())
+	if err := h.exec(t, h.app.newSignalCmd(), "-q", "done"); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.signals(t, "PAY-1")["backend"]; got.State != task.SignalBlocked {
+		t.Fatalf("an agent outside the task reported for its window: %+v", got)
 	}
 }
 
