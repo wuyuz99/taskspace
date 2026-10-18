@@ -328,7 +328,11 @@ func (a *App) newRestartCmd() *cobra.Command {
 			}
 			if resume {
 				argv := t.ResumeFor(w.Name)
-				if len(argv) == 0 {
+				switch {
+				case len(argv) > 0:
+				case len(t.WindowAgent(w.Name)) == 0:
+					return fmt.Errorf("%s runs a shell; there is no agent to resume", label)
+				default:
 					return fmt.Errorf("%s has no resume command; set one with the agent's own, e.g. %s", label, resumeHint(t, w.Name))
 				}
 				w.Command = a.expandArgv(t, argv)

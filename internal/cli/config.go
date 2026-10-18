@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -24,6 +25,9 @@ func (a *App) newConfigCmd() *cobra.Command {
 			}
 			a.printf("config: %s\n", a.Store.ConfigPath())
 			a.printf("agent:  %s\n", defaultAgentDisplay(c.Agent))
+			if len(c.Resume) > 0 {
+				a.printf("resume: %s\n", shellJoin(c.Resume))
+			}
 			a.printf("branch: %s (new repositories' default branch)\n", c.Branch("TASK"))
 			a.printf("multiplexer: %s\n", multiplexerDisplay(multiplexerName(c), c))
 			if len(c.Repos) == 0 {
@@ -220,6 +224,7 @@ func (a *App) newConfigAgentCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			before := c.Agent
 			switch {
 			case unset:
 				c.Agent = nil
@@ -230,6 +235,11 @@ func (a *App) newConfigAgentCmd() *cobra.Command {
 				return fmt.Errorf("agent command is empty; use --unset to clear the default")
 			default:
 				c.Agent = args
+			}
+			// The default resume command resumes the default agent only.
+			if len(c.Resume) > 0 && !slices.Equal(before, c.Agent) {
+				c.Resume = nil
+				a.warnf("note: the default resume command went with the old agent; set one for this agent with tspace config resume\n")
 			}
 			if err := a.Store.SaveConfig(c); err != nil {
 				return err

@@ -38,10 +38,18 @@ func TestRestartResumeRunsTheResumeCommand(t *testing.T) {
 		t.Fatalf("restarted %+v", rt.restarted)
 	}
 
-	// A shell has nothing to resume, and the error says how to set one.
+	// A shell has nothing to resume.
 	err := h.exec(t, h.app.newRestartCmd(), "PAY-1", "backend", "--resume")
-	if err == nil || !strings.Contains(err.Error(), "tspace repo update PAY-1 backend --resume") {
+	if err == nil || !strings.Contains(err.Error(), "there is no agent to resume") {
 		t.Fatalf("restart --resume of a shell = %v", err)
+	}
+	// An agent without a resume command is told how to set one.
+	if err := h.exec(t, h.app.newRepoCmd(), "update", "PAY-1", "backend", "--agent", "agent-c"); err != nil {
+		t.Fatal(err)
+	}
+	err = h.exec(t, h.app.newRestartCmd(), "PAY-1", "backend", "--resume")
+	if err == nil || !strings.Contains(err.Error(), "tspace repo update PAY-1 backend --resume") {
+		t.Fatalf("restart --resume without one = %v", err)
 	}
 }
 
@@ -129,5 +137,73 @@ func TestResumeIsKeptInProjects(t *testing.T) {
 	p := task.ProjectFromTask("recipe", tk)
 	if !slices.Equal(p.Resume, tk.Resume) || !slices.Equal(p.Repos["backend"].Resume, []string{"b", "--last"}) {
 		t.Fatalf("project: %+v", p)
+	}
+}
+
+func TestResumeReviewCases(t *testing.T) {
+	h := newHarness(t)
+
+	// A new default agent forgets the old one's resume command.
+	if err := h.exec(t, h.app.newConfigCmd(), "agent", "agent-a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newConfigCmd(), "resume", "agent-a", "-c"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newConfigCmd(), "agent", "agent-a"); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := h.app.Store.LoadConfig(); len(c.Resume) == 0 {
+		t.Fatal("re-setting the same agent dropped its resume")
+	}
+	if err := h.exec(t, h.app.newConfigCmd(), "agent", "agent-b"); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := h.app.Store.LoadConfig(); len(c.Resume) != 0 {
+		t.Fatalf("new default agent kept %v", c.Resume)
+	}
+
+	// Re-setting a task's agent to the same command keeps its resume.
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--agent", "agent-a", "--resume", "agent-a", "--resume", "-c",
+		"--repo", "backend="+h.repo, "--with-root"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newTaskCmd(), "update", "PAY-1", "--agent", "agent-a"); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.load(t, "PAY-1").Resume; len(got) == 0 {
+		t.Fatal("same agent dropped the resume")
+	}
+
+	// repo add validates --resume like every other command.
+	if err := h.exec(t, h.app.newRepoCmd(), "add", "PAY-1", mkRepo(t), "--name", "front", "--agent", "x", "--resume", ""); err == nil {
+		t.Fatal("empty --resume accepted")
+	}
+
+	// A shell window has nothing to resume, and says so without a bad hint.
+	if err := h.exec(t, h.app.newStartCmd(), "PAY-1", "--no-runtime"); err != nil {
+		t.Fatal(err)
+	}
+	h.app.Runtime = &restartRuntime{}
+	err := h.exec(t, h.app.newRestartCmd(), "PAY-1", "backend", "--resume")
+	if err == nil || !strings.Contains(err.Error(), "runs a shell; there is no agent to resume") {
+		t.Fatalf("restart --resume of a shell = %v", err)
+	}
+}
+
+func TestRemovingTheAgentRepoWarnsAboutResume(t *testing.T) {
+	h := newHarness(t)
+	other := mkRepo(t)
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--agent", "agent-a", "--resume", "agent-a", "--resume", "-c", "--repo", "backend="+h.repo); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newRepoCmd(), "add", "PAY-1", other, "--name", "frontend"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newRepoCmd(), "rm", "PAY-1", "backend"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.errb.String(), "will not find the one from backend") {
+		t.Fatalf("stderr: %s", h.errb.String())
 	}
 }
