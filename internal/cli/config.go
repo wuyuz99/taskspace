@@ -35,7 +35,7 @@ func (a *App) newConfigCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.AddCommand(a.newConfigAgentCmd(), a.newConfigRepoCmd(), a.newConfigBranchPrefixCmd(), a.newConfigMultiplexerCmd())
+	cmd.AddCommand(a.newConfigAgentCmd(), a.newConfigRepoCmd(), a.newConfigBranchPrefixCmd(), a.newConfigMultiplexerCmd(), a.newConfigHooksCmd())
 	return cmd
 }
 
@@ -206,6 +206,10 @@ func (a *App) newConfigAgentCmd() *cobra.Command {
 			"is given --agent or --shell, or its --project recipe names an agent.\n" +
 			"Everything after COMMAND is passed to it, flags included:\n\n" +
 			"  tspace config agent claude --model opus\n\n" +
+			"{context_dir} and {task_dir} in the command are replaced, when a window\n" +
+			"starts, by the task's .context directory and its directory, so an agent can\n" +
+			"be pointed at the task's notes with its own flag:\n\n" +
+			"  tspace config agent claude --add-dir {context_dir}\n\n" +
 			"Existing tasks keep the agent they were created with; change one with\n" +
 			"tspace task update TASK --agent CMD.",
 		RunE: func(cmd *cobra.Command, args []string) error {

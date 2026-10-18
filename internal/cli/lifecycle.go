@@ -171,12 +171,10 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 	return cmd
 }
 
-// ensureContextDir creates the notes directory an agent in AgentRepo's window
-// is pointed at, which an agent such as Claude Code refuses if it is missing.
+// ensureContextDir creates the notes directory before any agent starts: a
+// command may name it with {context_dir}, and an agent given a directory
+// that does not exist may refuse to start.
 func (a *App) ensureContextDir(t *task.Task) error {
-	if t.AgentRepo == "" {
-		return nil
-	}
 	return os.MkdirAll(a.Store.ContextDir(t.Name), 0o755)
 }
 

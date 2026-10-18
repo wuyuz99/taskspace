@@ -29,7 +29,7 @@ func windowEnv(taskName, window string) []string {
 
 func (a *App) newSignalCmd() *cobra.Command {
 	var taskName, repo string
-	var root, clear bool
+	var root, clear, quiet bool
 	cmd := &cobra.Command{
 		Use:   "signal STATE [MESSAGE]",
 		Short: "Report what an agent is doing, for status and dash",
@@ -51,7 +51,11 @@ func (a *App) newSignalCmd() *cobra.Command {
 			"  tspace signal working --task PAY-142 --repo backend\n\n" +
 			"It is meant to be called by the agent's own hooks rather than typed. For\n" +
 			"Claude Code, for example: UserPromptSubmit runs `tspace signal working`,\n" +
-			"Notification runs `tspace signal blocked`, and Stop runs `tspace signal done`.\n\n" +
+			"Notification runs `tspace signal blocked`, and Stop runs `tspace signal done`;\n" +
+			"`tspace config hooks claude` installs exactly these.\n\n" +
+			"--quiet is for hooks that run in every session, inside a task or not: it\n" +
+			"prints nothing, and outside a task it does nothing and succeeds. A hook's\n" +
+			"output can end up in front of the agent, which has no use for it.\n\n" +
 			"A signal is one JSON file, .context/signals/REPO.json beside the\n" +
 			"worktrees (_root.json for the root window), holding\n" +
 			`{"state": "blocked", "message": "..."}` + "; an agent without tspace on its\n" +
@@ -79,6 +83,9 @@ func (a *App) newSignalCmd() *cobra.Command {
 
 			t, window, err := a.signalTarget(taskName, repo, root)
 			if err != nil {
+				if quiet {
+					return nil
+				}
 				return err
 			}
 			label := t.Name + " (root)"
@@ -90,7 +97,9 @@ func (a *App) newSignalCmd() *cobra.Command {
 				if err := a.Store.ClearSignal(t.Name, window); err != nil {
 					return err
 				}
-				a.printf("%s: signal cleared\n", label)
+				if !quiet {
+					a.printf("%s: signal cleared\n", label)
+				}
 				return nil
 			}
 			message := ""
@@ -103,7 +112,9 @@ func (a *App) newSignalCmd() *cobra.Command {
 			if err := a.Store.WriteSignal(t.Name, window, state, message); err != nil {
 				return err
 			}
-			a.printf("%s: %s\n", label, state)
+			if !quiet {
+				a.printf("%s: %s\n", label, state)
+			}
 			return nil
 		},
 	}
@@ -111,6 +122,7 @@ func (a *App) newSignalCmd() *cobra.Command {
 	cmd.Flags().StringVar(&repo, "repo", "", "repository window to report for (default: the worktree the current directory is in)")
 	cmd.Flags().BoolVar(&root, "root", false, "report for the task-root window")
 	cmd.Flags().BoolVar(&clear, "clear", false, "forget the window's signal")
+	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "print nothing, and outside a task do nothing, for hooks")
 	return cmd
 }
 

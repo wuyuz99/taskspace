@@ -56,7 +56,7 @@ func (h *harness) load(t *testing.T, name string) *task.Task {
 
 func TestSingleRepoTaskRunsItsAgentInTheRepo(t *testing.T) {
 	h := newHarness(t)
-	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--agent", "claude", "--repo", "backend="+h.repo); err != nil {
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--agent", "claude", "--agent", "--add-dir", "--agent", "{context_dir}", "--repo", "backend="+h.repo); err != nil {
 		t.Fatal(err)
 	}
 	if tk := h.load(t, "PAY-1"); tk.AgentRepo != "backend" || tk.HasRootWindow() {
@@ -392,5 +392,35 @@ func TestTaskJSONReportsTheAgentWindow(t *testing.T) {
 	got := h.app.describeTask(h.load(t, "PAY-1"))
 	if got.AgentWindow != "backend" || got.RootWindow || !slices.Equal(got.Repos[0].Agent, []string{"claude"}) {
 		t.Fatalf("json: %+v", got)
+	}
+}
+
+// Any agent can name the task's directories; tspace knows no agent by name.
+func TestAgentCommandPlaceholders(t *testing.T) {
+	h := newHarness(t)
+	other := mkRepo(t)
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--agent", "some-agent", "--agent", "--notes={context_dir}/TASK.md",
+		"--repo", "backend="+h.repo, "--repo", "frontend="+other); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newRepoCmd(), "update", "PAY-1", "frontend", "--agent", "other-agent", "--agent", "{task_dir}"); err != nil {
+		t.Fatal(err)
+	}
+	rt := &layoutRuntime{}
+	h.app.Runtime = rt
+	if err := h.exec(t, h.app.newStartCmd(), "PAY-1"); err != nil {
+		t.Fatal(err)
+	}
+	root, _ := rt.window(task.RootWindowName)
+	if want := []string{"some-agent", "--notes=" + h.app.Store.ContextDir("PAY-1") + "/TASK.md"}; !slices.Equal(root.Command, want) {
+		t.Fatalf("root runs %v, want %v", root.Command, want)
+	}
+	front, _ := rt.window("frontend")
+	if want := []string{"other-agent", h.app.Store.TaskDir("PAY-1")}; !slices.Equal(front.Command, want) {
+		t.Fatalf("frontend runs %v, want %v", front.Command, want)
+	}
+	// The record keeps the placeholders, so moving TSPACE_ROOT moves them too.
+	if got := h.load(t, "PAY-1").Agent; got[1] != "--notes={context_dir}/TASK.md" {
+		t.Fatalf("recorded agent %v", got)
 	}
 }

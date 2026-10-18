@@ -343,9 +343,17 @@ cat ../.context/TASK.md
 ```
 
 The agent in the `_root` window starts one level up, so for it the same file is
-`.context/TASK.md`. The agent of a single-repository task runs in the worktree;
-Claude Code is started with `--add-dir` pointing at `.context`, so it can read
-the notes without asking.
+`.context/TASK.md`. The agent of a single-repository task runs in the worktree,
+where it reaches the notes as `../.context` or `$TSPACE_CONTEXT_DIR`.
+
+An agent command can name the task's directories, which tspace fills in when it
+starts the window: `{context_dir}` for `.context`, `{task_dir}` for the directory
+holding the worktrees. tspace knows no agent by name, so each uses its own flag;
+for Claude Code, so it can read the notes without asking:
+
+```bash
+tspace config agent claude --add-dir {context_dir}
+```
 
 `tspace shell` and `post_create` hooks also get `TSPACE_CONTEXT_DIR`. Nothing stops you
 editing, grepping, or diffing these files directly; `tspace` only reads and writes
@@ -634,18 +642,31 @@ The states are `working`, `blocked`, `done` and `failed`. Run inside a task,
 `tspace signal` works out which window it is from `TSPACE_TASK` and
 `TSPACE_WINDOW`, which tspace sets in every window it launches (or, without
 them, from the current directory), so it needs no arguments in an agent's
-hooks, and a root agent that `cd`s into a worktree still reports for the root. For Claude Code, in the worktree's
-`.claude/settings.json`:
+hooks, and a root agent that `cd`s into a worktree still reports for the root.
+For Claude Code, install the hooks once:
+
+```bash
+tspace config hooks claude            # --remove takes them out again
+```
+
+That adds three hooks to your user settings, `~/.claude/settings.json`, and
+leaves everything else in the file alone:
 
 ```json
 {
   "hooks": {
-    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "tspace signal working" }] }],
-    "Notification":     [{ "hooks": [{ "type": "command", "command": "tspace signal blocked" }] }],
-    "Stop":             [{ "hooks": [{ "type": "command", "command": "tspace signal done" }] }]
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet working" }] }],
+    "Notification":     [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet blocked" }] }],
+    "Stop":             [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet done" }] }]
   }
 }
 ```
+
+They are user-wide because a settings file in a worktree would be an untracked
+file, which `tspace clean` refuses to remove. They therefore run in every Claude
+Code session: `--quiet` makes `tspace signal` do nothing outside a task, and
+print nothing inside one, since what a `UserPromptSubmit` hook prints is shown
+to the agent.
 
 Once any window has a signal, `tspace status` grows a `SIGNAL` column (`blocked 3m`),
 and `--json` carries the state, message and time. A signal is the agent's word,
@@ -745,7 +766,8 @@ only once every worktree is gone: safely, unless `--force` discarded their work.
 | `tspace exec TASK -- CMD` | Run a command in every worktree |
 | `tspace status [TASK] [--json / --watch]` | Runtime, git and signal state |
 | `tspace dash` | Live full-screen view of every task; attach, start, restart, stop |
-| `tspace signal STATE [MESSAGE] [--task --repo / --root]` | Report an agent as `working`, `blocked`, `done` or `failed` |
+| `tspace signal STATE [MESSAGE] [--task --repo / --root] [--quiet]` | Report an agent as `working`, `blocked`, `done` or `failed` |
+| `tspace config hooks claude [--remove]` | Install the Claude Code hooks that call `tspace signal` |
 | `tspace clean TASK [--delete-branch] [--force] [--rm]` | Remove worktrees, safely; `--rm` deletes the task record too |
 
 `--no-title` (or `TSPACE_NO_TITLE=1`) suppresses terminal tab titling.
