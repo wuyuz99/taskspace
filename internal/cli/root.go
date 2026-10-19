@@ -361,6 +361,7 @@ func (a *App) newInitCmd() *cobra.Command {
 			a.printf("state root:  %s\n", a.Store.Root())
 			a.printf("tasks:       %s\n", a.Store.TasksDir())
 			a.printf("worktrees:   %s\n", a.Store.WorktreesDir())
+			a.printf("clones:      %s (made by config repo NAME URL)\n", a.Store.ReposDir())
 			a.printf("config:      %s\n", a.Store.ConfigPath())
 			if os.Getenv(task.EnvRoot) == "" {
 				a.printf("\nSet TSPACE_ROOT to keep workspaces somewhere else.\n")

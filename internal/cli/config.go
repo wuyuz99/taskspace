@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	neturl "net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -71,6 +72,9 @@ func (a *App) newConfigRepoCmd() *cobra.Command {
 			"unregistering one later leaves existing tasks alone.",
 		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if into != "" && (unset || len(args) != 2) {
+				return fmt.Errorf("--into says where to clone a URL given as PATH")
+			}
 			c, err := a.Store.LoadConfig()
 			if err != nil {
 				return err
@@ -118,14 +122,24 @@ func (a *App) newConfigRepoCmd() *cobra.Command {
 				return err
 			}
 			path := expandHome(args[1])
-			if into != "" && !looksLikeURL(args[1]) {
+			// A directory by that name wins over reading it as a URL.
+			clone := looksLikeURL(args[1]) && !isDir(path)
+			if into != "" && !clone {
 				return fmt.Errorf("--into says where to clone a URL; %s is a path", args[1])
 			}
-			// A directory by that name wins over reading it as a URL.
-			if looksLikeURL(args[1]) && !isDir(path) {
+			if clone {
 				dest := filepath.Join(a.Store.ReposDir(), name)
 				if into != "" {
 					dest = expandHome(into)
+				}
+				if dest, err = filepath.Abs(dest); err != nil {
+					return err
+				}
+				// Refused before cloning, so no clone is left behind.
+				for _, other := range c.RepoNames() {
+					if other != name && samePath(c.Repos[other], dest) {
+						return fmt.Errorf("%s is already registered as %q", dest, other)
+					}
 				}
 				if path, err = a.cloneRepo(cmd, args[1], dest); err != nil {
 					return err
@@ -156,44 +170,69 @@ func (a *App) newConfigRepoCmd() *cobra.Command {
 	return cmd
 }
 
-// cloneRepo clones url into dest for config repo, and returns the clone's
-// path. A clone of url already at dest is used as it is; anything else there
-// is refused rather than cloned over or registered in its place.
+// cloneRepo clones url into dest, an absolute path, for config repo, and
+// returns the clone's path. A complete clone of url already at dest is used
+// as it is, and an empty directory is cloned into; anything else there is
+// refused rather than cloned over or registered in its place. A clone that
+// fails or is interrupted is removed, if config repo made its directory.
 func (a *App) cloneRepo(cmd *cobra.Command, url, dest string) (string, error) {
 	ctx := cmd.Context()
-	dest, err := filepath.Abs(dest)
-	if err != nil {
-		return "", err
-	}
-	if _, err := os.Stat(dest); err == nil {
-		if !isDir(dest) {
-			return "", fmt.Errorf("%s exists and is not a directory; choose another place with --into", dest)
-		}
-		if have, err := a.Git.RemoteURL(ctx, dest, "origin"); err == nil && have == url {
-			a.printf("%s is already a clone of %s\n", dest, url)
+	shown := redactURL(url)
+	made := true
+	if entries, err := os.ReadDir(dest); err == nil {
+		have, err := a.Git.OriginURL(ctx, dest)
+		switch {
+		case err == nil && have == url:
+			// Finished, too: an interrupted clone has its remote but no commit.
+			if _, err := a.Git.Commit(ctx, dest, "HEAD"); err != nil {
+				return "", fmt.Errorf("%s holds an unfinished clone of %s; remove it and run this again", dest, shown)
+			}
+			a.printf("%s is already a clone of %s\n", dest, shown)
 			return dest, nil
+		case len(entries) > 0:
+			return "", fmt.Errorf("%s already exists and is not a clone of %s; choose another place with --into", dest, shown)
 		}
-		return "", fmt.Errorf("%s already exists and is not a clone of %s; choose another place with --into", dest, url)
+		made = false
+	} else if !os.IsNotExist(err) {
+		return "", fmt.Errorf("%s exists and cannot be cloned into: %v; choose another place with --into", dest, err)
 	}
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return "", err
 	}
-	a.printf("cloning %s into %s\n", url, dest)
+	a.printf("cloning %s into %s\n", shown, dest)
 	if err := a.Git.Clone(ctx, url, dest, cmd.InOrStdin(), a.Err); err != nil {
-		return "", err
+		if made {
+			_ = os.RemoveAll(dest)
+		}
+		return "", fmt.Errorf("git clone %s: %w", shown, err)
 	}
 	return dest, nil
 }
 
+// redactURL hides a password or token written into a URL, which would
+// otherwise end up in scrollback and logs.
+func redactURL(s string) string {
+	u, err := neturl.Parse(s)
+	if err != nil || u.User == nil {
+		return s
+	}
+	u.User = neturl.User("***")
+	return u.String()
+}
+
 // looksLikeURL reports whether a repository argument is something to clone:
-// a URL with a scheme, or git's scp-like user@host:path, which a Windows
-// drive (C:\src) is not.
+// a URL with a scheme, or git's scp-like [user@]host:path where the host has
+// a user or a dot, as in git@github.com:o/r. A Windows drive (C:\src) is not
+// one, nor a mistyped path that happens to hold a colon.
 func looksLikeURL(s string) bool {
 	if strings.Contains(s, "://") {
 		return true
 	}
 	i := strings.Index(s, ":")
-	return i > 1 && !strings.ContainsAny(s[:i], `/\`)
+	if i <= 1 || strings.ContainsAny(s[:i], `/\`) {
+		return false
+	}
+	return strings.Contains(s[:i], "@") || strings.Contains(s[:i], ".")
 }
 
 func (a *App) newConfigBranchPrefixCmd() *cobra.Command {
