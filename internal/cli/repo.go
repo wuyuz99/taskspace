@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	tsgit "github.com/wuyuz99/taskspace/internal/git"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
@@ -111,7 +112,11 @@ func (a *App) newRepoUpdateCmd() *cobra.Command {
 			// Git last, once nothing else can refuse.
 			var gitNotes []string
 			if setBranch || setBase {
-				if r, gitNotes, err = a.moveRepoBranch(cmd.Context(), t, args[1], r, branch, base, rebase); err != nil {
+				record := func(r task.Repo) error {
+					t.SetRepo(args[1], r)
+					return a.Store.Save(t)
+				}
+				if r, gitNotes, err = a.moveRepoBranch(cmd.Context(), t, args[1], r, branch, base, rebase, record); err != nil {
 					return err
 				}
 				t.SetRepo(args[1], r)
@@ -153,22 +158,35 @@ func (a *App) newRepoUpdateCmd() *cobra.Command {
 }
 
 // moveRepoBranch renames repo's branch to branch and sets its base to base,
-// either when not empty, in git as far as the worktree exists, and returns
-// the repository as recorded afterwards with what it did. Nothing is changed
-// if it fails.
-func (a *App) moveRepoBranch(ctx context.Context, t *task.Task, name string, r task.Repo, branch, base string, rebase bool) (task.Repo, []string, error) {
-	st, err := a.Git.WorktreeStatus(ctx, r.Worktree)
-	if err != nil {
-		return r, nil, fmt.Errorf("%s: %w", name, err)
+// either when not empty, in git as well as in the record, and says what it
+// did. Every check runs before git changes anything. record saves the
+// repository after each change git makes, so a failure part way leaves the
+// record matching git, and the error says how far it got.
+func (a *App) moveRepoBranch(ctx context.Context, t *task.Task, name string, r task.Repo, branch, base string, rebase bool, record func(task.Repo) error) (task.Repo, []string, error) {
+	renaming := branch != "" && branch != r.Branch
+	present := isDir(r.Worktree)
+	var st tsgit.Status
+	if renaming || rebase {
+		var err error
+		if st, err = a.Git.WorktreeStatus(ctx, r.Worktree); err != nil {
+			return r, nil, fmt.Errorf("%s: %w", name, err)
+		}
+		present = st.Exists
 	}
+
 	newBase := ""
 	if base != "" {
-		if newBase, err = a.resolveBase(ctx, r.Path, base); err != nil {
+		// HEAD names a different commit in every worktree.
+		if strings.EqualFold(base, "HEAD") {
+			return r, nil, fmt.Errorf("--base names what %s is compared with; give a branch or tag, not HEAD", name)
+		}
+		var err error
+		if newBase, err = a.resolveBase(ctx, r.Path, base, nil); err != nil {
 			return r, nil, err
 		}
 	}
-	renaming := branch != "" && branch != r.Branch
-	// Everything is checked before git changes anything.
+
+	oldBranchExists := false
 	if renaming {
 		if err := a.Git.CheckBranchName(ctx, branch); err != nil {
 			return r, nil, err
@@ -178,14 +196,38 @@ func (a *App) moveRepoBranch(ctx context.Context, t *task.Task, name string, r t
 		} else if exists {
 			return r, nil, fmt.Errorf("branch %s already exists in %s; repo update renames the task's branch and does not take over another", branch, r.Path)
 		}
-		if st.Exists && st.Branch != r.Branch {
+		// start would check a remote's branch of that name out and track it,
+		// after a fetch, so one not fetched yet counts too.
+		remote, err := a.Git.RemoteBranch(ctx, r.Path, branch)
+		if err == nil && remote == "" {
+			if _, fetchErr := a.Git.FetchRemotes(ctx, r.Path, ""); fetchErr == nil {
+				remote, err = a.Git.RemoteBranch(ctx, r.Path, branch)
+			}
+		}
+		if err != nil {
+			return r, nil, err
+		} else if remote != "" {
+			return r, nil, fmt.Errorf("%s already exists as %s; repo update renames the task's branch and does not take over another", branch, remote)
+		}
+		if present && st.Branch != r.Branch {
 			return r, nil, fmt.Errorf("%s's worktree is not on %s (it has %s); switch back before renaming", name, r.Branch, dash(st.Branch))
 		}
+		// Stashes are found by the branch named in their message.
+		if st.Stashes > 0 {
+			return r, nil, fmt.Errorf("%s has %d stash%s made on %s, which would no longer be counted as its work once renamed; apply or drop them first", name, st.Stashes, stashPlural(st.Stashes), r.Branch)
+		}
+		if oldBranchExists, err = a.Git.BranchExists(ctx, r.Path, r.Branch); err != nil {
+			return r, nil, err
+		}
 	}
+
+	var onto, from string
 	if rebase {
 		switch {
-		case !st.Exists:
+		case !present:
 			return r, nil, fmt.Errorf("%s has no worktree yet, so there is nothing to rebase: start creates the branch from the base; drop --rebase", name)
+		case st.Branch != r.Branch:
+			return r, nil, fmt.Errorf("%s's worktree is not on %s (it has %s); switch back before --rebase", name, r.Branch, dash(st.Branch))
 		case st.DirtyCount() > 0:
 			return r, nil, fmt.Errorf("%s has %d uncommitted change%s in %s; commit or stash them before --rebase", name, st.DirtyCount(), plural(st.DirtyCount()), r.Worktree)
 		case r.Base == "":
@@ -196,52 +238,83 @@ func (a *App) moveRepoBranch(ctx context.Context, t *task.Task, name string, r t
 		} else if op != "" {
 			return r, nil, fmt.Errorf("%s is in the middle of a %s; finish it before --rebase", name, op)
 		}
+		// Commits, resolved in the source repository, where a ref means
+		// the same as when it was recorded. The branch's work is what it has
+		// beyond where it forked from its old base, even if that base has
+		// moved or been rewritten since.
+		var err error
+		if onto, err = a.Git.Commit(ctx, r.Path, newBase); err != nil {
+			return r, nil, err
+		}
+		old, err := a.Git.Commit(ctx, r.Path, r.Base)
+		if err != nil {
+			return r, nil, fmt.Errorf("the old base of %s no longer resolves (%v); rebase by hand, then run this without --rebase", name, err)
+		}
+		if from, err = a.Git.MergeBase(ctx, r.Path, r.Branch, old); err != nil {
+			return r, nil, err
+		}
 	}
 
 	var notes []string
 	if rebase {
-		if err := a.Git.Rebase(ctx, r.Worktree, newBase, r.Base); err != nil {
+		undone, err := a.Git.Rebase(ctx, r.Worktree, onto, from)
+		if err != nil {
+			if !undone {
+				return r, nil, fmt.Errorf("%s: %w", name, err)
+			}
 			return r, nil, fmt.Errorf("%s: %w\nnothing was changed; to rebase by hand, in %s run: git rebase --onto %s %s\nthen record the base with: tspace repo update %s %s --base %s",
-				name, err, r.Worktree, newBase, r.Base, t.Name, name, base)
+				name, err, r.Worktree, newBase, from, t.Name, name, base)
 		}
-	}
-	if renaming && st.Exists {
-		if err := a.Git.RenameBranch(ctx, r.Path, r.Branch, branch); err != nil {
-			return r, nil, err
+		r.Base = newBase
+		if err := record(r); err != nil {
+			return r, nil, fmt.Errorf("rebased %s onto %s, but could not record its new base: %w; record it with: tspace repo update %s %s --base %s", r.Branch, newBase, err, t.Name, name, base)
 		}
-	}
-	switch {
-	case renaming && st.Exists:
-		notes = append(notes, fmt.Sprintf("branch: renamed %s to %s", r.Branch, branch))
-	case renaming:
-		notes = append(notes, fmt.Sprintf("branch: %s (start checks it out, creating it if it does not exist)", branch))
+		notes = append(notes, fmt.Sprintf("base: %s (rebased %s onto it)", newBase, r.Branch))
 	}
 	if renaming {
+		old := r.Branch
+		if oldBranchExists {
+			if err := a.Git.RenameBranch(ctx, r.Path, old, branch); err != nil {
+				return r, notes, err
+			}
+			notes = append(notes, fmt.Sprintf("branch: renamed %s to %s", old, branch))
+		} else {
+			notes = append(notes, fmt.Sprintf("branch: %s (start creates it)", branch))
+		}
 		r.Branch = branch
+		if err := record(r); err != nil {
+			if oldBranchExists {
+				return r, notes, fmt.Errorf("renamed %s to %s in git, but could not record it: %w; to undo the rename, run: git -C %s branch -m %s %s", old, branch, err, r.Path, branch, old)
+			}
+			return r, notes, err
+		}
 	}
-	switch {
-	case newBase == "":
-	case rebase:
-		notes = append(notes, fmt.Sprintf("base: %s (rebased %s onto it)", newBase, r.Branch))
-	case st.Exists:
-		notes = append(notes, fmt.Sprintf("base: %s (%s is unchanged; status and clean now compare it with %s; --rebase moves its commits onto it)", newBase, r.Branch, newBase))
-	default:
-		notes = append(notes, fmt.Sprintf("base: %s (start creates the branch from it if it does not exist yet)", newBase))
-	}
-	if newBase != "" {
+	if newBase != "" && !rebase {
 		r.Base = newBase
+		if present {
+			notes = append(notes, fmt.Sprintf("base: %s (%s is unchanged; status and clean now compare it with %s; --rebase moves its commits onto it)", newBase, r.Branch, newBase))
+		} else {
+			notes = append(notes, fmt.Sprintf("base: %s (start creates the branch from it if it does not exist yet)", newBase))
+		}
 	}
 	return r, notes, nil
 }
 
 // resolveBase turns a base the user typed into a ref that resolves in repo,
-// fetching once if it is not there yet.
-func (a *App) resolveBase(ctx context.Context, repo, ref string) (string, error) {
+// fetching once if it is not there yet: by fetch, when the caller shares one
+// fetch between several lookups, else by fetching the remotes itself.
+func (a *App) resolveBase(ctx context.Context, repo, ref string, fetch func() error) (string, error) {
 	resolved, err := a.Git.ResolveRef(ctx, repo, ref)
 	if err != nil || resolved != "" {
 		return resolved, err
 	}
-	_, fetchErr := a.Git.FetchRemotes(ctx, repo, ref)
+	if fetch == nil {
+		fetch = func() error {
+			_, err := a.Git.FetchRemotes(ctx, repo, ref)
+			return err
+		}
+	}
+	fetchErr := fetch()
 	if resolved, err = a.Git.ResolveRef(ctx, repo, ref); err == nil && resolved == "" {
 		err = fmt.Errorf("base %q is not a ref in %s, locally or on a remote%s", ref, repo, fetchNote(fetchErr))
 	}
@@ -501,11 +574,12 @@ func (a *App) addRepo(ctx context.Context, t *task.Task, c *task.Config, path st
 	// most likely to be new, so fetch once before calling them missing.
 	fetched := false
 	var fetchErr error
-	fetch := func() {
+	fetch := func() error {
 		if !fetched {
 			fetched = true
 			_, fetchErr = a.Git.FetchRemotes(ctx, canonical, opts.Base)
 		}
+		return fetchErr
 	}
 
 	// Resolve the base now so that `tspace task show` can report it before anything
@@ -514,14 +588,7 @@ func (a *App) addRepo(ctx context.Context, t *task.Task, c *task.Config, path st
 	if base == "" {
 		base, err = a.Git.ResolveBase(ctx, canonical)
 	} else {
-		base, err = a.Git.ResolveRef(ctx, canonical, opts.Base)
-		if err == nil && base == "" {
-			fetch()
-			base, err = a.Git.ResolveRef(ctx, canonical, opts.Base)
-		}
-		if err == nil && base == "" {
-			err = fmt.Errorf("base %q is not a ref in %s, locally or on a remote%s", opts.Base, canonical, fetchNote(fetchErr))
-		}
+		base, err = a.resolveBase(ctx, canonical, opts.Base, fetch)
 	}
 	if err != nil {
 		return err
@@ -536,7 +603,7 @@ func (a *App) addRepo(ctx context.Context, t *task.Task, c *task.Config, path st
 	remote := ""
 	if !local {
 		if remote, err = a.Git.RemoteBranch(ctx, canonical, branch); err == nil && remote == "" && opts.Branch != "" {
-			fetch()
+			_ = fetch()
 			remote, err = a.Git.RemoteBranch(ctx, canonical, branch)
 		}
 		if err != nil {
