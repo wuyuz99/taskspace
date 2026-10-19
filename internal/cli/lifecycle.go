@@ -59,7 +59,16 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 			bases := map[string]string{}
 			hooked := false
 			for _, name := range names {
-				r := t.Repos[name]
+				// What an earlier repository's hook changed applies to this one.
+				if hooked {
+					if t, err = a.Store.Load(t.Name); err != nil {
+						return err
+					}
+				}
+				r, ok := t.Repos[name]
+				if !ok {
+					return fmt.Errorf("%s was removed from %s while it started", name, t.Name)
+				}
 				res, err := a.Git.EnsureWorktree(ctx, r.Path, r.Worktree, r.Branch, r.Base)
 				if err != nil {
 					return fmt.Errorf("%s: %w", name, err)
@@ -86,8 +95,6 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 						a.warnf("%-12s post_create failed: %v\n", name, err)
 					}
 					if res.Base != "" && r.Base != res.Base {
-						r.Base = res.Base
-						t.SetRepo(name, r)
 						bases[name] = res.Base
 					}
 				}

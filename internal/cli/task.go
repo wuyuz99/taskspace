@@ -73,11 +73,6 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 			if err := task.ValidateName("task", name); err != nil {
 				return err
 			}
-			l, err := a.acquire(cmd, name)
-			if err != nil {
-				return err
-			}
-			defer l.Unlock()
 			if a.Store.Exists(name) {
 				return fmt.Errorf("%q: %w", name, task.ErrExists)
 			}
@@ -171,6 +166,13 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 			if start && len(t.Repos) == 0 {
 				return fmt.Errorf("--start needs a repository to start; name one, or add it later and run: tspace start %s", name)
 			}
+			// Held from here through --start. Publishing never replaces a
+			// record, so of two creates at once only one gets this far.
+			l, err := a.acquire(cmd, name)
+			if err != nil {
+				return err
+			}
+			defer l.Unlock()
 			if err := a.Store.CreatePrepared(t); err != nil {
 				return err
 			}

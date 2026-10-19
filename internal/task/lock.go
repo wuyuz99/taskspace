@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -56,6 +57,18 @@ type Lock struct {
 	inherited bool
 	release   func()
 	once      sync.Once
+	// outer is the lock this one re-enters, which holds the file and token.
+	outer *Lock
+	// released is set by Unlock; a released lock no longer re-enters.
+	released atomic.Bool
+}
+
+// held is the acquisition l stands for.
+func (l *Lock) held() *Lock {
+	for l.outer != nil {
+		l = l.outer
+	}
+	return l
 }
 
 // EnvLocked passes the task locks held by the processes a process was run by,
@@ -72,25 +85,33 @@ func WithLock(ctx context.Context, l *Lock) context.Context {
 	return context.WithValue(ctx, lockKey{l.store.root, l.name}, l)
 }
 
-// HeldLock is the lock on name that ctx carries, or nil.
+// HeldLock is the lock on name that ctx carries, or nil, also once that lock
+// has been released, as by open before it attaches.
 func (s *Store) HeldLock(ctx context.Context, name string) *Lock {
 	l, _ := ctx.Value(lockKey{s.root, name}).(*Lock)
+	if l == nil || l.held().released.Load() {
+		return nil
+	}
 	return l
 }
 
 // Inherited reports whether the lock is held by the process that ran this
 // one, such as the start running a post_create hook.
-func (l *Lock) Inherited() bool { return l.inherited }
+func (l *Lock) Inherited() bool { return l.held().inherited }
+
+// Reentered reports whether l re-enters a lock its caller already holds.
+func (l *Lock) Reentered() bool { return l.outer != nil }
 
 // Env is the variable that hands the lock to a process its holder waits for,
 // along with the locks this process inherited: they are all held by processes
 // waiting on that one.
 func (l *Lock) Env() string {
 	held := os.Getenv(EnvLocked)
-	if l.token == "" {
+	token := l.held().token
+	if token == "" {
 		return EnvLocked + "=" + held
 	}
-	mine := l.name + ":" + l.token
+	mine := l.name + ":" + token
 	if held != "" {
 		mine = held + "," + mine
 	}
@@ -101,6 +122,10 @@ func (l *Lock) Env() string {
 // re-entered or inherited it does nothing.
 func (l *Lock) Unlock() {
 	l.once.Do(func() {
+		if l.outer != nil {
+			return
+		}
+		l.released.Store(true)
 		if l.f != nil {
 			// No holder is named while nobody holds it.
 			_ = l.f.Truncate(0)
@@ -161,7 +186,7 @@ func (s *Store) Lock(ctx context.Context, name, command string, waiting func(Loc
 		return nil, err
 	}
 	if held := s.HeldLock(ctx, name); held != nil {
-		return &Lock{store: s, name: name, inherited: held.inherited}, nil
+		return &Lock{store: s, name: name, outer: held}, nil
 	}
 	path := s.LockPath(name)
 	var told LockHolder
@@ -182,7 +207,10 @@ func (s *Store) Lock(ctx context.Context, name, command string, waiting func(Loc
 	}
 
 	// This process's other commands on the task first.
-	v, _ := inProcess.LoadOrStore(path, &localLock{slot: make(chan struct{}, 1)})
+	v, ok := inProcess.Load(path)
+	if !ok {
+		v, _ = inProcess.LoadOrStore(path, &localLock{slot: make(chan struct{}, 1)})
+	}
 	local := v.(*localLock)
 	for acquired := false; !acquired; {
 		select {
@@ -198,7 +226,12 @@ func (s *Store) Lock(ctx context.Context, name, command string, waiting func(Loc
 			}
 		}
 	}
-	release := func() { <-local.slot }
+	release := func() {
+		local.mu.Lock()
+		local.holder = LockHolder{}
+		local.mu.Unlock()
+		<-local.slot
+	}
 
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		release()

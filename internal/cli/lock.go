@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -40,13 +41,34 @@ func (a *App) lockTask(cmd *cobra.Command, name string, lifecycle bool) (*task.T
 
 // acquire takes name's lock and puts it in cmd's context, saying so when it
 // has to wait.
+//
+// With noWait, as in dash, where nobody would see the message or could stop
+// the wait, a busy task is an error naming its holder instead.
 func (a *App) acquire(cmd *cobra.Command, name string) (*task.Lock, error) {
-	l, err := a.Store.Lock(cmd.Context(), name, cmd.CommandPath()+" "+name, func(h task.LockHolder) {
+	ctx := cmd.Context()
+	var busy *task.LockHolder
+	if a.noWait {
+		try, cancel := context.WithCancel(ctx)
+		cancel() // one attempt
+		ctx = try
+	}
+	l, err := a.Store.Lock(ctx, name, cmd.CommandPath()+" "+name, func(h task.LockHolder) {
+		if a.noWait {
+			busy = &h
+			return
+		}
 		a.warnf("tspace: waiting for %s, which is changing %s (Ctrl-C to stop waiting)\n", h, name)
 	})
 	if err != nil {
+		if busy != nil {
+			return nil, fmt.Errorf("%s is busy: %s is changing it; try again when it is done", name, *busy)
+		}
 		return nil, err
 	}
-	cmd.SetContext(task.WithLock(cmd.Context(), l))
+	// A lock re-entered is already in the context, which keeps the one that
+	// holds the file.
+	if !l.Reentered() {
+		cmd.SetContext(task.WithLock(cmd.Context(), l))
+	}
 	return l, nil
 }

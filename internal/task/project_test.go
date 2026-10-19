@@ -66,7 +66,7 @@ func TestCreatePreparedRefusesOverwrite(t *testing.T) {
 	if err := s.CreatePrepared(original); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.CreatePrepared(New("t")); !errors.Is(err, os.ErrExist) {
+	if err := s.CreatePrepared(New("t")); !errors.Is(err, ErrExists) {
 		t.Fatalf("overwrite: %v", err)
 	}
 	got, err := s.Load("t")

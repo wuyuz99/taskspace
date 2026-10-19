@@ -52,10 +52,13 @@ func (a *App) newWindowCmd() *cobra.Command {
 			if useAgent && len(argv) > 0 {
 				return fmt.Errorf("choose either --agent or a command after --")
 			}
-			t, err := a.loadTask(pos[0])
+			// Opening a window changes the session, so it waits for whatever
+			// is changing the task, such as a clean removing the worktree.
+			t, unlock, err := a.lockTask(cmd, pos[0], true)
 			if err != nil {
 				return err
 			}
+			defer unlock()
 			repoArg := ""
 			if len(pos) == 2 {
 				repoArg = pos[1]
