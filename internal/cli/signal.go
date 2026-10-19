@@ -35,8 +35,11 @@ const (
 // windowEnv is the environment a task's window is launched with. An empty
 // window names none, which a window started from inside another one needs, so
 // as not to inherit that one's.
-func windowEnv(taskName, window string) []string {
-	return []string{envTask + "=" + taskName, envWindow + "=" + window}
+//
+// TSPACE_ROOT is set too, so that tspace run in the window uses the state that
+// launched it whatever environment the multiplexer's server was started with.
+func (a *App) windowEnv(taskName, window string) []string {
+	return []string{envTask + "=" + taskName, envWindow + "=" + window, task.EnvRoot + "=" + a.Store.Root()}
 }
 
 func (a *App) newSignalCmd() *cobra.Command {

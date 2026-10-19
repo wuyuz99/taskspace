@@ -106,7 +106,7 @@ func defaultsToRoot(t *task.Task, repoArg string) bool {
 
 // rootWindow is the task's window at its workspace root.
 func (a *App) rootWindow(t *task.Task) runtime.Window {
-	return runtime.Window{Name: task.RootWindowName, Dir: a.Store.TaskDir(t.Name), Command: a.expandArgv(t, t.RootAgent()), Env: windowEnv(t.Name, task.RootWindowName)}
+	return runtime.Window{Name: task.RootWindowName, Dir: a.Store.TaskDir(t.Name), Command: a.expandArgv(t, t.RootAgent()), Env: a.windowEnv(t.Name, task.RootWindowName)}
 }
 
 // repoWindow is a repository's window, in its worktree.
@@ -116,7 +116,7 @@ func (a *App) rootWindow(t *task.Task) runtime.Window {
 // copied in. It finds them at ../.context or through TSPACE_CONTEXT_DIR, or
 // its command names them with {context_dir}; see expandArgv.
 func (a *App) repoWindow(t *task.Task, name string) runtime.Window {
-	env := append(windowEnv(t.Name, name), "TSPACE_CONTEXT_DIR="+a.Store.ContextDir(t.Name))
+	env := append(a.windowEnv(t.Name, name), "TSPACE_CONTEXT_DIR="+a.Store.ContextDir(t.Name))
 	return runtime.Window{Name: name, Dir: t.Repos[name].Worktree, Command: a.expandArgv(t, t.RepoAgent(name)), Env: env}
 }
 

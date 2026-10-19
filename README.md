@@ -556,6 +556,12 @@ hides the rest of your workspaces from `tspace task list` or `tspace status`.
 
 `TSPACE_ROOT` exists because you probably already keep workspace directories
 somewhere visible, and a hidden `~/.tspace` should not be forced on that habit.
+With more than one root, a command run inside a root it is not using says so
+on stderr and names the `TSPACE_ROOT` that would use it; it never switches on
+its own. Session windows, `tspace shell` and `post_create` hooks get
+`TSPACE_ROOT` set to the root that started them, so an agent's `tspace signal`
+and `tspace task handoff` reach the right state whatever environment the
+multiplexer was started with.
 
 ## Fresh worktrees are empty: `post_create`
 
