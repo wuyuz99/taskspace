@@ -38,30 +38,49 @@ type Config struct {
 	// adapters not on PATH as tspace-mux-NAME.
 	Adapters map[string][]string `json:"adapters,omitempty"`
 	// TicketPattern is a regular expression that finds the ticket key in a new
-	// task's name, for tasks given no --ticket. Off when empty: tspace knows no
-	// ticket system's keys.
+	// task's name, for tasks given no --ticket; see TicketFrom. Off when empty:
+	// tspace knows no ticket system's keys.
 	TicketPattern string `json:"ticket_pattern,omitempty"`
 }
 
-// TicketFrom is the ticket the pattern finds in a task name: its first
-// capture group if it has one, else the whole match, else "".
-func (c *Config) TicketFrom(name string) string {
-	if c.TicketPattern == "" {
-		return ""
-	}
-	re, err := regexp.Compile(c.TicketPattern)
+// TicketGroup names the part of a ticket pattern that is the ticket, when the
+// whole match is not. Only a named group: plain parentheses are as often there
+// for alternation, as in (ENG|OPS)-[0-9]+.
+const TicketGroup = "ticket"
+
+// CompileTicketPattern checks a ticket pattern: it must compile and must not
+// match an empty name, or the leftmost match could be empty in a name that
+// holds a ticket.
+func CompileTicketPattern(pattern string) (*regexp.Regexp, error) {
+	re, err := regexp.Compile(pattern)
 	if err != nil {
-		return ""
+		return nil, fmt.Errorf("ticket pattern: %w", err)
+	}
+	if re.MatchString("") {
+		return nil, fmt.Errorf("ticket pattern %q matches an empty name; it must match at least one character", pattern)
+	}
+	return re, nil
+}
+
+// TicketFrom is the ticket the pattern finds in a task name: the group named
+// TicketGroup if the pattern has one and it matched, else the whole match, else
+// "". An invalid pattern, as from an edited config file, is an error.
+func (c *Config) TicketFrom(name string) (string, error) {
+	if c.TicketPattern == "" {
+		return "", nil
+	}
+	re, err := CompileTicketPattern(c.TicketPattern)
+	if err != nil {
+		return "", err
 	}
 	m := re.FindStringSubmatch(name)
-	switch {
-	case m == nil:
-		return ""
-	case len(m) > 1:
-		return m[1]
-	default:
-		return m[0]
+	if m == nil {
+		return "", nil
 	}
+	if i := re.SubexpIndex(TicketGroup); i > 0 && m[i] != "" {
+		return m[i], nil
+	}
+	return m[0], nil
 }
 
 // DefaultBranchPrefix prefixes a task's branch when the config names none.

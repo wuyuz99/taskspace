@@ -399,12 +399,12 @@ not implemented.
 
 If your task names carry their ticket key, tell tspace how to find it, and a
 task created without `--ticket` gets it. The pattern is a regular expression,
-so it fits whatever your tracker's keys look like; the first parenthesized
-group, if any, is the ticket:
+so it fits whatever your tracker's keys look like; a group named `ticket`, if
+any, is the ticket, else the whole match:
 
 ```bash
 tspace config ticket-pattern '[A-Z][A-Z0-9]+-[0-9]+'   # ENG-123-login -> ENG-123
-tspace config ticket-pattern '^gh-([0-9]+)$'           # gh-42 -> 42
+tspace config ticket-pattern '^gh-(?P<ticket>[0-9]+)$' # gh-42 -> 42
 tspace config ticket-pattern --unset                   # off, the default
 ```
 
@@ -786,7 +786,7 @@ only once every worktree is gone: safely, unless `--force` discarded their work.
 | `tspace config ticket-pattern [REGEXP / --unset]` | Read new tasks' tickets from their names |
 | `tspace project save NAME --from TASK [--replace]` | Save a reusable repository recipe |
 | `tspace project list` / `tspace project show NAME` | Inspect saved recipes |
-| `tspace task create NAME [REPO...] [--agent CMD / --shell] [--start]` | Create a task; each REPO is `REPO[@BRANCH][:BASE]`; `--start` starts it too. Also `tspace new`, `task new` and `task add` |
+| `tspace task create NAME [REPO...] [--agent CMD / --shell] [--start]` | Create a task; each REPO is `REPO[@BRANCH][:BASE]`; `--start` starts it too. Also `tspace new` and `task new` |
 | `tspace task update NAME [--agent CMD / --shell] [--title ...]` | Update a task's root agent and details |
 | `tspace task list [--json]` | List tasks |
 | `tspace task show NAME [--json]` | Show a task's repos in detail |

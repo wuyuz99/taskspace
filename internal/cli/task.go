@@ -35,7 +35,7 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:     "create NAME [REPO...]",
-		Aliases: []string{"new", "add"},
+		Aliases: []string{"new"},
 		Short:   "Create a task",
 		Long: "create records a task and the repositories it spans. Each REPO is a name\n" +
 			"registered with `tspace config repo` or a path, optionally with a branch and\n" +
@@ -129,8 +129,12 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 			// Like the agent, a broken config does not stop a task that needs
 			// nothing from it.
 			if !cmd.Flags().Changed("ticket") {
-				if c, err := config(); err == nil {
-					t.Ticket = c.TicketFrom(name)
+				c, err := config()
+				if err == nil {
+					t.Ticket, err = c.TicketFrom(name)
+				}
+				if err != nil {
+					a.warnf("note: no ticket read from the name: %v\n", err)
 				}
 			}
 			// A resume command goes with the agent it resumes: the recipe's or
