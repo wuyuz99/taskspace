@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -111,12 +112,34 @@ func (a *App) warnf(format string, args ...any) {
 // around it. It does not switch to that root: which state a command touches
 // stays the explicit choice of TSPACE_ROOT.
 func (a *App) warnNearerRoot(dir string) {
+	if within(dir, a.Store.Root()) {
+		return
+	}
 	near := task.NearestRoot(dir)
 	if near == "" || sameDir(near, a.Store.Root()) {
 		return
 	}
 	a.warnf("tspace: note: this directory is in the tspace root %s, but tspace is using %s; set %s=%s to use the one here\n",
 		near, a.Store.Root(), task.EnvRoot, near)
+}
+
+// within reports whether dir is root or below it, as written or with symlinks
+// resolved; the written form is checked first because it costs nothing.
+func within(dir, root string) bool {
+	if isWithin(dir, root) {
+		return true
+	}
+	rd, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return false
+	}
+	rr, err := filepath.EvalSymlinks(root)
+	return err == nil && isWithin(rd, rr)
+}
+
+func isWithin(dir, root string) bool {
+	rel, err := filepath.Rel(root, dir)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // sameDir reports whether two paths name one directory, through symlinks and
@@ -195,7 +218,7 @@ func Execute(ctx context.Context) int {
 			"  worktrees/TASK/.context/TASK.md     the brief: what the task is\n" +
 			"  worktrees/TASK/.context/HANDOFF.md  the handoff: where the work stands\n\n" +
 			"Run inside another root, a command warns that it is not using it.\n" +
-			"Windows of a session get TSPACE_ROOT set to the root that started them.\n\n" +
+			"The windows tspace opens get TSPACE_ROOT set to the root that started them.\n\n" +
 			"For scripts and agents: open, attach, shell, dash and `task brief --edit`\n" +
 			"take over the terminal and need a TTY, and window switches to the new\n" +
 			"window unless given --detach. Every other command runs to completion,\n" +
@@ -263,7 +286,7 @@ func (a *App) newInitCmd() *cobra.Command {
 			a.printf("tasks:       %s\n", a.Store.TasksDir())
 			a.printf("worktrees:   %s\n", a.Store.WorktreesDir())
 			a.printf("config:      %s\n", a.Store.ConfigPath())
-			if os.Getenv("TSPACE_ROOT") == "" {
+			if os.Getenv(task.EnvRoot) == "" {
 				a.printf("\nSet TSPACE_ROOT to keep workspaces somewhere else.\n")
 			}
 			return nil

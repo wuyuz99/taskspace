@@ -355,11 +355,18 @@ func (z *Zellij) Restart(ctx context.Context, session string, w Window) error {
 		}
 	}
 
-	want := strings.Join(z.launchArgv(w), " ")
-	for _, p := range tab {
-		if p.Held && p.TerminalCommand == want {
-			_, err := z.action(ctx, session, "send-keys", "--pane-id", p.target(), "Enter")
-			return err
+	// A pane started by an older tspace may lack variables set since, which
+	// are added at the end: it is still this window's launch, and reruns as it
+	// was.
+	for n := len(w.Env); n >= 0; n-- {
+		older := w
+		older.Env = w.Env[:n]
+		want := strings.Join(z.launchArgv(older), " ")
+		for _, p := range tab {
+			if p.Held && p.TerminalCommand == want {
+				_, err := z.action(ctx, session, "send-keys", "--pane-id", p.target(), "Enter")
+				return err
+			}
 		}
 	}
 

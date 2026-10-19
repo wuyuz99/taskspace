@@ -431,3 +431,24 @@ func TestDeleteRemovesTheRecord(t *testing.T) {
 		t.Fatal("record survived Delete")
 	}
 }
+
+func TestNearestRootNeedsBothStateDirectories(t *testing.T) {
+	dir := t.TempDir()
+	below := filepath.Join(dir, "tasks", "sub")
+	if err := os.MkdirAll(below, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A project's own tasks folder and config.json do not make a root.
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := NearestRoot(below); got != "" {
+		t.Fatalf("NearestRoot = %q, want none", got)
+	}
+	if err := NewStore(dir).Init(); err != nil {
+		t.Fatal(err)
+	}
+	if got := NearestRoot(below); got != dir {
+		t.Fatalf("NearestRoot = %q, want %q", got, dir)
+	}
+}

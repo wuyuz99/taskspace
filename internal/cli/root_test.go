@@ -32,25 +32,21 @@ func TestWarnsAboutANearerRoot(t *testing.T) {
 	if h.errb.Len() != 0 {
 		t.Fatalf("warned inside the root in use, or outside any: %s", h.errb.String())
 	}
+	// Something root-shaped inside the root in use, such as a repository with
+	// tasks and worktrees folders, is still that root's.
+	for _, d := range []string{"tasks", "worktrees"} {
+		if err := os.MkdirAll(filepath.Join(inUse, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.app.warnNearerRoot(inUse)
+	if h.errb.Len() != 0 {
+		t.Fatalf("warned about a root nested in the one in use: %s", h.errb.String())
+	}
+
 	h.app.warnNearerRoot(elsewhere)
 	if got := h.errb.String(); !strings.Contains(got, "TSPACE_ROOT="+other.Root()) {
 		t.Fatalf("stderr: %q", got)
-	}
-}
-
-func TestNearestRootNeedsMoreThanATasksFolder(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, "tasks"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if got := task.NearestRoot(filepath.Join(dir, "tasks")); got == dir {
-		t.Fatalf("a project with a tasks folder is a root: %s", got)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte("{}"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if got := task.NearestRoot(filepath.Join(dir, "tasks")); got != dir {
-		t.Fatalf("NearestRoot = %q, want %q", got, dir)
 	}
 }
 
