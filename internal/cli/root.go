@@ -107,11 +107,11 @@ func (a *App) warnf(format string, args ...any) {
 	fmt.Fprintf(a.Err, format, args...)
 }
 
-// newShortcutCmd puts a subcommand at the top level under another name, for the
+// shortcut puts a subcommand at the top level under another name, for the
 // commands typed often enough to deserve one. It is left out of the help, which
 // lists each command once.
-func (a *App) newShortcutCmd(cmd *cobra.Command, name string) *cobra.Command {
-	cmd.Use = name + strings.TrimPrefix(cmd.Use, strings.Fields(cmd.Use)[0])
+func shortcut(cmd *cobra.Command, name string) *cobra.Command {
+	cmd.Use = name + strings.TrimPrefix(cmd.Use, cmd.Name())
 	cmd.Aliases = nil
 	cmd.Hidden = true
 	return cmd
@@ -166,6 +166,9 @@ func sameDir(x, y string) bool {
 // checksRoot reports whether cmd should warn about a nearer root: not shell
 // completion, whose output the shell reads, nor help, nor a quiet signal.
 func checksRoot(cmd *cobra.Command) bool {
+	if cmd.Annotations[groupAnnotation] != "" {
+		return false // it only shows help, or refuses
+	}
 	for c := cmd; c != nil; c = c.Parent() {
 		if strings.HasPrefix(c.Name(), "__") || c.Name() == "completion" || c.Name() == "help" {
 			return false
@@ -178,6 +181,9 @@ func checksRoot(cmd *cobra.Command) bool {
 // requireSubcommand makes every command that only groups others fail on an
 // argument that names none of them, with cobra's suggestions, instead of
 // printing help and exiting 0 as if a mistyped command had run.
+//
+// `GROUP help [COMMAND]` still shows help, as it did for a group cobra would
+// not run.
 func requireSubcommand(cmd *cobra.Command) {
 	for _, c := range cmd.Commands() {
 		requireSubcommand(c)
@@ -185,18 +191,47 @@ func requireSubcommand(cmd *cobra.Command) {
 	if cmd.HasParent() && cmd.HasAvailableSubCommands() && cmd.Run == nil && cmd.RunE == nil {
 		cmd.Args = cobra.ArbitraryArgs
 		cmd.DisableFlagsInUseLine = true
-		cmd.SuggestionsMinimumDistance = 2 // cobra's own, which it sets only on the root
+		if cmd.Annotations == nil {
+			cmd.Annotations = map[string]string{}
+		}
+		cmd.Annotations[groupAnnotation] = "true"
 		cmd.RunE = func(cmd *cobra.Command, args []string) error {
-			if len(args) == 0 {
+			switch {
+			case len(args) == 0:
+				return cmd.Help()
+			case args[0] == "help":
+				if c, _, err := cmd.Find(args[1:]); err == nil {
+					return c.Help()
+				}
 				return cmd.Help()
 			}
-			msg := fmt.Sprintf("unknown command %q for %q", args[0], cmd.CommandPath())
-			if s := cmd.SuggestionsFor(args[0]); len(s) > 0 {
-				msg += "\n\nDid you mean this?\n\t" + strings.Join(s, "\n\t")
-			}
-			return errors.New(msg)
+			return unknownSubcommand(cmd, args[0])
 		}
 	}
+}
+
+// groupAnnotation marks a command that only groups others, which runs only to
+// show its help or refuse a word that names none of them.
+const groupAnnotation = "tspace-group"
+
+// noSubcommandArgs is cobra.NoArgs for a command that also has subcommands:
+// a word after it is a mistyped one of them, and gets suggestions.
+func noSubcommandArgs(cmd *cobra.Command, args []string) error {
+	if len(args) > 0 {
+		return unknownSubcommand(cmd, args[0])
+	}
+	return nil
+}
+
+func unknownSubcommand(cmd *cobra.Command, arg string) error {
+	if cmd.SuggestionsMinimumDistance <= 0 {
+		cmd.SuggestionsMinimumDistance = 2 // cobra's own, which it sets only on the root
+	}
+	msg := fmt.Sprintf("unknown command %q for %q", arg, cmd.CommandPath())
+	if s := cmd.SuggestionsFor(arg); len(s) > 0 {
+		msg += "\n\nDid you mean this?\n\t" + strings.Join(s, "\n\t")
+	}
+	return errors.New(msg)
 }
 
 // loadTask is the common "resolve the task argument" step.
@@ -295,8 +330,11 @@ func Execute(ctx context.Context) int {
 		app.newDashCmd(),
 		app.newSignalCmd(),
 		app.newCleanCmd(),
-		app.newShortcutCmd(app.newTaskCreateCmd(), "new"),
+		shortcut(app.newTaskCreateCmd(), "new"),
 	)
+	// cobra adds its completion group only on Execute; added now, it is
+	// covered too.
+	root.InitDefaultCompletionCmd()
 	requireSubcommand(root)
 
 	if err := root.ExecuteContext(ctx); err != nil {
