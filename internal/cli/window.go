@@ -122,8 +122,11 @@ func (a *App) newWindowCmd() *cobra.Command {
 				if argv, err = a.taskAgent(t); err != nil {
 					return err
 				}
-				argv = a.expandArgv(t, argv)
 			}
+			// Saved as given, placeholders and all, so a recipe carries it to
+			// other tasks; run expanded, as start runs it.
+			raw := append([]string(nil), argv...)
+			argv = a.expandArgv(t, argv)
 
 			var saved task.Window
 			if save {
@@ -133,7 +136,10 @@ func (a *App) newWindowCmd() *cobra.Command {
 				if _, ok := t.SavedWindow(name); ok {
 					return fmt.Errorf("%s already has a saved window %s%s; forget it first: tspace window %s --forget %s", t.Name, extraWindowPrefix, name, t.Name, name)
 				}
-				saved = task.Window{Name: name, Command: append([]string(nil), argv...)}
+				if extraWindowPrefix+name == task.RootWindowName {
+					return fmt.Errorf("%q names the task's root window; choose another name", name)
+				}
+				saved = task.Window{Name: name, Command: raw}
 				if place != "root" {
 					saved.Repo = place
 				}

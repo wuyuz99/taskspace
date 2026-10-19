@@ -515,6 +515,15 @@ func (z *Zellij) RenameWindow(ctx context.Context, session, from, to string) err
 	if err := z.requireClient(ctx, session, "rename "+from); err != nil {
 		return err
 	}
+	// go-to-tab-name succeeds without such a tab, and rename-tab would then
+	// rename whichever tab has focus.
+	st, err := z.State(ctx, session)
+	if err != nil {
+		return err
+	}
+	if _, ok := st.Pane(WindowName(from)); !ok {
+		return fmt.Errorf("rename %s in %s: no such tab", from, session)
+	}
 	if _, err := z.action(ctx, session, "go-to-tab-name", WindowName(from)); err != nil {
 		return fmt.Errorf("rename %s in %s: %w", from, session, err)
 	}
