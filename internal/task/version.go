@@ -1,7 +1,6 @@
 package task
 
 import (
-	"context"
 	"errors"
 	"fmt"
 )
@@ -19,7 +18,9 @@ import (
 //   - Save brings the record to CurrentVersion first, running each migration
 //     in order. Every write goes through Save under the task's lock (see
 //     Lock), so a migration is a write like any other: it starts from the
-//     latest record and cannot race an update.
+//     latest record and cannot race an update. Update upgrades before it
+//     applies its change, and so must anything that writes a note of an
+//     outdated record: a note cleared before the move would be refilled by it.
 //   - A migration finishes everything it does outside the record, such as
 //     writing note files, before the record is replaced, and Save replaces it
 //     only after every migration succeeded. A failure leaves the record as it
@@ -56,6 +57,9 @@ func init() {
 func (t *Task) Outdated() bool { return t.Version < CurrentVersion }
 
 func checkVersion(t *Task) error {
+	if t.Version < 0 {
+		return fmt.Errorf("task %q: format version %d is not one tspace ever wrote; the record is damaged", t.Name, t.Version)
+	}
 	if t.Version > CurrentVersion {
 		return fmt.Errorf("task %q: %w (format version %d; this tspace reads up to %d); upgrade tspace to use it",
 			t.Name, ErrUnsupportedVersion, t.Version, CurrentVersion)
@@ -76,10 +80,4 @@ func (s *Store) upgrade(t *Task) error {
 		t.Version++
 	}
 	return nil
-}
-
-// Upgrade brings a task's record to the current format now, under its lock,
-// which ctx may carry.
-func (s *Store) Upgrade(ctx context.Context, name string) (*Task, error) {
-	return s.Update(ctx, name, "tspace (upgrading the record of "+name+")", func(*Task) error { return nil })
 }

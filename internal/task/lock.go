@@ -341,6 +341,10 @@ func (s *Store) Update(ctx context.Context, name, command string, fn func(*Task)
 	if err != nil {
 		return nil, err
 	}
+	// fn sees the current format; see version.go.
+	if err := s.upgrade(t); err != nil {
+		return nil, err
+	}
 	if err := fn(t); err != nil {
 		return nil, err
 	}

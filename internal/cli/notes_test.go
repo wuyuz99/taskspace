@@ -371,3 +371,40 @@ func TestMultipleWorkspacesCanReferenceSameTicket(t *testing.T) {
 		t.Fatal("workspace identity was coupled to ticket")
 	}
 }
+
+func TestLegacyRecordsAndCommandsThatDoNotSave(t *testing.T) {
+	h := newHarness(t)
+	if err := os.MkdirAll(h.app.Store.TasksDir(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	legacy := `{"name": "PAY-1", "brief": "old brief", "handoff": "old handoff"}`
+	path := filepath.Join(h.app.Store.TasksDir(), "PAY-1.json")
+	if err := os.WriteFile(path, []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// A file where the notes go: no upgrade can move them.
+	if err := os.MkdirAll(h.app.Store.TaskDir("PAY-1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(h.app.Store.ContextDir("PAY-1"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newStopCmd(), "PAY-1"); err != nil {
+		t.Fatalf("stop of a record that cannot be upgraded: %v", err)
+	}
+	_ = os.Remove(h.app.Store.ContextDir("PAY-1")) // stop may have tidied it away
+	if raw, _ := os.ReadFile(path); string(raw) != legacy {
+		t.Fatalf("stop rewrote the record: %s", raw)
+	}
+
+	// Clearing a note of a legacy record is not undone by moving the other.
+	if err := h.exec(t, h.app.newTaskCmd(), "handoff", "PAY-1", "--clear"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newTaskCmd(), "handoff", "PAY-1"); err != nil || h.out.String() != "" {
+		t.Fatalf("handoff after --clear = %q, %v", h.out.String(), err)
+	}
+	if err := h.exec(t, h.app.newTaskCmd(), "brief", "PAY-1"); err != nil || !strings.Contains(h.out.String(), "old brief") {
+		t.Fatalf("brief = %q, %v", h.out.String(), err)
+	}
+}

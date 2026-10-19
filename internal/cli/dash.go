@@ -136,8 +136,8 @@ func (a *App) dashLoad(ctx context.Context) dashData {
 	for _, t := range tasks {
 		byName[t.Name] = t
 		info := dashTask{Title: t.Title, Ticket: t.Ticket}
-		// Read, not migrated: a refresh every two seconds must not write.
-		if n, err := a.Store.ReadNote(t.Name, task.HandoffFile); err == nil {
+		// Read, never written: a refresh every two seconds must not write.
+		if _, n, err := a.Store.Notes(t); err == nil {
 			info.Handoff = n
 		}
 		d.Tasks[t.Name] = info

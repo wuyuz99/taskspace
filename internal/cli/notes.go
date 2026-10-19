@@ -11,28 +11,9 @@ import (
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
-// notes reads a task's brief and handoff. Reading changes nothing: an outdated
-// record's inline notes are shown from the record, and moved into files by
-// the next command that changes the task.
+// notes reads a task's brief and handoff, changing nothing; see Store.Notes.
 func (a *App) notes(t *task.Task) (brief, handoff task.Note, err error) {
-	if brief, err = a.Store.ReadNote(t.Name, task.BriefFile); err != nil {
-		return brief, handoff, err
-	}
-	if handoff, err = a.Store.ReadNote(t.Name, task.HandoffFile); err != nil {
-		return brief, handoff, err
-	}
-	// Not moved yet; a note file with text, when there is one, is the newer
-	// copy, as the move itself decides.
-	if brief.Text == "" {
-		brief.Text = t.LegacyBrief
-	}
-	if handoff.Text == "" && t.LegacyHandoff != "" {
-		handoff.Text = t.LegacyHandoff
-		if t.LegacyHandoffUpdatedAt != nil {
-			handoff.UpdatedAt = *t.LegacyHandoffUpdatedAt
-		}
-	}
-	return brief, handoff, nil
+	return a.Store.Notes(t)
 }
 
 type taskDetails struct{ title, ticket, ticketURL, briefFile string }
@@ -225,6 +206,13 @@ func (a *App) newTaskNoteCmd(handoff bool) *cobra.Command {
 				return err
 			}
 			defer unlock()
+			// Upgraded first, or moving an inline note afterwards would undo
+			// this write; see task.CurrentVersion.
+			if t.Outdated() {
+				if err := a.Store.Save(t); err != nil {
+					return err
+				}
+			}
 			if edit {
 				unlock() // the editor writes the file itself, for as long as it is open
 				return a.editTaskNote(cmd.Context(), t, noteFile)
