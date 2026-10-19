@@ -361,6 +361,7 @@ func (m dashModel) run(build func(*App) *cobra.Command, args ...string) tea.Cmd 
 		var out bytes.Buffer
 		sub := *m.app
 		sub.Out, sub.Err = &out, &out
+		sub.noWait = true
 		err := sub.runCmd(m.ctx, build, args...)
 		return dashDoneMsg{text: lastLine(out.String()), err: err}
 	}

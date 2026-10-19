@@ -185,3 +185,57 @@ func TestStartUsesWhatItsHookChanged(t *testing.T) {
 	}
 	t.Fatalf("backend not started: %+v", rt.started)
 }
+
+// create --start runs start under create's lock; a hook start runs still
+// inherits it, rather than waiting on create while create waits on it.
+func TestCreateStartHookInheritsTheLock(t *testing.T) {
+	h := newHarness(t)
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TSPACE_TEST_CLI", "1")
+	t.Setenv("TSPACE_ROOT", h.app.Store.Root())
+	t.Setenv("TSPACE_MULTIPLEXER", "tspace-test-none")
+	t.Setenv("TSPACE_BIN", self)
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--repo", "backend="+h.repo); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newRepoCmd(), "update", "PAY-1", "backend",
+		"--post-create", `"$TSPACE_BIN" task update "$TSPACE_TASK" --title from-hook`); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newProjectCmd(), "save", "recipe", "--from", "PAY-1"); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	cmd := h.app.newTaskCmd()
+	cmd.SetArgs([]string{"create", "PAY-2", "--project", "recipe", "--start"})
+	cmd.SetOut(h.out)
+	cmd.SetErr(h.errb)
+	if err := cmd.ExecuteContext(ctx); err != nil {
+		t.Fatalf("create --start: %v\n%s", err, h.errb.String())
+	}
+	if got := h.load(t, "PAY-2").Title; got != "from-hook" {
+		t.Fatalf("title %q; stderr:\n%s", got, h.errb.String())
+	}
+}
+
+// dash cannot show a wait or stop one, so its commands fail on a busy task.
+func TestNoWaitFailsOnABusyTask(t *testing.T) {
+	h := newHarness(t)
+	if _, err := h.app.Store.Create("PAY-1"); err != nil {
+		t.Fatal(err)
+	}
+	l, err := h.app.Store.Lock(context.Background(), "PAY-1", "tspace start PAY-1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Unlock()
+	h.app.noWait = true
+	err = h.exec(t, h.app.newTaskCmd(), "update", "PAY-1", "--title", "x")
+	if err == nil || !strings.Contains(err.Error(), "PAY-1 is busy") || !strings.Contains(err.Error(), "tspace start PAY-1") {
+		t.Fatalf("update of a busy task = %v", err)
+	}
+}

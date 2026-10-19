@@ -243,9 +243,6 @@ func (s *Store) Create(name string) (*Task, error) {
 	// at once exactly one wins, lock or no lock.
 	t := New(name)
 	if err := s.CreatePrepared(t); err != nil {
-		if errors.Is(err, fs.ErrExist) {
-			return nil, fmt.Errorf("%q: %w", name, ErrExists)
-		}
 		return nil, err
 	}
 	return t, nil

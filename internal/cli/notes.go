@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -21,7 +20,7 @@ import (
 func (a *App) notes(ctx context.Context, t *task.Task) (brief, handoff task.Note, err error) {
 	try, cancel := context.WithCancel(ctx)
 	cancel() // one attempt at the lock, unless ctx already holds it
-	if _, err := a.Store.MigrateNotes(try, t); err != nil && !errors.Is(err, context.Canceled) {
+	if _, err := a.Store.MigrateNotes(try, t); err != nil && try.Err() == nil {
 		return brief, handoff, err
 	}
 	if brief, err = a.Store.ReadNote(t.Name, task.BriefFile); err != nil {

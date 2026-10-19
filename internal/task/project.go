@@ -2,7 +2,9 @@ package task
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -123,7 +125,13 @@ func (s *Store) CreatePrepared(t *Task) error {
 	if err := ValidateName("task", t.Name); err != nil {
 		return err
 	}
-	return publishJSON(s.path(t.Name), t, false)
+	if err := publishJSON(s.path(t.Name), t, false); err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return fmt.Errorf("%q: %w", t.Name, ErrExists)
+		}
+		return err
+	}
+	return nil
 }
 
 func publishJSON(path string, value any, replace bool) error {

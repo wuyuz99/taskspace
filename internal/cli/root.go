@@ -46,6 +46,8 @@ type App struct {
 	Err     io.Writer
 
 	noTitle bool
+	// noWait makes a command on a busy task fail rather than wait for it.
+	noWait bool
 	// settle is how long start waits before checking that what it launched
 	// is still running.
 	settle time.Duration

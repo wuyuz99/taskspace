@@ -314,6 +314,10 @@ func TestNestedLocks(t *testing.T) {
 	if waitedFor.Command != "outer" {
 		t.Errorf("waited for %+v", waitedFor)
 	}
+	// A released lock is no longer carried: the context does not re-enter it.
+	if s.HeldLock(ctx, "t") != nil {
+		t.Fatal("a released lock still re-enters")
+	}
 	// A done context makes one attempt, and does not wait.
 	l, err = s.Lock(context.Background(), "t", "outer", nil)
 	if err != nil {
