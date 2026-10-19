@@ -245,7 +245,7 @@ type taskRepoJSON struct {
 }
 
 // describeTask renders a task's record and notes. An empty agent is the shell.
-func (a *App) describeTask(ctx context.Context, t *task.Task) taskJSON {
+func (a *App) describeTask(t *task.Task) taskJSON {
 	out := taskJSON{
 		Name:        t.Name,
 		Title:       t.Title,
@@ -260,7 +260,7 @@ func (a *App) describeTask(ctx context.Context, t *task.Task) taskJSON {
 		RootWindow:  t.HasRootWindow(),
 		Repos:       make([]taskRepoJSON, 0, len(t.Repos)),
 	}
-	brief, handoff, err := a.notes(ctx, t)
+	brief, handoff, err := a.notes(t)
 	if err != nil {
 		a.warnf("tspace: %s: %v\n", t.Name, err)
 	}
@@ -298,7 +298,7 @@ func (a *App) newTaskListCmd() *cobra.Command {
 			if asJSON {
 				out := make([]taskJSON, 0, len(tasks))
 				for _, t := range tasks {
-					out = append(out, a.describeTask(cmd.Context(), t))
+					out = append(out, a.describeTask(t))
 				}
 				return a.printJSON(out)
 			}
@@ -310,7 +310,7 @@ func (a *App) newTaskListCmd() *cobra.Command {
 			tw := tabwriter.NewWriter(a.Out, 0, 0, 2, ' ', 0)
 			fmt.Fprintln(tw, "TASK\tTICKET\tTITLE\tHANDOFF\tUPDATED (UTC)\tREPOS")
 			for _, t := range tasks {
-				_, handoff, err := a.notes(cmd.Context(), t)
+				_, handoff, err := a.notes(t)
 				if err != nil {
 					a.warnf("tspace: %s: %v\n", t.Name, err)
 				}
@@ -342,7 +342,7 @@ func (a *App) newTaskShowCmd() *cobra.Command {
 				return err
 			}
 			if asJSON {
-				return a.printJSON(a.describeTask(cmd.Context(), t))
+				return a.printJSON(a.describeTask(t))
 			}
 
 			a.printf("task:     %s\n", t.Name)
@@ -362,7 +362,7 @@ func (a *App) newTaskShowCmd() *cobra.Command {
 			if len(t.Resume) > 0 {
 				a.printf("resume:    %s\n", shellJoin(t.Resume))
 			}
-			a.printTaskContext(cmd.Context(), t)
+			a.printTaskContext(t)
 			if len(t.Repos) == 0 {
 				a.printf("\nno repositories yet; add one with:\n  tspace repo add %s REPO\n", t.Name)
 				return nil

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"net/url"
 	"os"
@@ -12,24 +11,18 @@ import (
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
-// notes reads a task's brief and handoff, moving a legacy record's inline
-// Markdown into files on the way past.
-//
-// Reading never waits: if another command has the task, the inline text is
-// shown from the record and moved another time.
-func (a *App) notes(ctx context.Context, t *task.Task) (brief, handoff task.Note, err error) {
-	try, cancel := context.WithCancel(ctx)
-	cancel() // one attempt at the lock, unless ctx already holds it
-	if _, err := a.Store.MigrateNotes(try, t); err != nil && try.Err() == nil {
-		return brief, handoff, err
-	}
+// notes reads a task's brief and handoff. Reading changes nothing: an outdated
+// record's inline notes are shown from the record, and moved into files by
+// the next command that changes the task.
+func (a *App) notes(t *task.Task) (brief, handoff task.Note, err error) {
 	if brief, err = a.Store.ReadNote(t.Name, task.BriefFile); err != nil {
 		return brief, handoff, err
 	}
 	if handoff, err = a.Store.ReadNote(t.Name, task.HandoffFile); err != nil {
 		return brief, handoff, err
 	}
-	// Not moved yet; a note file, when there is one, is the newer copy.
+	// Not moved yet; a note file with text, when there is one, is the newer
+	// copy, as the move itself decides.
 	if brief.Text == "" {
 		brief.Text = t.LegacyBrief
 	}
@@ -209,7 +202,7 @@ func (a *App) newTaskNoteCmd(handoff bool) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				brief, handoff, err := a.notes(cmd.Context(), t)
+				brief, handoff, err := a.notes(t)
 				if err != nil {
 					return err
 				}
@@ -232,9 +225,6 @@ func (a *App) newTaskNoteCmd(handoff bool) *cobra.Command {
 				return err
 			}
 			defer unlock()
-			if _, err := a.Store.MigrateNotes(cmd.Context(), t); err != nil {
-				return err
-			}
 			if edit {
 				unlock() // the editor writes the file itself, for as long as it is open
 				return a.editTaskNote(cmd.Context(), t, noteFile)
@@ -316,7 +306,7 @@ func handoffTime(n task.Note) string {
 	return n.UpdatedAt.UTC().Format("2006-01-02 15:04")
 }
 
-func (a *App) printTaskContext(ctx context.Context, t *task.Task) {
+func (a *App) printTaskContext(t *task.Task) {
 	if t.Title != "" {
 		a.printf("title: %s\n", oneLine(t.Title))
 	}
@@ -326,7 +316,7 @@ func (a *App) printTaskContext(ctx context.Context, t *task.Task) {
 	if t.TicketURL != "" {
 		a.printf("ticket URL: %s\n", oneLine(t.TicketURL))
 	}
-	brief, handoff, err := a.notes(ctx, t)
+	brief, handoff, err := a.notes(t)
 	if err != nil {
 		// Context is a courtesy on the way into a workspace; failing to read it
 		// must not stop you getting there.

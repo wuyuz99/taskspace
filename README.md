@@ -386,9 +386,9 @@ to reconcile, and no copy to lose if the editor or the machine dies mid-edit.
 Saving an empty file means the same as `--clear`. Two editors open on one note
 is the editors' business to warn about, as with any other file.
 
-Records written before notes were files carried the Markdown inline; they are
-moved into `.context/` the first time anything reads a note, keeping the recorded
-handoff time. Nothing to run, and no flag.
+Records written before notes were files carried the Markdown inline. Reading
+one shows it from the record; the first command that changes the task moves it
+into `.context/`, keeping the recorded handoff time. Nothing to run, and no flag.
 
 Optional `--ticket PAY-142` and `--ticket-url https://example.com/browse/PAY-142`
 flags on `task create` and `task update` record ticket metadata locally.
@@ -581,6 +581,25 @@ holds the lock and may still update the task (`tspace task update`, `task
 handoff`), but not start, clean or otherwise change its worktrees or session,
 which `start` is in the middle of doing. Git commands and editors you run
 yourself are not covered.
+
+### Record formats and upgrades
+
+Each task record says which format it is in (`"version"`); one without is from
+before versions. Reading a record never rewrites it: `status`, `task list` and
+`task show` work on old records as they are. The first command that changes a
+task brings its record up to date, under the task's lock, and every step of
+that finishes its other files (such as moving inline notes out) before the
+record is replaced. If one fails, the record is left as it was and the next
+change tries again.
+
+A record written by a newer tspace than yours is refused with a message saying
+so, and left untouched; `task list` reports it and shows the rest. So going
+back to an older tspace after a format change locks it out of the records
+written since rather than letting it damage them. A tspace from before versions
+reads today's records as it always did, since their fields are unchanged.
+
+`config.json`, project recipes and signals have no version: they only gain
+optional fields, which older and newer tspace alike ignore or leave empty.
 
 `TSPACE_ROOT` exists because you probably already keep workspace directories
 somewhere visible, and a hidden `~/.tspace` should not be forced on that habit.

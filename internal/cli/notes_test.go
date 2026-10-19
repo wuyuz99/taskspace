@@ -222,7 +222,9 @@ func TestTaskNotesSurviveCleanAndAppearOnAttach(t *testing.T) {
 
 // A record written before notes were files is migrated the first time anything
 // reads a note, with no flag and no separate command.
-func TestLegacyRecordsMigrateOnFirstUse(t *testing.T) {
+// A legacy record's notes are shown from the record by reads, which change
+// nothing, and moved into files by the first command that changes the task.
+func TestLegacyRecordsMigrateOnFirstChange(t *testing.T) {
 	h := newHarness(t)
 	stamp := time.Date(2026, 9, 1, 10, 30, 0, 0, time.UTC)
 	legacy := `{
@@ -244,7 +246,17 @@ func TestLegacyRecordsMigrateOnFirstUse(t *testing.T) {
 		t.Fatal(err)
 	}
 	if h.out.String() != "Reject expired cards.\n" {
-		t.Fatalf("brief after migration = %q", h.out.String())
+		t.Fatalf("brief of a legacy record = %q", h.out.String())
+	}
+	if err := h.exec(t, h.app.newTaskCmd(), "show", "PAY-142"); err != nil {
+		t.Fatal(err)
+	}
+	if raw, err := os.ReadFile(filepath.Join(h.app.Store.TasksDir(), "PAY-142.json")); err != nil || string(raw) != legacy {
+		t.Fatalf("reading rewrote the record: %s (%v)", raw, err)
+	}
+
+	if err := h.exec(t, h.app.newTaskCmd(), "update", "PAY-142", "--ticket", "PAY-142"); err != nil {
+		t.Fatal(err)
 	}
 	brief, err := h.app.Store.ReadNote("PAY-142", task.BriefFile)
 	if err != nil || brief.Text != "Reject expired cards.\n" {

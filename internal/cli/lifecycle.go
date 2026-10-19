@@ -175,7 +175,7 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 			}
 			if open {
 				a.printf("\nworkspace: %s\n", t.Name)
-				a.printTaskContext(cmd.Context(), t)
+				a.printTaskContext(t)
 				setTitle(a.Out, "tspace: "+t.Name, a.noTitle)
 				unlock() // nobody holds a task while attached to it
 				return a.Runtime.Attach(ctx, session)
@@ -420,7 +420,7 @@ func (a *App) newAttachCmd() *cobra.Command {
 			// Label the hosting tab before handing the terminal over, so the tab
 			// is identifiable even after detaching.
 			setTitle(a.Out, "tspace: "+t.Name, a.noTitle)
-			a.printTaskContext(cmd.Context(), t)
+			a.printTaskContext(t)
 			return a.Runtime.Attach(cmd.Context(), a.Runtime.SessionName(t.Name))
 		},
 	}

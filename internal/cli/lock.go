@@ -32,6 +32,11 @@ func (a *App) lockTask(cmd *cobra.Command, name string, lifecycle bool) (*task.T
 		return nil, nil, fmt.Errorf("%s cannot run from a hook of the tspace that is already changing %s; it may only update the task's record", cmd.CommandPath(), name)
 	}
 	t, err := a.Store.Load(name)
+	if err == nil && t.Outdated() {
+		// Upgraded before anything else touches it, so the command works on
+		// the current format; saving runs the migrations.
+		err = a.Store.Save(t)
+	}
 	if err != nil {
 		l.Unlock()
 		return nil, nil, err

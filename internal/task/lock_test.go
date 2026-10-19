@@ -45,6 +45,13 @@ func lockHelper(mode string) int {
 			t.Title = "from A"
 			return nil
 		})
+	case "upgrade-hold":
+		// An upgrade that takes its time: Update saves, which migrates.
+		_, err = s.Update(ctx, "t", "test", func(*Task) error {
+			ready()
+			release()
+			return nil
+		})
 	case "update-ticket":
 		_, err = s.Update(ctx, "t", "test", func(t *Task) error {
 			t.Ticket = "from B"

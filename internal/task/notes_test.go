@@ -1,7 +1,6 @@
 package task
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -91,92 +90,6 @@ func TestNoteRoundTripClearAndTimestamp(t *testing.T) {
 	}
 }
 
-func TestMigrateNotesMovesLegacyRecordsOnce(t *testing.T) {
-	s := newTestStore(t)
-	stamp := time.Date(2026, 9, 1, 10, 30, 0, 0, time.UTC)
-	legacy := New("PAY-142")
-	legacy.Title = "Expired cards"
-	legacy.LegacyBrief = "Reject expired cards.\n"
-	legacy.LegacyHandoff = "Frontend next.\n"
-	legacy.LegacyHandoffUpdatedAt = &stamp
-	if err := s.Save(legacy); err != nil {
-		t.Fatal(err)
-	}
-
-	loaded, err := s.Load("PAY-142")
-	if err != nil {
-		t.Fatal(err)
-	}
-	moved, err := s.MigrateNotes(context.Background(), loaded)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !moved {
-		t.Fatal("legacy record was not migrated")
-	}
-
-	brief, err := s.ReadNote("PAY-142", BriefFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	handoff, err := s.ReadNote("PAY-142", HandoffFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if brief.Text != "Reject expired cards.\n" || handoff.Text != "Frontend next.\n" {
-		t.Fatalf("notes = %q / %q", brief.Text, handoff.Text)
-	}
-	// The recorded handoff time carries over to the file it now lives in.
-	if !handoff.UpdatedAt.Equal(stamp) {
-		t.Errorf("UpdatedAt = %v, want %v", handoff.UpdatedAt, stamp)
-	}
-
-	// The inline copy is gone from disk, and the rest of the record survives.
-	raw, err := os.ReadFile(filepath.Join(s.TasksDir(), "PAY-142.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, field := range []string{`"brief"`, `"handoff"`, `"handoff_updated_at"`} {
-		if strings.Contains(string(raw), field) {
-			t.Errorf("record still carries %s: %s", field, raw)
-		}
-	}
-	again, err := s.Load("PAY-142")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if again.Title != "Expired cards" {
-		t.Errorf("migration lost the title: %+v", again)
-	}
-	if moved, err := s.MigrateNotes(context.Background(), again); err != nil || moved {
-		t.Fatalf("second migration = %v, %v; want no-op", moved, err)
-	}
-}
-
-// A note file is the live copy. If one exists, a stale inline value from an old
-// record must not overwrite it.
-func TestMigrateNotesDoesNotOverwriteAnExistingFile(t *testing.T) {
-	s := newTestStore(t)
-	if err := s.WriteNote("t", BriefFile, "current\n"); err != nil {
-		t.Fatal(err)
-	}
-	legacy := New("t")
-	legacy.LegacyBrief = "stale\n"
-	if err := s.Save(legacy); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.MigrateNotes(context.Background(), legacy); err != nil {
-		t.Fatal(err)
-	}
-	got, err := s.ReadNote("t", BriefFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Text != "current\n" {
-		t.Fatalf("file note = %q, want the file to win", got.Text)
-	}
-}
-
 func TestRemoveNotesReportsAndTidies(t *testing.T) {
 	s := newTestStore(t)
 	if err := s.WriteNote("t", BriefFile, "brief\n"); err != nil {
@@ -238,8 +151,8 @@ func TestNoteFailuresAreReported(t *testing.T) {
 	if err := s.WriteNote("t", BriefFile, "x"); err == nil {
 		t.Error("WriteNote wrote under a file")
 	}
-	if _, err := s.MigrateNotes(context.Background(), &Task{Name: "t", LegacyBrief: "old"}); err == nil {
-		t.Error("MigrateNotes hid a read failure")
+	if err := s.Save(&Task{Name: "t", LegacyBrief: "old"}); err == nil {
+		t.Error("upgrading a legacy record hid a note failure")
 	}
 
 	// A non-empty directory where the note should be can be neither replaced
