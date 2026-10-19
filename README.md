@@ -565,6 +565,22 @@ and not something to publish to every account on the machine. A file that cannot
 be read or parsed is reported on stderr and skipped, so one damaged record never
 hides the rest of your workspaces from `tspace task list` or `tspace status`.
 
+Commands that change a task take that task's lock first, so two of them never
+interleave: a title change and a `repo add` at once both land, `clean` waits for
+a `start` that is creating worktrees instead of removing them under it, and a
+command that waited for `task rm` finds the task gone rather than bringing it
+back. A command that has to wait says who it is waiting for; Ctrl-C stops
+waiting. Different tasks never wait for each other, and reading (`status`,
+`task show`, `dash`) never waits at all.
+
+The lock is an OS file lock on `tasks/.locks/TASK.lock`, so it goes away with
+its process however that ends; there is nothing to clean up after a crash.
+`open` lets go before it attaches. A `post_create` hook runs while `start`
+holds the lock and may still update the task (`tspace task update`, `task
+handoff`), but not start, clean or otherwise change its worktrees or session,
+which `start` is in the middle of doing. Git commands and editors you run
+yourself are not covered.
+
 `TSPACE_ROOT` exists because you probably already keep workspace directories
 somewhere visible, and a hidden `~/.tspace` should not be forced on that habit.
 With more than one root, a command run inside a root it is not using says so

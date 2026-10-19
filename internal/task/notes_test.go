@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -106,7 +107,7 @@ func TestMigrateNotesMovesLegacyRecordsOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	moved, err := s.MigrateNotes(loaded)
+	moved, err := s.MigrateNotes(context.Background(), loaded)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +148,7 @@ func TestMigrateNotesMovesLegacyRecordsOnce(t *testing.T) {
 	if again.Title != "Expired cards" {
 		t.Errorf("migration lost the title: %+v", again)
 	}
-	if moved, err := s.MigrateNotes(again); err != nil || moved {
+	if moved, err := s.MigrateNotes(context.Background(), again); err != nil || moved {
 		t.Fatalf("second migration = %v, %v; want no-op", moved, err)
 	}
 }
@@ -161,7 +162,10 @@ func TestMigrateNotesDoesNotOverwriteAnExistingFile(t *testing.T) {
 	}
 	legacy := New("t")
 	legacy.LegacyBrief = "stale\n"
-	if _, err := s.MigrateNotes(legacy); err != nil {
+	if err := s.Save(legacy); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.MigrateNotes(context.Background(), legacy); err != nil {
 		t.Fatal(err)
 	}
 	got, err := s.ReadNote("t", BriefFile)
@@ -234,7 +238,7 @@ func TestNoteFailuresAreReported(t *testing.T) {
 	if err := s.WriteNote("t", BriefFile, "x"); err == nil {
 		t.Error("WriteNote wrote under a file")
 	}
-	if _, err := s.MigrateNotes(&Task{Name: "t", LegacyBrief: "old"}); err == nil {
+	if _, err := s.MigrateNotes(context.Background(), &Task{Name: "t", LegacyBrief: "old"}); err == nil {
 		t.Error("MigrateNotes hid a read failure")
 	}
 

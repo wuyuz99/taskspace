@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -128,10 +129,31 @@ func (s *Store) RemoveNotes(taskName string) ([]string, error) {
 // the first time anything reads or writes a note, and clears the inline copy so
 // there is exactly one home for it. A note file that already exists wins: it is
 // the newer of the two by definition.
-func (s *Store) MigrateNotes(t *Task) (bool, error) {
+//
+// It reloads the record under the task's lock, which ctx may carry, so a
+// process that loaded t earlier does not save over newer changes; t is updated
+// to match.
+func (s *Store) MigrateNotes(ctx context.Context, t *Task) (bool, error) {
 	if t.LegacyBrief == "" && t.LegacyHandoff == "" {
 		return false, nil
 	}
+	moved := false
+	_, err := s.Update(ctx, t.Name, func(cur *Task) error {
+		if cur.LegacyBrief == "" && cur.LegacyHandoff == "" {
+			return nil // another process got there first
+		}
+		moved = true
+		return s.moveLegacyNotes(cur)
+	})
+	if err != nil {
+		return false, err
+	}
+	t.LegacyBrief, t.LegacyHandoff, t.LegacyHandoffUpdatedAt = "", "", nil
+	return moved, nil
+}
+
+// moveLegacyNotes writes t's inline notes to files and clears them from t.
+func (s *Store) moveLegacyNotes(t *Task) error {
 	var handoffAt time.Time
 	if t.LegacyHandoffUpdatedAt != nil {
 		handoffAt = *t.LegacyHandoffUpdatedAt
@@ -149,13 +171,13 @@ func (s *Store) MigrateNotes(t *Task) (bool, error) {
 		}
 		existing, err := s.ReadNote(t.Name, m.file)
 		if err != nil {
-			return false, err
+			return err
 		}
 		if existing.Text != "" {
 			continue
 		}
 		if err := s.WriteNote(t.Name, m.file, m.text); err != nil {
-			return false, err
+			return err
 		}
 		// Keep the handoff's recorded time; the file's own mtime replaces the
 		// stored field from here on.
@@ -164,5 +186,5 @@ func (s *Store) MigrateNotes(t *Task) (bool, error) {
 		}
 	}
 	t.LegacyBrief, t.LegacyHandoff, t.LegacyHandoffUpdatedAt = "", "", nil
-	return true, s.Save(t)
+	return nil
 }

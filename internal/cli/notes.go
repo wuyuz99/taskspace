@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"os"
@@ -13,8 +14,8 @@ import (
 
 // notes reads a task's brief and handoff, moving a legacy record's inline
 // Markdown into files on the way past.
-func (a *App) notes(t *task.Task) (brief, handoff task.Note, err error) {
-	if _, err := a.Store.MigrateNotes(t); err != nil {
+func (a *App) notes(ctx context.Context, t *task.Task) (brief, handoff task.Note, err error) {
+	if _, err := a.Store.MigrateNotes(ctx, t); err != nil {
 		return brief, handoff, err
 	}
 	if brief, err = a.Store.ReadNote(t.Name, task.BriefFile); err != nil {
@@ -91,10 +92,11 @@ func (a *App) newTaskUpdateCmd() *cobra.Command {
 			if err := resume.validate(cmd); err != nil {
 				return err
 			}
-			t, err := a.loadTask(args[0])
+			t, unlock, err := a.lockTask(cmd, args[0], false)
 			if err != nil {
 				return err
 			}
+			defer unlock()
 			d.apply(cmd, t)
 			before := t.Agent
 			setAgent := agent.apply(cmd, t)
@@ -168,11 +170,12 @@ func (a *App) newTaskNoteCmd(handoff bool) *cobra.Command {
 			"Notes survive tspace clean and are deleted with the task record.",
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			t, err := a.loadTask(args[0])
+			t, unlock, err := a.lockTask(cmd, args[0], false)
 			if err != nil {
 				return err
 			}
-			if _, err := a.Store.MigrateNotes(t); err != nil {
+			defer unlock()
+			if _, err := a.Store.MigrateNotes(cmd.Context(), t); err != nil {
 				return err
 			}
 			modes := 0
@@ -192,6 +195,7 @@ func (a *App) newTaskNoteCmd(handoff bool) *cobra.Command {
 				return fmt.Errorf("choose only one of TEXT, --file, --clear or --edit")
 			}
 			if edit {
+				unlock() // the editor writes the file itself, for as long as it is open
 				return a.editTaskNote(cmd.Context(), t, noteFile)
 			}
 			if modes == 0 {
@@ -286,7 +290,7 @@ func handoffTime(n task.Note) string {
 	return n.UpdatedAt.UTC().Format("2006-01-02 15:04")
 }
 
-func (a *App) printTaskContext(t *task.Task) {
+func (a *App) printTaskContext(ctx context.Context, t *task.Task) {
 	if t.Title != "" {
 		a.printf("title: %s\n", oneLine(t.Title))
 	}
@@ -296,7 +300,7 @@ func (a *App) printTaskContext(t *task.Task) {
 	if t.TicketURL != "" {
 		a.printf("ticket URL: %s\n", oneLine(t.TicketURL))
 	}
-	brief, handoff, err := a.notes(t)
+	brief, handoff, err := a.notes(ctx, t)
 	if err != nil {
 		// Context is a courtesy on the way into a workspace; failing to read it
 		// must not stop you getting there.

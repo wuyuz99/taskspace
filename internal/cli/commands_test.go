@@ -17,6 +17,10 @@ import (
 // runs $SHELL with no arguments, which no real shell survives without a
 // terminal, and a script would not run on Windows.
 func TestMain(m *testing.M) {
+	// Or for tspace itself, for tests that race real processes.
+	if os.Getenv("TSPACE_TEST_CLI") != "" {
+		os.Exit(Execute(context.Background()))
+	}
 	if out := os.Getenv("TSPACE_TEST_SHELL_OUT"); out != "" {
 		wd, _ := os.Getwd()
 		env := []string{"PWD=" + wd}

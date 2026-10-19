@@ -73,6 +73,11 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 			if err := task.ValidateName("task", name); err != nil {
 				return err
 			}
+			l, err := a.acquire(cmd, name)
+			if err != nil {
+				return err
+			}
+			defer l.Unlock()
 			if a.Store.Exists(name) {
 				return fmt.Errorf("%q: %w", name, task.ErrExists)
 			}
@@ -238,7 +243,7 @@ type taskRepoJSON struct {
 }
 
 // describeTask renders a task's record and notes. An empty agent is the shell.
-func (a *App) describeTask(t *task.Task) taskJSON {
+func (a *App) describeTask(ctx context.Context, t *task.Task) taskJSON {
 	out := taskJSON{
 		Name:        t.Name,
 		Title:       t.Title,
@@ -253,7 +258,7 @@ func (a *App) describeTask(t *task.Task) taskJSON {
 		RootWindow:  t.HasRootWindow(),
 		Repos:       make([]taskRepoJSON, 0, len(t.Repos)),
 	}
-	brief, handoff, err := a.notes(t)
+	brief, handoff, err := a.notes(ctx, t)
 	if err != nil {
 		a.warnf("tspace: %s: %v\n", t.Name, err)
 	}
@@ -291,7 +296,7 @@ func (a *App) newTaskListCmd() *cobra.Command {
 			if asJSON {
 				out := make([]taskJSON, 0, len(tasks))
 				for _, t := range tasks {
-					out = append(out, a.describeTask(t))
+					out = append(out, a.describeTask(cmd.Context(), t))
 				}
 				return a.printJSON(out)
 			}
@@ -303,7 +308,7 @@ func (a *App) newTaskListCmd() *cobra.Command {
 			tw := tabwriter.NewWriter(a.Out, 0, 0, 2, ' ', 0)
 			fmt.Fprintln(tw, "TASK\tTICKET\tTITLE\tHANDOFF\tUPDATED (UTC)\tREPOS")
 			for _, t := range tasks {
-				_, handoff, err := a.notes(t)
+				_, handoff, err := a.notes(cmd.Context(), t)
 				if err != nil {
 					a.warnf("tspace: %s: %v\n", t.Name, err)
 				}
@@ -335,7 +340,7 @@ func (a *App) newTaskShowCmd() *cobra.Command {
 				return err
 			}
 			if asJSON {
-				return a.printJSON(a.describeTask(t))
+				return a.printJSON(a.describeTask(cmd.Context(), t))
 			}
 
 			a.printf("task:     %s\n", t.Name)
@@ -355,7 +360,7 @@ func (a *App) newTaskShowCmd() *cobra.Command {
 			if len(t.Resume) > 0 {
 				a.printf("resume:    %s\n", shellJoin(t.Resume))
 			}
-			a.printTaskContext(t)
+			a.printTaskContext(cmd.Context(), t)
 			if len(t.Repos) == 0 {
 				a.printf("\nno repositories yet; add one with:\n  tspace repo add %s REPO\n", t.Name)
 				return nil
@@ -396,10 +401,11 @@ func (a *App) newTaskRmCmd() *cobra.Command {
 			"tool ends up deleting something you only wanted to tidy.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			t, err := a.loadTask(args[0])
+			t, unlock, err := a.lockTask(cmd, args[0], true)
 			if err != nil {
 				return err
 			}
+			defer unlock()
 
 			if !force {
 				var present []string
