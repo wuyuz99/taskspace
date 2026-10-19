@@ -41,6 +41,10 @@ type Config struct {
 	// task's name, for tasks given no --ticket; see TicketFrom. Off when empty:
 	// tspace knows no ticket system's keys.
 	TicketPattern string `json:"ticket_pattern,omitempty"`
+	// Terminal is the command that opens a new terminal tab or window running
+	// a command, for dash; see `tspace config terminal`. tspace knows no
+	// terminal's own way of doing that.
+	Terminal []string `json:"terminal,omitempty"`
 }
 
 // TicketGroup names the part of a ticket pattern that is the ticket, when the
