@@ -806,12 +806,28 @@ checkout-redesign/frontend  agent/checkout-redesign
   signal   blocked, 3m ago: totals endpoint: round per line or per order?
   handoff  API done, tests pass.
 
-enter attach · s start · r restart · x stop · c clear signal · q quit
+enter attach · s start · r restart · x stop · t new tab · c clear signal · q quit
 ```
 
 `enter` attaches to the selected window and detaching brings you back; inside
 the multiplexer it switches the client instead and the dashboard keeps running in its own
 window. Every key runs the command you would have typed.
+
+`t` opens the selected task in a new tab of your terminal, running
+`tspace open TASK` there, so the dashboard stays where it is. Terminals each
+open tabs their own way, so tell tspace yours once; it adds its command at the
+end, or puts it where an argument says `{command}`:
+
+```bash
+tspace config terminal wt.exe -w 0 new-tab --        # Windows Terminal
+tspace config terminal wezterm cli spawn --
+tspace config terminal kitty @ launch --type=tab
+tspace config terminal gnome-terminal --tab --
+```
+
+The new tab gets `TSPACE_ROOT` when the terminal passes tspace's environment
+on; one that starts tabs from its own environment uses whatever your shell
+there sets.
 
 ## Safety
 
@@ -858,6 +874,7 @@ only once every worktree is gone: safely, unless `--force` discarded their work.
 | `tspace config repo [NAME [PATH / URL [--into DIR]] / NAME --unset]` | Register source repositories by name; a URL is cloned first |
 | `tspace config branch-prefix [PREFIX / --unset]` | Set the prefix of new task branches (default `agent/`) |
 | `tspace config ticket-pattern [REGEXP / --unset]` | Read new tasks' tickets from their names |
+| `tspace config terminal [CMD ARGS... / --unset]` | How dash's `t` opens a task in a new terminal tab |
 | `tspace project save NAME --from TASK [--replace]` | Save a reusable repository recipe |
 | `tspace project list` / `tspace project show NAME` | Inspect saved recipes |
 | `tspace task create NAME [REPO...] [--agent CMD / --shell] [--start]` | Create a task; each REPO is `REPO[@BRANCH][:BASE]`; `--start` starts it too. Also `tspace new` and `task new` |
@@ -879,7 +896,7 @@ only once every worktree is gone: safely, unless `--force` discarded their work.
 | `tspace path TASK [REPO / --root]` | Print a worktree or task-root path, for `cd "$(...)"` |
 | `tspace exec TASK -- CMD` | Run a command in every worktree |
 | `tspace status [TASK] [--json / --watch]` | Runtime, git and signal state |
-| `tspace dash` | Live full-screen view of every task; attach, start, restart, stop |
+| `tspace dash` | Live full-screen view of every task; attach, start, restart, stop, open in a new tab |
 | `tspace signal STATE [MESSAGE] [--task --repo / --root] [--quiet]` | Report an agent as `working`, `blocked`, `done` or `failed` |
 | `tspace config hooks claude [--remove]` | Install the Claude Code hooks that call `tspace signal` |
 | `tspace clean TASK [--delete-branch] [--force] [--rm]` | Remove worktrees, safely; `--rm` deletes the task record too |

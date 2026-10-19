@@ -33,6 +33,9 @@ func (a *App) newConfigCmd() *cobra.Command {
 			}
 			a.printf("branch: %s (new repositories' default branch)\n", c.Branch("TASK"))
 			a.printf("multiplexer: %s\n", multiplexerDisplay(multiplexerName(c), c))
+			if len(c.Terminal) > 0 {
+				a.printf("terminal: %s\n", shellJoin(c.Terminal))
+			}
 			if c.TicketPattern != "" {
 				a.printf("ticket pattern: %s%s\n", c.TicketPattern, ticketPatternProblem(c))
 			}
@@ -45,7 +48,7 @@ func (a *App) newConfigCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.AddCommand(a.newConfigAgentCmd(), a.newConfigRepoCmd(), a.newConfigBranchPrefixCmd(), a.newConfigMultiplexerCmd(), a.newConfigHooksCmd(), a.newConfigResumeCmd(), a.newConfigTicketPatternCmd())
+	cmd.AddCommand(a.newConfigAgentCmd(), a.newConfigRepoCmd(), a.newConfigBranchPrefixCmd(), a.newConfigMultiplexerCmd(), a.newConfigHooksCmd(), a.newConfigResumeCmd(), a.newConfigTicketPatternCmd(), a.newConfigTerminalCmd())
 	return cmd
 }
 
@@ -331,6 +334,61 @@ func (a *App) newConfigTicketPatternCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&unset, "unset", false, "stop reading tickets from task names")
+	return cmd
+}
+
+func (a *App) newConfigTerminalCmd() *cobra.Command {
+	var unset bool
+	cmd := &cobra.Command{
+		Use:   "terminal [COMMAND [ARGS...] | --unset]",
+		Short: "Show or set how a task opens in a new terminal tab",
+		Long: "dash's t key opens the selected task in a new tab or window of your\n" +
+			"terminal, running `tspace open TASK` there. Every terminal does that its own\n" +
+			"way and tspace knows none of them, so you tell it: the command is run with\n" +
+			"tspace's own command added at the end, or, if an argument holds {command},\n" +
+			"with the command as one shell string put there instead:\n\n" +
+			"  tspace config terminal wt.exe -w 0 new-tab --        # Windows Terminal\n" +
+			"  tspace config terminal wezterm cli spawn --\n" +
+			"  tspace config terminal kitty @ launch --type=tab\n" +
+			"  tspace config terminal gnome-terminal --tab --\n" +
+			"  tspace config terminal osascript -e 'tell app \"Terminal\" to do script \"{command}\"'",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if unset && len(args) > 0 {
+				return fmt.Errorf("choose either a command or --unset")
+			}
+			c, err := a.Store.LoadConfig()
+			if err != nil {
+				return err
+			}
+			switch {
+			case unset:
+				c.Terminal = nil
+			case len(args) == 0:
+				if len(c.Terminal) == 0 {
+					a.printf("none; dash cannot open new tabs until one is set\n")
+				} else {
+					a.printf("%s\n", shellJoin(c.Terminal))
+				}
+				return nil
+			case strings.TrimSpace(args[0]) == "":
+				return fmt.Errorf("terminal command is empty; use --unset to clear it")
+			default:
+				c.Terminal = args
+			}
+			if err := a.Store.SaveConfig(c); err != nil {
+				return err
+			}
+			if unset {
+				a.printf("cleared the terminal command\n")
+				return nil
+			}
+			a.printf("terminal: %s\n", shellJoin(c.Terminal))
+			return nil
+		},
+	}
+	// Flags after COMMAND belong to it, not to tspace.
+	cmd.Flags().SetInterspersed(false)
+	cmd.Flags().BoolVar(&unset, "unset", false, "clear the terminal command")
 	return cmd
 }
 

@@ -33,6 +33,7 @@ func (a *App) newDashCmd() *cobra.Command {
 			"  s             start the task (tspace start)\n" +
 			"  r             restart a dead window (tspace restart)\n" +
 			"  x             stop the task, after confirming (tspace stop)\n" +
+			"  t             open the task in a new terminal tab (tspace config terminal)\n" +
 			"  c             clear the row's signal\n" +
 			"  q             quit\n\n" +
 			"Inside the multiplexer, enter switches the client to the window and\n" +
@@ -334,6 +335,14 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return restartedText(label, row.Task), nil
 		})
+	case "t":
+		m.note = "opening " + row.Task + " in a new tab..."
+		return m, func() tea.Msg {
+			if err := m.app.openInNewTab(m.ctx, row.Task); err != nil {
+				return dashDoneMsg{err: err}
+			}
+			return dashDoneMsg{text: "opened " + row.Task + " in a new tab"}
+		}
 	case "x":
 		m.confirm = &dashConfirm{
 			prompt: fmt.Sprintf("stop %s and end all its windows? worktrees are kept (y/N)", row.Task),
@@ -497,7 +506,7 @@ func (m dashModel) View() string {
 	default:
 		b.WriteString(m.note + "\n")
 	}
-	b.WriteString(dashFaint.Render("enter attach · s start · r restart · x stop · c clear signal · q quit"))
+	b.WriteString(dashFaint.Render("enter attach · s start · r restart · x stop · t new tab · c clear signal · q quit"))
 
 	// Nothing may wrap: a wrapped line pushes the rest off the alt screen.
 	lines := strings.Split(b.String(), "\n")
