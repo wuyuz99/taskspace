@@ -571,7 +571,8 @@ a `start` that is creating worktrees instead of removing them under it, and a
 command that waited for `task rm` finds the task gone rather than bringing it
 back. A command that has to wait says who it is waiting for; Ctrl-C stops
 waiting. Different tasks never wait for each other, and reading (`status`,
-`task show`, `dash`) never waits at all.
+`task show`, printing a brief or handoff, `dash`) never waits at all. Actions
+started from `dash` wait for each other the same way.
 
 The lock is an OS file lock on `tasks/.locks/TASK.lock`, so it goes away with
 its process however that ends; there is nothing to clean up after a crash.

@@ -138,7 +138,7 @@ func (s *Store) MigrateNotes(ctx context.Context, t *Task) (bool, error) {
 		return false, nil
 	}
 	moved := false
-	_, err := s.Update(ctx, t.Name, func(cur *Task) error {
+	_, err := s.Update(ctx, t.Name, "tspace (moving the notes of "+t.Name+" into files)", func(cur *Task) error {
 		if cur.LegacyBrief == "" && cur.LegacyHandoff == "" {
 			return nil // another process got there first
 		}
