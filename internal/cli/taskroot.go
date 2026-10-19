@@ -104,36 +104,14 @@ func defaultsToRoot(t *task.Task, repoArg string) bool {
 	return repoArg == "" && len(t.Repos) != 1
 }
 
-// rootWindow is the task's window at its workspace root.
-func (a *App) rootWindow(t *task.Task) runtime.Window {
-	return runtime.Window{Name: task.RootWindowName, Dir: a.Store.TaskDir(t.Name), Command: a.expandArgv(t, t.RootAgent()), Env: a.windowEnv(t.Name, task.RootWindowName)}
-}
+// rootWindow, repoWindow and expandArgv are the lifecycle service's; see
+// package workspace.
+func (a *App) rootWindow(t *task.Task) runtime.Window { return a.workspace().RootWindow(t) }
 
-// repoWindow is a repository's window, in its worktree.
-//
-// An agent running there cannot see the task's notes, which sit beside the
-// worktree in .context: clean refuses untracked files, so they cannot be
-// copied in. It finds them at ../.context or through TSPACE_CONTEXT_DIR, or
-// its command names them with {context_dir}; see expandArgv.
 func (a *App) repoWindow(t *task.Task, name string) runtime.Window {
-	env := append(a.windowEnv(t.Name, name), "TSPACE_CONTEXT_DIR="+a.Store.ContextDir(t.Name))
-	return runtime.Window{Name: name, Dir: t.Repos[name].Worktree, Command: a.expandArgv(t, t.RepoAgent(name)), Env: env}
+	return a.workspace().RepoWindow(t, name)
 }
 
-// expandArgv fills in the task's directories where an agent command names
-// them, so any agent can be pointed at them with its own flag, such as
-// `claude --add-dir {context_dir}`, without tspace knowing about that agent:
-//
-//	{context_dir}  the task's .context directory, holding TASK.md and HANDOFF.md
-//	{task_dir}     the task's directory, holding every worktree
 func (a *App) expandArgv(t *task.Task, argv []string) []string {
-	r := strings.NewReplacer("{context_dir}", a.Store.ContextDir(t.Name), "{task_dir}", a.Store.TaskDir(t.Name))
-	out := make([]string, len(argv))
-	for i, s := range argv {
-		out[i] = r.Replace(s)
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
+	return a.workspace().ExpandArgv(t, argv)
 }

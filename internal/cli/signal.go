@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/wuyuz99/taskspace/internal/task"
+	"github.com/wuyuz99/taskspace/internal/workspace"
 )
 
 // errNotInTask is signal's answer outside every task, which --quiet hides.
@@ -25,21 +26,15 @@ func (e notInTask) Is(target error) bool { return target == errNotInTask }
 // signalMessageMax keeps a message to what a status line can show.
 const signalMessageMax = 200
 
-// Every window tspace launches is told which task and window it is, so that
-// signal reports for the window the agent runs in wherever it has cd'd to.
+// The variables every window tspace launches is told which task and window
+// it is by; see workspace.WindowEnv.
 const (
-	envTask   = "TSPACE_TASK"
-	envWindow = "TSPACE_WINDOW"
+	envTask   = workspace.EnvTask
+	envWindow = workspace.EnvWindow
 )
 
-// windowEnv is the environment a task's window is launched with. An empty
-// window names none, which a window started from inside another one needs, so
-// as not to inherit that one's.
-//
-// TSPACE_ROOT is set too, so that tspace run in the window uses the state that
-// launched it whatever environment the multiplexer's server was started with.
 func (a *App) windowEnv(taskName, window string) []string {
-	return []string{envTask + "=" + taskName, envWindow + "=" + window, task.EnvRoot + "=" + a.Store.Root()}
+	return a.workspace().WindowEnv(taskName, window)
 }
 
 func (a *App) newSignalCmd() *cobra.Command {

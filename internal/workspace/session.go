@@ -1,0 +1,98 @@
+package workspace
+
+import (
+	"context"
+	"fmt"
+	"os"
+
+	"github.com/wuyuz99/taskspace/internal/runtime"
+	"github.com/wuyuz99/taskspace/internal/task"
+)
+
+// Stop ends the task's session, interrupting its agents first, and leaves
+// worktrees and branches alone. It reports whether there was a session.
+func (s *Service) Stop(ctx context.Context, name string) (running bool, err error) {
+	t, ctx, unlock, err := s.Lock(ctx, name, "tspace stop", true)
+	if err != nil {
+		return false, err
+	}
+	defer unlock()
+	session := s.Runtime.SessionName(t.Name)
+
+	running, err = s.Runtime.HasSession(ctx, session)
+	if err != nil {
+		return false, err
+	}
+	if !running {
+		_ = s.Store.ClearSignals(t.Name)
+		return false, nil
+	}
+	if err := s.Runtime.Stop(ctx, session); err != nil {
+		return true, err
+	}
+	if err := s.Store.ClearSignals(t.Name); err != nil {
+		s.warnf("tspace: %v", err)
+	}
+	return true, nil
+}
+
+// Restart relaunches a dead window: a repository's, or the root window for
+// task.RootWindowName. With resume it runs the window's resume command,
+// which brings the agent back with its conversation, instead of its command.
+// It returns the window's label, such as "PAY-1/backend".
+func (s *Service) Restart(ctx context.Context, name, window string, resume bool) (label string, err error) {
+	t, ctx, unlock, err := s.Lock(ctx, name, "tspace restart", true)
+	if err != nil {
+		return "", err
+	}
+	defer unlock()
+	var w runtime.Window
+	label = t.Name
+	if window == task.RootWindowName {
+		if !t.HasRootWindow() {
+			return "", fmt.Errorf("task %s has no root window; its agent runs in %s: tspace restart %s %s", t.Name, t.AgentRepo, t.Name, t.AgentRepo)
+		}
+		w = s.RootWindow(t)
+		if info, err := os.Stat(w.Dir); err != nil || !info.IsDir() {
+			return "", fmt.Errorf("task directory %s is missing; run: tspace start %s", w.Dir, t.Name)
+		}
+		label += " root window"
+	} else {
+		_, repo, err := WorktreeDir(t, window)
+		if err != nil {
+			return "", err
+		}
+		w = s.RepoWindow(t, repo)
+		label += "/" + repo
+	}
+	if resume {
+		argv := t.ResumeFor(w.Name)
+		switch {
+		case len(argv) > 0:
+		case len(t.WindowAgent(w.Name)) == 0:
+			return "", fmt.Errorf("%s runs a shell; there is no agent to resume", label)
+		default:
+			return "", fmt.Errorf("%s has no resume command; set one with the agent's own, e.g. %s", label, ResumeHint(t, w.Name))
+		}
+		w.Command = s.ExpandArgv(t, argv)
+	}
+	if err := s.ensureContextDir(t); err != nil {
+		return "", err
+	}
+	if err := s.Runtime.Restart(ctx, s.Runtime.SessionName(t.Name), w); err != nil {
+		return "", err
+	}
+	// The relaunched agent has said nothing yet.
+	if err := s.Store.ClearSignal(t.Name, w.Name); err != nil {
+		s.warnf("tspace: %v", err)
+	}
+	return label, nil
+}
+
+// ResumeHint is the command that would set a window's resume command.
+func ResumeHint(t *task.Task, window string) string {
+	if window == t.AgentWindow() {
+		return "tspace task update " + t.Name + " --resume CMD --resume ARG..."
+	}
+	return "tspace repo update " + t.Name + " " + window + " --resume CMD --resume ARG..."
+}

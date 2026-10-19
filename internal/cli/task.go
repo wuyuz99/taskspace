@@ -444,28 +444,10 @@ func (a *App) newTaskRmCmd() *cobra.Command {
 }
 
 // deleteTask removes a task whose worktrees are gone: its record and its notes.
-func (a *App) deleteTask(t *task.Task) error {
-	if err := a.deleteRecord(t); err != nil {
-		return err
-	}
-	held, err := a.Store.RemoveNotes(t.Name)
-	if err != nil {
-		return err
-	}
-	if len(held) > 0 {
-		a.printf("deleted its notes (%s)\n", joinNames(held))
-	}
-	return nil
-}
+func (a *App) deleteTask(t *task.Task) error { return a.workspace().Delete(t) }
 
 // deleteRecord removes the task's record alone.
-func (a *App) deleteRecord(t *task.Task) error {
-	if err := a.Store.Delete(t.Name); err != nil {
-		return err
-	}
-	a.printf("removed task %s\n", t.Name)
-	return nil
-}
+func (a *App) deleteRecord(t *task.Task) error { return a.workspace().DeleteRecord(t) }
 
 // runCmd runs another command as if it had been typed, with this App's output.
 func (a *App) runCmd(ctx context.Context, build func(*App) *cobra.Command, args ...string) error {

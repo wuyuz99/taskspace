@@ -3,14 +3,10 @@ package cli
 import (
 	"context"
 	"fmt"
-	"os"
-	osexec "os/exec"
-	"slices"
-	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/wuyuz99/taskspace/internal/runtime"
 	"github.com/wuyuz99/taskspace/internal/task"
+	"github.com/wuyuz99/taskspace/internal/workspace"
 )
 
 func (a *App) newStartCmd() *cobra.Command {
@@ -42,145 +38,19 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 			"--no-runtime creates them and stops there, successfully.",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			t, unlock, err := a.lockTask(cmd, args[0], true)
-			if err != nil {
-				return err
-			}
-			defer unlock()
 			ctx := cmd.Context()
-			names, err := selectRepos(t, args[1:])
-			if err != nil {
-				return err
-			}
-			if len(names) == 0 {
-				return fmt.Errorf("task %q has no repositories; add one with: tspace repo add %s REPO", t.Name, t.Name)
-			}
-
-			bases := map[string]string{}
-			hooked := false
-			for _, name := range names {
-				// What an earlier repository's hook changed applies to this one.
-				if hooked {
-					if t, err = a.Store.Load(t.Name); err != nil {
-						return err
-					}
-				}
-				r, ok := t.Repos[name]
-				if !ok {
-					return fmt.Errorf("%s was removed from %s while it started", name, t.Name)
-				}
-				res, err := a.Git.EnsureWorktree(ctx, r.Path, r.Worktree, r.Branch, r.Base)
-				if err != nil {
-					return fmt.Errorf("%s: %w", name, err)
-				}
-				if res.FetchErr != nil {
-					a.warnf("%-12s could not fetch, using the refs already here: %v\n", name, res.FetchErr)
-				}
-				switch {
-				case res.Tracking != "":
-					a.printf("%-12s created worktree on %s (tracking %s)\n", name, r.Branch, res.Tracking)
-				case res.Created && res.Base != "":
-					a.printf("%-12s created worktree on new branch %s (from %s)\n", name, r.Branch, res.Base)
-				case res.Created:
-					a.printf("%-12s created worktree on existing branch %s\n", name, r.Branch)
-				default:
-					a.printf("%-12s worktree ready\n", name)
-				}
-
-				if res.Created {
-					hooked = hooked || r.PostCreate != ""
-					if err := a.runPostCreate(ctx, t, name, r); err != nil {
-						// A half-provisioned worktree the user can inspect beats
-						// destroying one, so this is a warning, not a rollback.
-						a.warnf("%-12s post_create failed: %v\n", name, err)
-					}
-					if res.Base != "" && r.Base != res.Base {
-						bases[name] = res.Base
-					}
-				}
-			}
-
-			// A post_create hook may have updated the record meanwhile, so
-			// the bases resolved here go onto the latest one, not over it,
-			// and the windows are made from that.
-			switch {
-			case len(bases) > 0:
-				latest, err := a.Store.Update(ctx, t.Name, cmd.CommandPath()+" "+t.Name, func(cur *task.Task) error {
-					for name, base := range bases {
-						if r, ok := cur.Repos[name]; ok {
-							r.Base = base
-							cur.SetRepo(name, r)
-						}
-					}
-					return nil
-				})
-				if err != nil {
-					return err
-				}
-				t = latest
-			case hooked:
-				if t, err = a.Store.Load(t.Name); err != nil {
-					return err
-				}
-			}
-			// The root window comes first, so a fresh session opens on the agent
-			// that can see every repository. Naming repositories starts only those.
-			// A single-repo task has none: its agent runs in the repository.
-			var windows []runtime.Window
-			withRoot := len(args) == 1 && t.HasRootWindow()
-			if withRoot {
-				windows = append(windows, a.rootWindow(t))
-			}
-			for _, name := range names {
-				windows = append(windows, a.repoWindow(t, name))
-			}
-
-			if noRuntime {
-				return nil
-			}
-			if withRoot {
-				// A multiplexer cannot open a window in a directory that does not exist.
-				if err := os.MkdirAll(a.Store.TaskDir(t.Name), 0755); err != nil {
-					return err
-				}
-				a.printf("%-12s %s at %s\n", "(root)", t.AgentLabel(), a.Store.TaskDir(t.Name))
-			}
-			if t.AgentRepo != "" && slices.Contains(names, t.AgentRepo) {
-				a.printf("%-12s runs the task's agent: %s\n", t.AgentRepo, agentDisplay(task.Repo{Agent: t.RepoAgent(t.AgentRepo)}))
-			}
-			if err := a.Runtime.Available(ctx); err != nil {
-				a.warnf("worktrees are ready, but the runtime is unavailable: %v\n", err)
-				return err
-			}
-
-			session := a.Runtime.SessionName(t.Name)
-			// Unreadable, the session counts as new: checkLaunched then waits,
-			// and no signals are cleared on a guess.
-			before, err := a.Runtime.State(ctx, session)
-			// Signals left by a session that is gone describe agents that are
-			// no longer there.
-			if err == nil && !before.Exists {
-				if err := a.Store.ClearSignals(t.Name); err != nil {
-					a.warnf("tspace: %v\n", err)
-				}
-			}
-			if err := a.ensureContextDir(t); err != nil {
-				return err
-			}
-			if err := a.Runtime.Start(ctx, session, windows); err != nil {
-				return err
-			}
-			if err := a.checkLaunched(ctx, t, session, before, windows, names); err != nil {
+			res, err := a.workspace().Start(ctx, args[0], workspace.StartOptions{Repos: args[1:], NoRuntime: noRuntime})
+			if err != nil || noRuntime {
 				return err
 			}
 			if open {
-				a.printf("\nworkspace: %s\n", t.Name)
-				a.printTaskContext(t)
-				setTitle(a.Out, "tspace: "+t.Name, a.noTitle)
-				unlock() // nobody holds a task while attached to it
-				return a.Runtime.Attach(ctx, session)
+				// Start has let go of the task: nobody holds one while attached.
+				a.printf("\nworkspace: %s\n", res.Task.Name)
+				a.printTaskContext(res.Task)
+				setTitle(a.Out, "tspace: "+res.Task.Name, a.noTitle)
+				return a.Runtime.Attach(ctx, res.Session)
 			}
-			a.printf("\nsession %s is up; attach with: tspace attach %s\n", session, t.Name)
+			a.printf("\nsession %s is up; attach with: tspace attach %s\n", res.Session, res.Task.Name)
 			return nil
 		},
 	}
@@ -201,85 +71,10 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 	return cmd
 }
 
-// ensureContextDir creates the notes directory before any agent starts: a
-// command may name it with {context_dir}, and an agent given a directory
-// that does not exist may refuse to start.
-func (a *App) ensureContextDir(t *task.Task) error {
-	return os.MkdirAll(a.Store.ContextDir(t.Name), 0o755)
-}
-
-// checkLaunched reports what start launched that is already gone. Start
-// returns once the windows exist, which says nothing about whether their
-// commands survive the first second, and a session can go with them.
-func (a *App) checkLaunched(ctx context.Context, t *task.Task, session string, before runtime.SessionState, windows []runtime.Window, names []string) error {
-	launched := !before.Exists
-	for _, w := range windows {
-		if _, ok := before.Pane(a.Runtime.WindowName(w.Name)); !ok {
-			launched = true
-		}
-	}
-	if launched && a.settle > 0 {
-		select {
-		case <-time.After(a.settle):
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
-	st, err := a.Runtime.State(ctx, session)
-	if err != nil {
-		a.warnf("could not inspect agent state: %v\n", err)
-		return nil
-	}
-	if !st.Exists {
-		return fmt.Errorf("session %s exited right after it started; check the agent commands with `tspace task show %s`, then run start again", session, t.Name)
-	}
-	if pane, ok := st.Pane(a.Runtime.WindowName(task.RootWindowName)); ok && pane.Dead {
-		a.warnf("the root window has exited; inspect its output, then run: tspace restart %s --root\n", t.Name)
-	}
-	for _, name := range names {
-		if pane, ok := st.Pane(a.Runtime.WindowName(name)); ok && pane.Dead {
-			a.warnf("%s has exited; inspect its output, then run: tspace restart %s %s\n", name, t.Name, name)
-		}
-	}
-	return nil
-}
-
-// runPostCreate runs the repo's provisioning hook in its new worktree.
-//
-// A fresh worktree has no .env, node_modules or venv. Without this hook the
-// tool is not usable on a real project on the first try.
-//
-// The hook gets TSPACE_REPO_PATH pointing at the source repository. Without it the
-// only way to reach the original checkout is a relative path back out of the
-// worktree, whose depth depends on where TSPACE_ROOT is — so such a hook silently
-// breaks for anyone who moves their state directory. Prefer:
-//
-//	cp "$TSPACE_REPO_PATH/.env" .
+// runPostCreate runs a repository's post_create hook; see
+// workspace.Service.RunPostCreate.
 func (a *App) runPostCreate(ctx context.Context, t *task.Task, name string, r task.Repo) error {
-	if r.PostCreate == "" {
-		return nil
-	}
-	a.printf("%-12s post_create: %s\n", name, r.PostCreate)
-
-	cmd := osexec.CommandContext(ctx, "sh", "-c", r.PostCreate)
-	cmd.Dir = r.Worktree
-	cmd.Stdout, cmd.Stderr = a.Out, a.Err
-	cmd.Env = append(os.Environ(),
-		"TSPACE_TASK="+t.Name,
-		envWindow+"=",
-		task.EnvRoot+"="+a.Store.Root(),
-		"TSPACE_REPO="+name,
-		"TSPACE_REPO_PATH="+r.Path,
-		"TSPACE_WORKTREE="+r.Worktree,
-		"TSPACE_TASK_DIR="+a.Store.TaskDir(t.Name),
-		"TSPACE_CONTEXT_DIR="+a.Store.ContextDir(t.Name),
-	)
-	// The hook runs while start holds the task, so a tspace it runs on the
-	// task inherits the lock instead of waiting for start, which waits for it.
-	if l := a.Store.HeldLock(ctx, t.Name); l != nil {
-		cmd.Env = append(cmd.Env, l.Env())
-	}
-	return cmd.Run()
+	return a.workspace().RunPostCreate(ctx, t, name, r)
 }
 
 func (a *App) newStopCmd() *cobra.Command {
@@ -290,29 +85,15 @@ func (a *App) newStopCmd() *cobra.Command {
 			"Worktrees and branches are not touched.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			t, unlock, err := a.lockTask(cmd, args[0], true)
-			if err != nil {
-				return err
-			}
-			defer unlock()
-			session := a.Runtime.SessionName(t.Name)
-
-			running, err := a.Runtime.HasSession(cmd.Context(), session)
+			running, err := a.workspace().Stop(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}
 			if !running {
-				_ = a.Store.ClearSignals(t.Name)
-				a.printf("nothing running for %s\n", t.Name)
+				a.printf("nothing running for %s\n", args[0])
 				return nil
 			}
-			if err := a.Runtime.Stop(cmd.Context(), session); err != nil {
-				return err
-			}
-			if err := a.Store.ClearSignals(t.Name); err != nil {
-				a.warnf("tspace: %v\n", err)
-			}
-			a.printf("stopped %s; worktrees left in place\n", t.Name)
+			a.printf("stopped %s; worktrees left in place\n", args[0])
 			return nil
 		},
 	}
@@ -340,65 +121,20 @@ func (a *App) newRestartCmd() *cobra.Command {
 			case !root && len(args) == 1:
 				return fmt.Errorf("name a repository, or use --root for the task-root window")
 			}
-			t, unlock, err := a.lockTask(cmd, args[0], true)
+			window := task.RootWindowName
+			if !root {
+				window = args[1]
+			}
+			label, err := a.workspace().Restart(cmd.Context(), args[0], window, resume)
 			if err != nil {
 				return err
 			}
-			defer unlock()
-			var w runtime.Window
-			label := t.Name
-			if root {
-				if !t.HasRootWindow() {
-					return fmt.Errorf("task %s has no root window; its agent runs in %s: tspace restart %s %s", t.Name, t.AgentRepo, t.Name, t.AgentRepo)
-				}
-				w = a.rootWindow(t)
-				if info, err := os.Stat(w.Dir); err != nil || !info.IsDir() {
-					return fmt.Errorf("task directory %s is missing; run: tspace start %s", w.Dir, t.Name)
-				}
-				label += " root window"
-			} else {
-				_, name, err := a.worktreeDir(t, args[1])
-				if err != nil {
-					return err
-				}
-				w = a.repoWindow(t, name)
-				label += "/" + name
-			}
-			if resume {
-				argv := t.ResumeFor(w.Name)
-				switch {
-				case len(argv) > 0:
-				case len(t.WindowAgent(w.Name)) == 0:
-					return fmt.Errorf("%s runs a shell; there is no agent to resume", label)
-				default:
-					return fmt.Errorf("%s has no resume command; set one with the agent's own, e.g. %s", label, resumeHint(t, w.Name))
-				}
-				w.Command = a.expandArgv(t, argv)
-			}
-			if err := a.ensureContextDir(t); err != nil {
-				return err
-			}
-			if err := a.Runtime.Restart(cmd.Context(), a.Runtime.SessionName(t.Name), w); err != nil {
-				return err
-			}
-			// The relaunched agent has said nothing yet.
-			if err := a.Store.ClearSignal(t.Name, w.Name); err != nil {
-				a.warnf("tspace: %v\n", err)
-			}
-			a.printf("relaunched %s; use tspace status %s to check its state\n", label, t.Name)
+			a.printf("relaunched %s; use tspace status %s to check its state\n", label, args[0])
 			return nil
 		}}
 	cmd.Flags().BoolVar(&root, "root", false, "restart the task-root window")
 	cmd.Flags().BoolVar(&resume, "resume", false, "run the window's resume command, bringing the agent back with its conversation")
 	return cmd
-}
-
-// resumeHint is the command that would set a window's resume command.
-func resumeHint(t *task.Task, window string) string {
-	if window == t.AgentWindow() {
-		return "tspace task update " + t.Name + " --resume CMD --resume ARG..."
-	}
-	return "tspace repo update " + t.Name + " " + window + " --resume CMD --resume ARG..."
 }
 
 func (a *App) newAttachCmd() *cobra.Command {
@@ -426,43 +162,7 @@ func (a *App) newAttachCmd() *cobra.Command {
 	}
 }
 
-// selectRepos resolves optional repo-name arguments against a task.
-func selectRepos(t *task.Task, args []string) ([]string, error) {
-	if len(args) == 0 {
-		return t.RepoNames(), nil
-	}
-	for _, name := range args {
-		if _, ok := t.Repo(name); !ok {
-			return nil, fmt.Errorf("task %q has no repo named %q (has: %s)",
-				t.Name, name, joinNames(t.RepoNames()))
-		}
-	}
-	return args, nil
-}
-
 // worktreeDir resolves TASK [REPO] to a single worktree path.
 func (a *App) worktreeDir(t *task.Task, repoArg string) (task.Repo, string, error) {
-	names := t.RepoNames()
-	if len(names) == 0 {
-		return task.Repo{}, "", fmt.Errorf("task %q has no repositories", t.Name)
-	}
-
-	name := repoArg
-	if name == "" {
-		if len(names) > 1 {
-			return task.Repo{}, "", fmt.Errorf("task %q has several repos (%s); name one",
-				t.Name, joinNames(names))
-		}
-		name = names[0]
-	}
-	r, ok := t.Repo(name)
-	if !ok {
-		return task.Repo{}, "", fmt.Errorf("task %q has no repo named %q (has: %s)",
-			t.Name, name, joinNames(names))
-	}
-	if info, err := os.Stat(r.Worktree); err != nil || !info.IsDir() {
-		return task.Repo{}, "", fmt.Errorf("worktree for %s is missing (%s); run: tspace start %s",
-			name, r.Worktree, t.Name)
-	}
-	return r, name, nil
+	return workspace.WorktreeDir(t, repoArg)
 }
