@@ -116,3 +116,53 @@ func TestImportRefuses(t *testing.T) {
 		t.Errorf("the worktree moved anyway: %v", err)
 	}
 }
+
+// The cases the review found could misplace work or a task.
+func TestImportSafety(t *testing.T) {
+	h := newHarness(t)
+	gitIdentity(t)
+	withRemote(t, h.repo)
+
+	// A branch pushed with -u tracks its own remote copy, which is not its
+	// base: a rebase from there would drop the pushed commits.
+	pushed := linkedWorktree(t, h.repo, "pushed")
+	commitFile(t, pushed, "p.txt", "p\n", "pushed work")
+	gitIn(t, pushed, "push", "-q", "-u", "origin", "pushed")
+	if err := h.exec(t, h.app.newImportCmd(), pushed); err != nil {
+		t.Fatal(err)
+	}
+	r := h.load(t, "pushed").Repos[filepath.Base(h.repo)]
+	if r.Base == "origin/pushed" || r.Base == "" {
+		t.Fatalf("base %q", r.Base)
+	}
+
+	// Another task's worktree is that task's.
+	if err := h.exec(t, h.app.newImportCmd(), r.Worktree, "--task", "other"); err == nil || !strings.Contains(err.Error(), "already a task's worktree") {
+		t.Fatalf("import of a task's worktree = %v", err)
+	}
+	// A task of the default name is not joined without --task.
+	again := linkedWorktree(t, mkRepo(t), "pushed")
+	if err := h.exec(t, h.app.newImportCmd(), again); err == nil || !strings.Contains(err.Error(), "--task pushed") {
+		t.Fatalf("import into a same-named task = %v", err)
+	}
+	// Not from inside the worktree it moves.
+	inside := linkedWorktree(t, h.repo, "inside")
+	t.Chdir(inside)
+	if err := h.exec(t, h.app.newImportCmd(), "."); err == nil || !strings.Contains(err.Error(), "outside") {
+		t.Fatalf("import from inside = %v", err)
+	}
+}
+
+func TestImportOfABareRepositorysWorktree(t *testing.T) {
+	h := newHarness(t)
+	bare := filepath.Join(t.TempDir(), "x.git")
+	gitIn(t, h.repo, "clone", "-q", "--bare", h.repo, bare)
+	wt := filepath.Join(t.TempDir(), "feat")
+	gitIn(t, bare, "worktree", "add", "-q", "-b", "feat", wt)
+	if err := h.exec(t, h.app.newImportCmd(), wt); err == nil || !strings.Contains(err.Error(), "bare repository") {
+		t.Fatalf("import from a bare repository = %v", err)
+	}
+	if h.app.Store.Exists("feat") {
+		t.Fatal("left a task behind")
+	}
+}

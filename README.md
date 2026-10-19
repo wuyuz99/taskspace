@@ -660,11 +660,17 @@ tspace import ~/wt/api-login --task PAY-142    # into an existing task
 
 `import` moves the worktree into the task's directory with `git worktree move`,
 so its `.env`, `node_modules` and other untracked files come along, and records
-its repository and branch. It refuses uncommitted changes to tracked files, a
-detached HEAD, an unfinished merge or rebase, a locked worktree, and a
+its repository and branch. Anything that wrote its own absolute path into
+those files, such as a Python `.venv`, needs rebuilding after the move.
+
+Run it from outside the worktree. It refuses uncommitted changes to tracked
+files, a detached HEAD, an unfinished merge or rebase, a locked worktree, a
+worktree that is already a task's, a bare repository's worktree, and a
 repository's main checkout, which cannot be moved: register that with
-`tspace config repo` instead. Commits not pushed or not pulled are reported and
-kept. The base is the branch's upstream, or the repository's default branch.
+`tspace config repo` instead. Without `--task` the task is new; an existing one
+is joined only by naming it. Commits not pushed or not pulled are reported and
+kept. The base is the branch's upstream when that is another branch, and
+otherwise, as after `git push -u`, the repository's default branch.
 
 ## Fresh worktrees are empty: `post_create`
 

@@ -410,9 +410,6 @@ func (a *App) resolveBase(ctx context.Context, repo, ref string, fetch func() er
 }
 
 type addRepoOptions struct {
-	// Adopt is a worktree, on Branch, that import is about to move to the
-	// repository's place in the task.
-	Adopt      string
 	Name       string
 	Branch     string
 	Base       string
@@ -728,9 +725,7 @@ func (a *App) addRepo(ctx context.Context, t *task.Task, c *task.Config, path st
 		// Checked out at this repo's own worktree path, as after repo rm and
 		// add again, start reuses the worktree; only elsewhere does it refuse.
 		if wt, err := a.Git.FindWorktreeForBranch(ctx, canonical, branch); err == nil && wt != nil {
-			if opts.Adopt != "" && samePath(wt.Path, opts.Adopt) {
-				// Where import is moving it from: it will be the task's.
-			} else if own, err := a.Git.FindWorktree(ctx, canonical, worktree); err == nil && own != nil && own.Branch == branch {
+			if own, err := a.Git.FindWorktree(ctx, canonical, worktree); err == nil && own != nil && own.Branch == branch {
 				a.printf("note: %s is already checked out at %s; start will reuse that worktree\n", branch, own.Path)
 			} else {
 				a.warnf("note: %s is checked out at %s; start will refuse until it is switched away there\n", branch, wt.Path)
