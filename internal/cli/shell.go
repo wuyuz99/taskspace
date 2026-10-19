@@ -69,6 +69,7 @@ func (a *App) newShellCmd() *cobra.Command {
 			shell.Env = append(os.Environ(),
 				"TSPACE_TASK="+t.Name,
 				envWindow+"=",
+				task.EnvRoot+"="+a.Store.Root(),
 				"TSPACE_REPO="+name,
 				"TSPACE_WORKTREE="+r.Worktree,
 				"TSPACE_TASK_DIR="+a.Store.TaskDir(t.Name),

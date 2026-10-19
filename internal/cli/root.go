@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -105,6 +106,42 @@ func (a *App) warnf(format string, args ...any) {
 	fmt.Fprintf(a.Err, format, args...)
 }
 
+// warnNearerRoot warns when dir is inside a tspace root other than the one in
+// use, where a command would quietly read and write state that is not the one
+// around it. It does not switch to that root: which state a command touches
+// stays the explicit choice of TSPACE_ROOT.
+func (a *App) warnNearerRoot(dir string) {
+	near := task.NearestRoot(dir)
+	if near == "" || sameDir(near, a.Store.Root()) {
+		return
+	}
+	a.warnf("tspace: note: this directory is in the tspace root %s, but tspace is using %s; set %s=%s to use the one here\n",
+		near, a.Store.Root(), task.EnvRoot, near)
+}
+
+// sameDir reports whether two paths name one directory, through symlinks and
+// case-insensitive file systems.
+func sameDir(x, y string) bool {
+	a, err := os.Stat(x)
+	if err != nil {
+		return false
+	}
+	b, err := os.Stat(y)
+	return err == nil && os.SameFile(a, b)
+}
+
+// checksRoot reports whether cmd should warn about a nearer root: not shell
+// completion, whose output the shell reads, nor help, nor a quiet signal.
+func checksRoot(cmd *cobra.Command) bool {
+	for c := cmd; c != nil; c = c.Parent() {
+		if strings.HasPrefix(c.Name(), "__") || c.Name() == "completion" || c.Name() == "help" {
+			return false
+		}
+	}
+	quiet, err := cmd.Flags().GetBool("quiet")
+	return err != nil || !quiet
+}
+
 // loadTask is the common "resolve the task argument" step.
 func (a *App) loadTask(name string) (*task.Task, error) { return a.Store.Load(name) }
 
@@ -157,6 +194,8 @@ func Execute(ctx context.Context) int {
 			"  worktrees/TASK/REPO/                one worktree per repository\n" +
 			"  worktrees/TASK/.context/TASK.md     the brief: what the task is\n" +
 			"  worktrees/TASK/.context/HANDOFF.md  the handoff: where the work stands\n\n" +
+			"Run inside another root, a command warns that it is not using it.\n" +
+			"Windows of a session get TSPACE_ROOT set to the root that started them.\n\n" +
 			"For scripts and agents: open, attach, shell, dash and `task brief --edit`\n" +
 			"take over the terminal and need a TTY, and window switches to the new\n" +
 			"window unless given --detach. Every other command runs to completion,\n" +
@@ -168,6 +207,14 @@ func Execute(ctx context.Context) int {
 		Version:       buildVersion(),
 		SilenceUsage:  true,
 		SilenceErrors: true,
+	}
+	root.PersistentPreRun = func(cmd *cobra.Command, _ []string) {
+		if !checksRoot(cmd) {
+			return
+		}
+		if cwd, err := os.Getwd(); err == nil {
+			app.warnNearerRoot(cwd)
+		}
 	}
 	root.PersistentFlags().BoolVar(&app.noTitle, "no-title", false,
 		"do not set the terminal tab title")

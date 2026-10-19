@@ -237,6 +237,7 @@ func (a *App) runPostCreate(ctx context.Context, t *task.Task, name string, r ta
 	cmd.Env = append(os.Environ(),
 		"TSPACE_TASK="+t.Name,
 		envWindow+"=",
+		task.EnvRoot+"="+a.Store.Root(),
 		"TSPACE_REPO="+name,
 		"TSPACE_REPO_PATH="+r.Path,
 		"TSPACE_WORKTREE="+r.Worktree,

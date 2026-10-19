@@ -59,7 +59,7 @@ type Store struct {
 // chosen, visible location, and a hidden ~/.tspace should not be forced onto an
 // existing habit.
 func DefaultRoot() (string, error) {
-	if v := strings.TrimSpace(os.Getenv("TSPACE_ROOT")); v != "" {
+	if v := strings.TrimSpace(os.Getenv(EnvRoot)); v != "" {
 		abs, err := filepath.Abs(v)
 		if err != nil {
 			return "", fmt.Errorf("resolve TSPACE_ROOT: %w", err)
@@ -71,6 +71,37 @@ func DefaultRoot() (string, error) {
 		return "", fmt.Errorf("locate home directory: %w", err)
 	}
 	return filepath.Join(home, ".tspace"), nil
+}
+
+// EnvRoot names the variable that chooses the state root.
+const EnvRoot = "TSPACE_ROOT"
+
+// NearestRoot is the closest directory at or above dir that holds tspace
+// state, or "" if there is none. A root has a tasks directory beside a
+// worktrees directory or a config file, so a project that merely has a tasks
+// folder is not one.
+func NearestRoot(dir string) string {
+	for {
+		if isRoot(dir) {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
+}
+
+func isRoot(dir string) bool {
+	if fi, err := os.Stat(filepath.Join(dir, "tasks")); err != nil || !fi.IsDir() {
+		return false
+	}
+	if fi, err := os.Stat(filepath.Join(dir, "worktrees")); err == nil && fi.IsDir() {
+		return true
+	}
+	fi, err := os.Stat(filepath.Join(dir, configFile))
+	return err == nil && fi.Mode().IsRegular()
 }
 
 // NewStore returns a store rooted at root.

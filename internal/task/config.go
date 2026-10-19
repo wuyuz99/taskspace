@@ -60,7 +60,9 @@ func (c *Config) RepoNames() []string {
 }
 
 // ConfigPath is the user's config file.
-func (s *Store) ConfigPath() string { return filepath.Join(s.root, "config.json") }
+func (s *Store) ConfigPath() string { return filepath.Join(s.root, configFile) }
+
+const configFile = "config.json"
 
 // LoadConfig reads the config. A missing file is an empty config, not an error.
 func (s *Store) LoadConfig() (*Config, error) {

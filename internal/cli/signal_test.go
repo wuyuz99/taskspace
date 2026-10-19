@@ -368,7 +368,7 @@ func TestStartTellsEachWindowWhichItIs(t *testing.T) {
 	}
 	for _, w := range rt.started {
 		env := strings.Join(w.Env, " ")
-		if !strings.HasPrefix(env+" ", "TSPACE_TASK=PAY-142 TSPACE_WINDOW="+w.Name+" ") || !want[w.Name] {
+		if !strings.HasPrefix(env+" ", "TSPACE_TASK=PAY-142 TSPACE_WINDOW="+w.Name+" TSPACE_ROOT="+h.app.Store.Root()+" ") || !want[w.Name] {
 			t.Errorf("window %s env = %q", w.Name, env)
 		}
 	}
