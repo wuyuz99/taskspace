@@ -123,6 +123,9 @@ func (s *Store) Root() string { return s.root }
 // TasksDir is where task JSON files live.
 func (s *Store) TasksDir() string { return filepath.Join(s.root, "tasks") }
 
+// ReposDir is where config repo clones a repository given by URL.
+func (s *Store) ReposDir() string { return filepath.Join(s.root, "repos") }
+
 // WorktreesDir is the parent of all task worktree directories.
 func (s *Store) WorktreesDir() string { return filepath.Join(s.root, "worktrees") }
 
