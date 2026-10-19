@@ -255,6 +255,19 @@ func RepoWindow(st *task.Store, t *task.Task, name string) runtime.Window {
 	return runtime.Window{Name: name, Dir: t.Repos[name].Worktree, Command: ExpandArgv(st, t, t.RepoAgent(name)), Env: env}
 }
 
+// ExtraWindow is a window saved with t as its session runs it: in its
+// repository's worktree or at the task root, running its command or, closing
+// when it exits, the user's shell. An extra window has no signal of its own,
+// so an agent in it falls back to the directory.
+func ExtraWindow(st *task.Store, t *task.Task, w task.Window) runtime.Window {
+	dir := st.TaskDir(t.Name)
+	if w.Repo != "" {
+		dir = t.Repos[w.Repo].Worktree
+	}
+	argv := ExpandArgv(st, t, w.Command)
+	return runtime.Window{Name: w.SessionName(), Dir: dir, Command: argv, Transient: len(argv) == 0, Env: WindowEnv(st, t.Name, "")}
+}
+
 // ExpandArgv fills in the task's directories where an agent command names
 // them, so any agent can be pointed at them with its own flag, such as
 // `claude --add-dir {context_dir}`, without tspace knowing about that agent:

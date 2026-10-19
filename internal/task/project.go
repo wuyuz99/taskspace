@@ -19,6 +19,8 @@ type Project struct {
 	Agent []string `json:"agent,omitempty"`
 	// Resume is Agent's resume command; see Task.Resume.
 	Resume []string `json:"resume,omitempty"`
+	// Windows are the extra windows tasks made from it get; see Task.Windows.
+	Windows []Window `json:"windows,omitempty"`
 }
 
 type ProjectRepo struct {
@@ -34,7 +36,20 @@ func ProjectFromTask(name string, t *Task) *Project {
 	for repoName, r := range t.Repos {
 		p.Repos[repoName] = ProjectRepo{Path: r.Path, Base: r.Base, Agent: append([]string(nil), r.Agent...), Resume: append([]string(nil), r.Resume...), PostCreate: r.PostCreate}
 	}
+	p.Windows = CopyWindows(t.Windows)
 	return p
+}
+
+// CopyWindows copies saved windows, commands and all.
+func CopyWindows(ws []Window) []Window {
+	if len(ws) == 0 {
+		return nil
+	}
+	out := make([]Window, len(ws))
+	for i, w := range ws {
+		out[i] = Window{Name: w.Name, Repo: w.Repo, Command: append([]string(nil), w.Command...)}
+	}
+	return out
 }
 
 func (p *Project) RepoNames() []string {

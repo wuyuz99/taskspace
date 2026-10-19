@@ -61,7 +61,8 @@ func (f *fakeRuntime) Attach(context.Context, string) error { return nil }
 func (f *fakeRuntime) Focus(context.Context, string, string) (bool, error) {
 	return false, nil
 }
-func (f *fakeRuntime) Select(context.Context, string, string) error { return nil }
+func (f *fakeRuntime) Select(context.Context, string, string) error               { return nil }
+func (f *fakeRuntime) RenameWindow(context.Context, string, string, string) error { return nil }
 func (f *fakeRuntime) State(context.Context, string) (runtime.SessionState, error) {
 	return runtime.SessionState{Exists: f.exists, Panes: f.panes}, nil
 }

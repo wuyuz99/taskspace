@@ -46,6 +46,18 @@ func TestReferenceAdapterAgainstRealTmux(t *testing.T) {
 	if err := a.Start(ctx(), s, windows); err != nil {
 		t.Fatal(err)
 	}
+	// The reference adapter renames windows too.
+	if err := a.OpenWindow(ctx(), s, Window{Name: "_old", Dir: dir, Command: []string{"sleep", "60"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.RenameWindow(ctx(), s, "_old", "_new"); err != nil {
+		t.Fatal(err)
+	}
+	if st, err := a.State(ctx(), s); err != nil {
+		t.Fatal(err)
+	} else if _, ok := st.Panes["_new"]; !ok {
+		t.Fatalf("not renamed: %+v", st.Panes)
+	}
 	deadline := time.Now().Add(3 * time.Second)
 	for {
 		st, err := a.State(ctx(), s)

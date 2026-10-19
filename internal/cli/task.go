@@ -101,6 +101,7 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 				}
 				t.Agent = append([]string(nil), p.Agent...)
 				t.Resume = append([]string(nil), p.Resume...)
+				t.Windows = task.CopyWindows(p.Windows)
 				if len(p.Agent) > 0 {
 					agentFrom = "project " + p.Name
 				}
@@ -231,6 +232,16 @@ type taskJSON struct {
 	Handoff          string         `json:"handoff,omitempty"`
 	HandoffUpdatedAt *time.Time     `json:"handoff_updated_at,omitempty"`
 	Repos            []taskRepoJSON `json:"repos"`
+	// Windows are the saved extra windows; see `tspace window --save`.
+	Windows []taskWindowJSON `json:"windows"`
+}
+
+type taskWindowJSON struct {
+	// Name is the window's name in the session, with its leading '_'.
+	Name string `json:"name"`
+	// Repo is where it opens; empty, the task root.
+	Repo    string   `json:"repo,omitempty"`
+	Command []string `json:"command"`
 }
 
 type taskRepoJSON struct {
@@ -259,6 +270,7 @@ func (a *App) describeTask(t *task.Task) taskJSON {
 		AgentWindow: t.AgentWindow(),
 		RootWindow:  t.HasRootWindow(),
 		Repos:       make([]taskRepoJSON, 0, len(t.Repos)),
+		Windows:     make([]taskWindowJSON, 0, len(t.Windows)),
 	}
 	brief, handoff, err := a.notes(t)
 	if err != nil {
@@ -275,6 +287,9 @@ func (a *App) describeTask(t *task.Task) taskJSON {
 			Name: name, Path: r.Path, Branch: r.Branch, Base: r.Base, Worktree: r.Worktree,
 			Agent: append([]string{}, t.RepoAgent(name)...), Resume: append([]string{}, t.ResumeFor(name)...), PostCreate: r.PostCreate,
 		})
+	}
+	for _, w := range t.Windows {
+		out.Windows = append(out.Windows, taskWindowJSON{Name: w.SessionName(), Repo: w.Repo, Command: append([]string{}, w.Command...)})
 	}
 	return out
 }
@@ -361,6 +376,20 @@ func (a *App) newTaskShowCmd() *cobra.Command {
 			}
 			if len(t.Resume) > 0 {
 				a.printf("resume:    %s\n", shellJoin(t.Resume))
+			}
+			for i, w := range t.Windows {
+				label := "windows:  "
+				if i > 0 {
+					label = "          "
+				}
+				where, what := "at the root", "shell"
+				if w.Repo != "" {
+					where = "in " + w.Repo
+				}
+				if len(w.Command) > 0 {
+					what = shellJoin(w.Command)
+				}
+				a.printf("%s %s %s: %s\n", label, w.SessionName(), where, what)
 			}
 			a.printTaskContext(t)
 			if len(t.Repos) == 0 {

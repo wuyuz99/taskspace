@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	osexec "os/exec"
+	"slices"
 	"strings"
 	"time"
 
@@ -30,8 +31,8 @@ type StartResult struct {
 
 // Start creates the task's missing worktrees, running each new one's
 // post_create hook, and brings up its session with the windows that are not
-// there yet. It is safe to repeat: existing worktrees and windows, dead ones
-// included, are left alone. It releases the task's lock before it returns,
+// there yet, saved extra windows included. It is safe to repeat: existing
+// worktrees and windows, dead ones included, are left alone. It releases the task's lock before it returns,
 // so a caller may attach to the session, unless ctx came holding it already.
 func (s *Service) Start(ctx context.Context, name string, opts StartOptions) (*StartResult, error) {
 	t, ctx, unlock, err := s.Lock(ctx, name, s.command("tspace start"), true)
@@ -114,11 +115,23 @@ func (s *Service) Start(ctx context.Context, name string, opts StartOptions) (*S
 	for _, name := range names {
 		windows = append(windows, RepoWindow(s.Store, t, name))
 	}
+	// Saved windows go with what is started: those at the root with the whole
+	// task, the rest with their repositories.
+	atRoot := withRoot
+	for _, w := range t.Windows {
+		switch {
+		case w.Repo == "" && len(opts.Repos) == 0:
+			atRoot = true
+		case w.Repo == "" || !slices.Contains(names, w.Repo):
+			continue
+		}
+		windows = append(windows, ExtraWindow(s.Store, t, w))
+	}
 
 	if opts.NoRuntime {
 		return result, nil
 	}
-	if withRoot {
+	if atRoot {
 		// A multiplexer cannot open a window in a directory that does not exist.
 		if err := os.MkdirAll(s.Store.TaskDir(t.Name), 0o755); err != nil {
 			return nil, err

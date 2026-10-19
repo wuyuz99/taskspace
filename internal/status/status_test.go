@@ -32,9 +32,10 @@ func (f *fakeRuntime) Restart(context.Context, string, runtime.Window) error { r
 func (f *fakeRuntime) OpenWindow(context.Context, string, runtime.Window) error {
 	return nil
 }
-func (f *fakeRuntime) Stop(context.Context, string) error           { return nil }
-func (f *fakeRuntime) Select(context.Context, string, string) error { return nil }
-func (f *fakeRuntime) Attach(context.Context, string) error         { return nil }
+func (f *fakeRuntime) Stop(context.Context, string) error                         { return nil }
+func (f *fakeRuntime) Select(context.Context, string, string) error               { return nil }
+func (f *fakeRuntime) RenameWindow(context.Context, string, string, string) error { return nil }
+func (f *fakeRuntime) Attach(context.Context, string) error                       { return nil }
 func (f *fakeRuntime) Focus(context.Context, string, string) (bool, error) {
 	return false, nil
 }

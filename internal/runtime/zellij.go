@@ -509,6 +509,21 @@ func (z *Zellij) tabPosition(ctx context.Context, session, name string) (int, bo
 	return 0, false, nil
 }
 
+// RenameWindow implements Runtime. zellij renames the focused tab, and only
+// with a client attached does focusing one take effect.
+func (z *Zellij) RenameWindow(ctx context.Context, session, from, to string) error {
+	if err := z.requireClient(ctx, session, "rename "+from); err != nil {
+		return err
+	}
+	if _, err := z.action(ctx, session, "go-to-tab-name", WindowName(from)); err != nil {
+		return fmt.Errorf("rename %s in %s: %w", from, session, err)
+	}
+	if _, err := z.action(ctx, session, "rename-tab", WindowName(to)); err != nil {
+		return fmt.Errorf("rename %s to %s in %s: %w", from, to, session, err)
+	}
+	return nil
+}
+
 // Select implements Runtime.
 //
 // Switching tabs in a session with no client attached does not decide where

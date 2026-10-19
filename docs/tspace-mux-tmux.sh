@@ -87,6 +87,10 @@ select)
 	tmux select-window -t "$(wtarget "$1" "$2")"
 	;;
 
+rename)
+	tmux rename-window -t "$(wtarget "$1" "$2")" "$3"
+	;;
+
 *)
 	echo "tspace-mux-tmux: unknown operation $op" >&2
 	exit 2

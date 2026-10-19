@@ -77,6 +77,7 @@ success. Any other status is a failure, and tspace shows the adapter's stderr.
 | `attach SESSION` | Hand the terminal to the session. stdin, stdout and stderr are the user's terminal. Inside the same multiplexer, switch the current client instead of nesting. |
 | `focus SESSION NAME` | If tspace is running inside a client of this multiplexer, show window NAME and print `yes`. Otherwise print nothing, and tspace will offer to attach. |
 | `select SESSION NAME` | Make NAME the window the next `attach` lands on. |
+| `rename SESSION OLD NEW` | Optional. Rename window OLD to NEW. Without it, `tspace window --rename` fails with your error and everything else works. |
 
 `WIN` is four arguments and the command: `NAME DIR keep|close -- COMMAND...`.
 
