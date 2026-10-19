@@ -251,13 +251,16 @@ internal/cli/      cobra commands; the ONLY package that formats for humans
 internal/task/     Task/Repo model, load/save, name validation
 internal/git/      repo validation, base-ref resolution, worktree lifecycle, dirty/safety checks
 internal/runtime/  Runtime interface + tmux implementation
+internal/workspace/ lifecycle service: start, stop, restart, clean, delete; CLI and dash both call it
 internal/status/   aggregation across git + runtime; the notification choke point
 internal/exec/     testable command runner
 ```
 
 No `internal/agent/`. Boundaries that matter: `internal/git` never formats
 output, tmux vocabulary never escapes `internal/runtime`, and `internal/task`
-knows nothing about either.
+knows nothing about either. `internal/workspace` holds the lifecycle workflow and
+its safety decisions, reporting typed events instead of text, and imports
+neither cobra nor the dashboard.
 
 `internal/exec` is a small interface (`Run(ctx, dir, argv) (stdout, stderr, err)`)
 with a real implementation and a recording fake. It exists so we can unit-test
