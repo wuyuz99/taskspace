@@ -558,10 +558,11 @@ hides the rest of your workspaces from `tspace task list` or `tspace status`.
 somewhere visible, and a hidden `~/.tspace` should not be forced on that habit.
 With more than one root, a command run inside a root it is not using says so
 on stderr and names the `TSPACE_ROOT` that would use it; it never switches on
-its own. Session windows, `tspace shell` and `post_create` hooks get
+its own. The windows tspace opens, `tspace shell` and `post_create` hooks get
 `TSPACE_ROOT` set to the root that started them, so an agent's `tspace signal`
 and `tspace task handoff` reach the right state whatever environment the
-multiplexer was started with.
+multiplexer was started with. A pane you split or open yourself has the
+multiplexer's environment instead.
 
 ## Fresh worktrees are empty: `post_create`
 
@@ -583,6 +584,7 @@ these variables set:
 | `TSPACE_TASK_DIR` | the task's workspace directory, parent of every repo |
 | `TSPACE_CONTEXT_DIR` | the task's `.context/` directory, holding its notes |
 | `TSPACE_TASK`, `TSPACE_REPO` | the task and repo names |
+| `TSPACE_ROOT` | the state root the task belongs to |
 
 Use `$TSPACE_REPO_PATH` rather than a relative path like `../../../src/backend`.
 How many `..` you need depends on where `TSPACE_ROOT` is, so a relative hook breaks

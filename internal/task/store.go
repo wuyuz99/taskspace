@@ -77,9 +77,9 @@ func DefaultRoot() (string, error) {
 const EnvRoot = "TSPACE_ROOT"
 
 // NearestRoot is the closest directory at or above dir that holds tspace
-// state, or "" if there is none. A root has a tasks directory beside a
-// worktrees directory or a config file, so a project that merely has a tasks
-// folder is not one.
+// state, or "" if there is none. A root has both a tasks and a worktrees
+// directory: a project with a tasks folder, or with a config.json beside it,
+// is not one.
 func NearestRoot(dir string) string {
 	for {
 		if isRoot(dir) {
@@ -94,14 +94,13 @@ func NearestRoot(dir string) string {
 }
 
 func isRoot(dir string) bool {
-	if fi, err := os.Stat(filepath.Join(dir, "tasks")); err != nil || !fi.IsDir() {
-		return false
+	s := NewStore(dir)
+	for _, d := range []string{s.TasksDir(), s.WorktreesDir()} {
+		if fi, err := os.Stat(d); err != nil || !fi.IsDir() {
+			return false
+		}
 	}
-	if fi, err := os.Stat(filepath.Join(dir, "worktrees")); err == nil && fi.IsDir() {
-		return true
-	}
-	fi, err := os.Stat(filepath.Join(dir, configFile))
-	return err == nil && fi.Mode().IsRegular()
+	return true
 }
 
 // NewStore returns a store rooted at root.

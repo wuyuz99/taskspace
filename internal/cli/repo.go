@@ -151,8 +151,9 @@ func (a *App) newRepoAddCmd() *cobra.Command {
 			"  tspace repo add PAY-142 backend --agent claude --agent=--model --agent opus\n\n" +
 			"--post-create is run once by `sh -c` in the new worktree, which has no\n" +
 			".env, node_modules or venv of its own. It is given TSPACE_TASK, TSPACE_REPO,\n" +
-			"TSPACE_REPO_PATH (the source repository), TSPACE_WORKTREE, TSPACE_TASK_DIR and\n" +
-			"TSPACE_CONTEXT_DIR. A failing hook is reported and the worktree is kept.\n\n" +
+			"TSPACE_REPO_PATH (the source repository), TSPACE_WORKTREE, TSPACE_TASK_DIR,\n" +
+			"TSPACE_CONTEXT_DIR and TSPACE_ROOT. A failing hook is reported and the\n" +
+			"worktree is kept.\n\n" +
 			"The first repository of a task with none, and no session, runs the task's\n" +
 			"agent in its own window, as `tspace task create` does for one. Adding a\n" +
 			"second to such a task leaves that agent where it is and gives the task a\n" +

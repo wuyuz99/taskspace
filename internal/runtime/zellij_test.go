@@ -203,6 +203,18 @@ func TestZellijRestartRerunsHeldPaneInPlace(t *testing.T) {
 		t.Errorf("held pane not rerun: %v", f.Commands())
 	}
 
+	// A pane launched before tspace set a variable is still the same launch.
+	newer := backend
+	newer.Env = append([]string{}, backend.Env...)
+	newer.Env = append(newer.Env, "TSPACE_ROOT=/state")
+	before := len(f.Commands())
+	if err := z.Restart(ctx(), "tspace@t", newer); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.Commands()[before:]; !strings.Contains(strings.Join(got, " "), "send-keys --pane-id terminal_2 Enter") {
+		t.Errorf("older pane not rerun in place: %v", got)
+	}
+
 	// A changed command means a new tab, which needs a client.
 	f.RespondOut("list-clients", "CLIENT_ID ZELLIJ_PANE_ID RUNNING_COMMAND\n")
 	if err := z.Restart(ctx(), "tspace@t", Window{Name: "backend", Dir: "/wt/b", Command: []string{"codex", "--new"}}); err == nil {
