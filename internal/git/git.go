@@ -307,3 +307,28 @@ func (g *Git) DeleteBranch(ctx context.Context, repo, branch string, force bool)
 	}
 	return nil
 }
+
+// RenameBranch renames a local branch, which may be checked out in a
+// worktree; git carries its upstream and reflog over.
+func (g *Git) RenameBranch(ctx context.Context, repo, from, to string) error {
+	if _, err := g.git(ctx, repo, "branch", "-m", from, to); err != nil {
+		return fmt.Errorf("rename branch %s to %s: %w", from, to, err)
+	}
+	return nil
+}
+
+// Rebase moves the commits the branch checked out in worktree has beyond
+// upstream onto onto. A rebase that stops, on a conflict or anything else,
+// is aborted, leaving the branch and worktree as they were; the error says
+// why it stopped.
+func (g *Git) Rebase(ctx context.Context, worktree, onto, upstream string) error {
+	if _, err := g.git(ctx, worktree, "rebase", "--onto", onto, upstream); err != nil {
+		if inProgress, _ := g.InProgress(ctx, worktree); inProgress != "" {
+			if _, abortErr := g.git(ctx, worktree, "rebase", "--abort"); abortErr != nil {
+				return fmt.Errorf("rebase onto %s stopped, and could not be aborted (%v); finish or abort it in %s: %w", onto, abortErr, worktree, err)
+			}
+		}
+		return fmt.Errorf("rebase onto %s: %w", onto, err)
+	}
+	return nil
+}
