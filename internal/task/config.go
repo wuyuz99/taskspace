@@ -45,6 +45,9 @@ type Config struct {
 	// a command, for dash; see `tspace config terminal`. tspace knows no
 	// terminal's own way of doing that.
 	Terminal []string `json:"terminal,omitempty"`
+	// Editor is the command that opens a .code-workspace file, for
+	// `tspace editor`; see `tspace config editor`.
+	Editor []string `json:"editor,omitempty"`
 }
 
 // TicketGroup names the part of a ticket pattern that is the ticket, when the

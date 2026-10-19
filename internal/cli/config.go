@@ -33,6 +33,9 @@ func (a *App) newConfigCmd() *cobra.Command {
 			}
 			a.printf("branch: %s (new repositories' default branch)\n", c.Branch("TASK"))
 			a.printf("multiplexer: %s\n", multiplexerDisplay(multiplexerName(c), c))
+			if len(c.Editor) > 0 {
+				a.printf("editor: %s\n", shellJoin(c.Editor))
+			}
 			if len(c.Terminal) > 0 {
 				a.printf("terminal: %s\n", shellJoin(c.Terminal))
 			}
@@ -48,7 +51,7 @@ func (a *App) newConfigCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.AddCommand(a.newConfigAgentCmd(), a.newConfigRepoCmd(), a.newConfigBranchPrefixCmd(), a.newConfigMultiplexerCmd(), a.newConfigHooksCmd(), a.newConfigResumeCmd(), a.newConfigTicketPatternCmd(), a.newConfigTerminalCmd())
+	cmd.AddCommand(a.newConfigAgentCmd(), a.newConfigRepoCmd(), a.newConfigBranchPrefixCmd(), a.newConfigMultiplexerCmd(), a.newConfigHooksCmd(), a.newConfigResumeCmd(), a.newConfigTicketPatternCmd(), a.newConfigTerminalCmd(), a.newConfigEditorCmd())
 	return cmd
 }
 
@@ -334,6 +337,59 @@ func (a *App) newConfigTicketPatternCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&unset, "unset", false, "stop reading tickets from task names")
+	return cmd
+}
+
+func (a *App) newConfigEditorCmd() *cobra.Command {
+	var unset bool
+	cmd := &cobra.Command{
+		Use:   "editor [COMMAND [ARGS...] | --unset]",
+		Short: "Show or set the editor tspace editor opens a task in",
+		Long: "tspace editor TASK writes the task's worktrees into a .code-workspace\n" +
+			"file and opens it with this command, the file's path added at the end.\n" +
+			"Any editor that reads the format will do:\n\n" +
+			"  tspace config editor code\n" +
+			"  tspace config editor cursor\n" +
+			"  tspace config editor codium --new-window",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if unset && len(args) > 0 {
+				return fmt.Errorf("choose either a command or --unset")
+			}
+			c, err := a.Store.LoadConfig()
+			if err != nil {
+				return err
+			}
+			switch {
+			case unset:
+				c.Editor = nil
+			case len(args) == 0:
+				if len(c.Editor) == 0 {
+					a.printf("none; tspace editor only writes the workspace file\n")
+				} else {
+					a.printf("%s\n", shellJoin(c.Editor))
+				}
+				return nil
+			case strings.TrimSpace(args[0]) == "":
+				return fmt.Errorf("editor command is empty; use --unset to clear it")
+			case slices.Contains(args[1:], "--unset"):
+				return fmt.Errorf("--unset goes alone, before any command: tspace config editor --unset")
+			default:
+				c.Editor = args
+			}
+			if err := a.Store.SaveConfig(c); err != nil {
+				return err
+			}
+			if unset {
+				a.printf("cleared the editor command\n")
+				return nil
+			}
+			a.printf("editor: %s\n", shellJoin(c.Editor))
+			return nil
+		},
+	}
+	// Flags after COMMAND belong to it, not to tspace.
+	cmd.Flags().SetInterspersed(false)
+	cmd.Flags().BoolVar(&unset, "unset", false, "clear the editor command")
 	return cmd
 }
 
