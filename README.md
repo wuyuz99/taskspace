@@ -300,8 +300,22 @@ clears the agent command, and an empty `--post-create` clears the hook. Existing
 windows keep running their original command. Updated agent settings apply when
 a window is created or explicitly restarted; updated hooks run only for newly
 created worktrees. Updating a task does not change its saved project recipe;
-save it back explicitly when desired. Repository paths, branches, and base refs
-are not changed by `repo update`.
+save it back explicitly when desired. A repository's path is never changed by
+`repo update`; its branch and base are, on request:
+
+```bash
+tspace repo update PAY-142 backend --branch me/PAY-142             # rename the task's branch
+tspace repo update PAY-142 backend --base origin/release           # compare with release instead
+tspace repo update PAY-142 backend --base origin/release --rebase  # and move the work onto it
+```
+
+`--branch` renames the branch, checked out in the worktree if there is one, and
+never takes over a branch that already exists. `--base` changes what status and
+clean compare the branch with, and what `start` creates it from; on its own it
+leaves the branch where it is. `--rebase` moves the branch's commits from the
+old base onto the new one, in a clean worktree; a rebase that stops on a
+conflict is undone, the record keeps the old base, and the error gives the git
+command to do it by hand.
 
 ## Human-readable task context
 
@@ -829,7 +843,7 @@ only once every worktree is gone: safely, unless `--force` discarded their work.
 | `tspace task rm NAME` | Delete the record; refuses while worktrees exist |
 | `tspace repo add TASK REPO [--name --branch --base --agent --post-create]` | Attach a repository, by registered name or path |
 | `tspace repo rm TASK REPO` | Detach a repository (leaves the worktree) |
-| `tspace repo update TASK REPO [--agent CMD / --shell] [--post-create SH]` | Update saved agent and setup settings |
+| `tspace repo update TASK REPO [--agent CMD / --shell] [--post-create SH] [--branch NAME] [--base REF [--rebase]]` | Update a repository's agent, setup, branch or base |
 | `tspace start TASK [REPO...]` | Create worktrees, launch the session |
 | `tspace open TASK` | Prepare worktrees, show brief/handoff, and attach |
 | `tspace restart TASK REPO` / `tspace restart TASK --root` [`--resume`] | Relaunch a dead repository or root window, optionally resuming its conversation |

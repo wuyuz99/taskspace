@@ -23,26 +23,41 @@ func (a *App) newRepoCmd() *cobra.Command {
 
 func (a *App) newRepoUpdateCmd() *cobra.Command {
 	var agent []string
-	var hook string
-	var shell bool
+	var hook, base, branch string
+	var shell, rebase bool
 	var resume resumeOptions
 	cmd := &cobra.Command{
 		Use:   "update TASK REPO",
-		Short: "Update saved agent and setup settings",
+		Short: "Update a repository's agent, setup, branch or base",
 		Long: "update replaces the repository's saved agent command or post-create hook.\n" +
 			"Running windows are untouched: agent settings apply when a window is\n" +
 			"created or explicitly restarted, and hooks run only when a worktree is\n" +
 			"newly created.\n\n" +
 			"  tspace repo update PAY-142 backend --agent codex --agent=--resume\n" +
-			"  tspace repo update PAY-142 backend --shell --post-create=''",
+			"  tspace repo update PAY-142 backend --shell --post-create=''\n\n" +
+			"--branch renames the task's branch, checked out in the worktree if there\n" +
+			"is one; it never takes over a branch that already exists. --base changes\n" +
+			"what the branch is compared with, for status and clean, and what start\n" +
+			"creates it from; the branch itself stays where it is unless --rebase,\n" +
+			"which moves its commits from the old base onto the new one. A rebase that\n" +
+			"stops on a conflict is undone, leaving everything as it was:\n\n" +
+			"  tspace repo update PAY-142 backend --branch me/PAY-142\n" +
+			"  tspace repo update PAY-142 backend --base origin/release --rebase",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			setAgent, setHook := cmd.Flags().Changed("agent"), cmd.Flags().Changed("post-create")
+			setBase, setBranch := cmd.Flags().Changed("base"), cmd.Flags().Changed("branch")
 			if setAgent && shell {
 				return fmt.Errorf("choose either --agent or --shell")
 			}
-			if !setAgent && !setHook && !shell && !resume.changed(cmd) {
-				return fmt.Errorf("specify --agent, --shell, --resume, --no-resume or --post-create")
+			if !setAgent && !setHook && !shell && !resume.changed(cmd) && !setBase && !setBranch {
+				return fmt.Errorf("specify --agent, --shell, --resume, --no-resume, --post-create, --branch or --base")
+			}
+			if rebase && !setBase {
+				return fmt.Errorf("--rebase moves the branch onto a new base; give it with --base")
+			}
+			if (setBase && strings.TrimSpace(base) == "") || (setBranch && strings.TrimSpace(branch) == "") {
+				return fmt.Errorf("--base and --branch need a value")
 			}
 			if err := resume.validate(cmd); err != nil {
 				return err
@@ -50,7 +65,9 @@ func (a *App) newRepoUpdateCmd() *cobra.Command {
 			if setAgent && (len(agent) == 0 || strings.TrimSpace(agent[0]) == "") {
 				return fmt.Errorf("agent command is empty; use --shell to restore the default shell")
 			}
-			t, unlock, err := a.lockTask(cmd, args[0], false)
+			// Renaming or rebasing the branch changes the worktree, so it is a
+			// lifecycle change; the rest only edits the record.
+			t, unlock, err := a.lockTask(cmd, args[0], setBranch || rebase)
 			if err != nil {
 				return err
 			}
@@ -91,10 +108,21 @@ func (a *App) newRepoUpdateCmd() *cobra.Command {
 			if len(t.ResumeFor(args[1])) > 0 && len(t.RepoAgent(args[1])) == 0 {
 				return fmt.Errorf("--resume resumes the window's agent, and %s runs a shell; give one with --agent", args[1])
 			}
+			// Git last, once nothing else can refuse.
+			var gitNotes []string
+			if setBranch || setBase {
+				if r, gitNotes, err = a.moveRepoBranch(cmd.Context(), t, args[1], r, branch, base, rebase); err != nil {
+					return err
+				}
+				t.SetRepo(args[1], r)
+			}
 			if err := a.Store.Save(t); err != nil {
 				return err
 			}
 			a.printf("updated %s/%s\n", t.Name, args[1])
+			for _, n := range gitNotes {
+				a.printf("  %s\n", n)
+			}
 			if resumeCleared {
 				a.warnf("note: the resume command went with the old agent; set one for this agent with --resume\n")
 			}
@@ -118,7 +146,106 @@ func (a *App) newRepoUpdateCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&shell, "shell", false, "clear the agent command and use the default shell")
 	resume.flags(cmd, true)
 	cmd.Flags().StringVar(&hook, "post-create", "", "replace the setup hook; an empty value clears it")
+	cmd.Flags().StringVar(&branch, "branch", "", "rename the task's branch")
+	cmd.Flags().StringVar(&base, "base", "", "compare the branch with, and create it from, this ref instead")
+	cmd.Flags().BoolVar(&rebase, "rebase", false, "with --base, move the branch's commits from the old base onto the new one")
 	return cmd
+}
+
+// moveRepoBranch renames repo's branch to branch and sets its base to base,
+// either when not empty, in git as far as the worktree exists, and returns
+// the repository as recorded afterwards with what it did. Nothing is changed
+// if it fails.
+func (a *App) moveRepoBranch(ctx context.Context, t *task.Task, name string, r task.Repo, branch, base string, rebase bool) (task.Repo, []string, error) {
+	st, err := a.Git.WorktreeStatus(ctx, r.Worktree)
+	if err != nil {
+		return r, nil, fmt.Errorf("%s: %w", name, err)
+	}
+	newBase := ""
+	if base != "" {
+		if newBase, err = a.resolveBase(ctx, r.Path, base); err != nil {
+			return r, nil, err
+		}
+	}
+	renaming := branch != "" && branch != r.Branch
+	// Everything is checked before git changes anything.
+	if renaming {
+		if err := a.Git.CheckBranchName(ctx, branch); err != nil {
+			return r, nil, err
+		}
+		if exists, err := a.Git.BranchExists(ctx, r.Path, branch); err != nil {
+			return r, nil, err
+		} else if exists {
+			return r, nil, fmt.Errorf("branch %s already exists in %s; repo update renames the task's branch and does not take over another", branch, r.Path)
+		}
+		if st.Exists && st.Branch != r.Branch {
+			return r, nil, fmt.Errorf("%s's worktree is not on %s (it has %s); switch back before renaming", name, r.Branch, dash(st.Branch))
+		}
+	}
+	if rebase {
+		switch {
+		case !st.Exists:
+			return r, nil, fmt.Errorf("%s has no worktree yet, so there is nothing to rebase: start creates the branch from the base; drop --rebase", name)
+		case st.DirtyCount() > 0:
+			return r, nil, fmt.Errorf("%s has %d uncommitted change%s in %s; commit or stash them before --rebase", name, st.DirtyCount(), plural(st.DirtyCount()), r.Worktree)
+		case r.Base == "":
+			return r, nil, fmt.Errorf("%s has no recorded base to rebase from; rebase by hand, then run this without --rebase", name)
+		}
+		if op, err := a.Git.InProgress(ctx, r.Worktree); err != nil {
+			return r, nil, err
+		} else if op != "" {
+			return r, nil, fmt.Errorf("%s is in the middle of a %s; finish it before --rebase", name, op)
+		}
+	}
+
+	var notes []string
+	if rebase {
+		if err := a.Git.Rebase(ctx, r.Worktree, newBase, r.Base); err != nil {
+			return r, nil, fmt.Errorf("%s: %w\nnothing was changed; to rebase by hand, in %s run: git rebase --onto %s %s\nthen record the base with: tspace repo update %s %s --base %s",
+				name, err, r.Worktree, newBase, r.Base, t.Name, name, base)
+		}
+	}
+	if renaming && st.Exists {
+		if err := a.Git.RenameBranch(ctx, r.Path, r.Branch, branch); err != nil {
+			return r, nil, err
+		}
+	}
+	switch {
+	case renaming && st.Exists:
+		notes = append(notes, fmt.Sprintf("branch: renamed %s to %s", r.Branch, branch))
+	case renaming:
+		notes = append(notes, fmt.Sprintf("branch: %s (start checks it out, creating it if it does not exist)", branch))
+	}
+	if renaming {
+		r.Branch = branch
+	}
+	switch {
+	case newBase == "":
+	case rebase:
+		notes = append(notes, fmt.Sprintf("base: %s (rebased %s onto it)", newBase, r.Branch))
+	case st.Exists:
+		notes = append(notes, fmt.Sprintf("base: %s (%s is unchanged; status and clean now compare it with %s; --rebase moves its commits onto it)", newBase, r.Branch, newBase))
+	default:
+		notes = append(notes, fmt.Sprintf("base: %s (start creates the branch from it if it does not exist yet)", newBase))
+	}
+	if newBase != "" {
+		r.Base = newBase
+	}
+	return r, notes, nil
+}
+
+// resolveBase turns a base the user typed into a ref that resolves in repo,
+// fetching once if it is not there yet.
+func (a *App) resolveBase(ctx context.Context, repo, ref string) (string, error) {
+	resolved, err := a.Git.ResolveRef(ctx, repo, ref)
+	if err != nil || resolved != "" {
+		return resolved, err
+	}
+	_, fetchErr := a.Git.FetchRemotes(ctx, repo, ref)
+	if resolved, err = a.Git.ResolveRef(ctx, repo, ref); err == nil && resolved == "" {
+		err = fmt.Errorf("base %q is not a ref in %s, locally or on a remote%s", ref, repo, fetchNote(fetchErr))
+	}
+	return resolved, err
 }
 
 type addRepoOptions struct {
