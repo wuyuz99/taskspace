@@ -46,6 +46,11 @@ const legacyRecord = `{
 }
 `
 
+// upgradeRecord brings a record to the current format, as any change does.
+func upgradeRecord(s *Store, name string) (*Task, error) {
+	return s.Update(context.Background(), name, "test", func(*Task) error { return nil })
+}
+
 func writeRecord(t *testing.T, s *Store, name, raw string) {
 	t.Helper()
 	if err := os.MkdirAll(s.TasksDir(), 0o755); err != nil {
@@ -110,7 +115,7 @@ func TestLoadReadsALegacyRecordWithoutRewritingIt(t *testing.T) {
 func TestUpgradeKeepsEverythingAndMovesTheNotes(t *testing.T) {
 	s := newTestStore(t)
 	writeRecord(t, s, "t", legacyRecord)
-	got, err := s.Upgrade(context.Background(), "t")
+	got, err := upgradeRecord(s, "t")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +145,7 @@ func TestUpgradeKeepsEverythingAndMovesTheNotes(t *testing.T) {
 
 	// Again, nothing changes.
 	before := rawRecord(t, s, "t")
-	if _, err := s.Upgrade(context.Background(), "t"); err != nil {
+	if _, err := upgradeRecord(s, "t"); err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(before, rawRecord(t, s, "t")) {
@@ -162,7 +167,7 @@ func TestUpgradeKeepsExistingNoteFiles(t *testing.T) {
 	if err := os.WriteFile(s.NotePath("t", HandoffFile), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Upgrade(context.Background(), "t"); err != nil {
+	if _, err := upgradeRecord(s, "t"); err != nil {
 		t.Fatal(err)
 	}
 	brief, _ := s.ReadNote("t", BriefFile)
@@ -186,7 +191,7 @@ func TestFailedUpgradeLeavesTheRecordForARetry(t *testing.T) {
 	if err := os.WriteFile(s.ContextDir("t"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Upgrade(context.Background(), "t"); err == nil {
+	if _, err := upgradeRecord(s, "t"); err == nil {
 		t.Fatal("upgrade succeeded without writing the notes")
 	}
 	if !bytes.Equal(rawRecord(t, s, "t"), []byte(legacyRecord)) {
@@ -195,7 +200,7 @@ func TestFailedUpgradeLeavesTheRecordForARetry(t *testing.T) {
 	if err := os.Remove(s.ContextDir("t")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Upgrade(context.Background(), "t"); err != nil {
+	if _, err := upgradeRecord(s, "t"); err != nil {
 		t.Fatal(err)
 	}
 	if brief, _ := s.ReadNote("t", BriefFile); brief.Text != "Reject expired cards.\n" {
@@ -241,6 +246,7 @@ func TestNewerAndMalformedRecordsAreLeftAlone(t *testing.T) {
 	s := newTestStore(t)
 	future := `{"version": 99, "name": "new", "shiny": true}` + "\n"
 	writeRecord(t, s, "new", future)
+	writeRecord(t, s, "negative", `{"version": -1, "name": "negative"}`)
 	writeRecord(t, s, "broken", "{not json\n")
 	if _, err := s.Create("ok"); err != nil {
 		t.Fatal(err)
@@ -250,15 +256,18 @@ func TestNewerAndMalformedRecordsAreLeftAlone(t *testing.T) {
 	if !errors.Is(err, ErrUnsupportedVersion) || !strings.Contains(err.Error(), "upgrade tspace") {
 		t.Fatalf("Load of a newer record = %v", err)
 	}
-	if _, err := s.Upgrade(context.Background(), "new"); !errors.Is(err, ErrUnsupportedVersion) {
+	if _, err := upgradeRecord(s, "new"); !errors.Is(err, ErrUnsupportedVersion) {
 		t.Fatalf("Upgrade of a newer record = %v", err)
+	}
+	if _, err := upgradeRecord(s, "negative"); err == nil || !strings.Contains(err.Error(), "damaged") {
+		t.Fatalf("Upgrade of a negative version = %v", err)
 	}
 	if _, err := s.Load("broken"); err == nil || !strings.Contains(err.Error(), filepath.Base(s.path("broken"))) {
 		t.Fatalf("Load of a malformed record = %v", err)
 	}
 	tasks, err := s.List()
 	var skipped *SkippedError
-	if !errors.As(err, &skipped) || len(skipped.Errs) != 2 || len(tasks) != 1 || tasks[0].Name != "ok" {
+	if !errors.As(err, &skipped) || len(skipped.Errs) != 3 || len(tasks) != 1 || tasks[0].Name != "ok" {
 		t.Fatalf("List = %v, %v", tasks, err)
 	}
 	if string(rawRecord(t, s, "new")) != future || string(rawRecord(t, s, "broken")) != "{not json\n" {
@@ -274,7 +283,7 @@ func TestUpgradeAndUpdateTogether(t *testing.T) {
 	up := startHelper(t, s, "upgrade-hold", path)
 	up.waitReady(t)
 	upd := startHelper(t, s, "update-ticket", path)
-	time.Sleep(300 * time.Millisecond)
+	upd.waitBlocked(t)
 	release()
 	if code := up.exit(t); code != 0 {
 		t.Fatalf("upgrade exited %d: %s", code, up.errText())
@@ -291,5 +300,29 @@ func TestUpgradeAndUpdateTogether(t *testing.T) {
 	}
 	if brief, _ := s.ReadNote("t", BriefFile); brief.Text != "Reject expired cards.\n" {
 		t.Fatalf("brief %q", brief.Text)
+	}
+}
+
+// Notes shows what an upgrade would leave, without writing anything.
+func TestNotesOfALegacyRecord(t *testing.T) {
+	s := newTestStore(t)
+	writeRecord(t, s, "t", legacyRecord)
+	if err := s.WriteNote("t", BriefFile, "file brief\n"); err != nil {
+		t.Fatal(err)
+	}
+	tk, err := s.Load("t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	brief, handoff, err := s.Notes(tk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if brief.Text != "file brief\n" || handoff.Text != "Frontend next.\n" ||
+		!handoff.UpdatedAt.Equal(time.Date(2026, 9, 1, 10, 30, 0, 0, time.UTC)) {
+		t.Fatalf("notes %+v / %+v", brief, handoff)
+	}
+	if _, err := os.Stat(s.NotePath("t", HandoffFile)); !os.IsNotExist(err) {
+		t.Fatalf("Notes wrote the handoff: %v", err)
 	}
 }

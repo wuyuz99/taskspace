@@ -53,10 +53,15 @@ func lockHelper(mode string) int {
 			return nil
 		})
 	case "update-ticket":
+		// $STARTED before it asks for the lock, $DONE once it has saved.
+		_ = os.WriteFile(os.Getenv("STARTED"), nil, 0o644)
 		_, err = s.Update(ctx, "t", "test", func(t *Task) error {
 			t.Ticket = "from B"
 			return nil
 		})
+		if err == nil {
+			_ = os.WriteFile(os.Getenv("DONE"), nil, 0o644)
+		}
 	case "create":
 		_, err = s.Create("t")
 	case "delete":
@@ -87,8 +92,8 @@ func lockHelper(mode string) int {
 }
 
 type helper struct {
-	cmd           *exec.Cmd
-	ready, stderr string
+	cmd                          *exec.Cmd
+	ready, started, done, stderr string
 }
 
 func startHelper(t *testing.T, s *Store, mode, release string) *helper {
@@ -98,7 +103,8 @@ func startHelper(t *testing.T, s *Store, mode, release string) *helper {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	h := &helper{ready: filepath.Join(dir, "ready"), stderr: filepath.Join(dir, "stderr")}
+	h := &helper{ready: filepath.Join(dir, "ready"), started: filepath.Join(dir, "started"),
+		done: filepath.Join(dir, "done"), stderr: filepath.Join(dir, "stderr")}
 	errf, err := os.Create(h.stderr)
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +112,7 @@ func startHelper(t *testing.T, s *Store, mode, release string) *helper {
 	t.Cleanup(func() { errf.Close() })
 	h.cmd = exec.Command(self)
 	h.cmd.Env = append(os.Environ(), "TSPACE_TEST_LOCK_HELPER="+mode, "TSPACE_TEST_ROOT="+s.Root(),
-		"READY="+h.ready, "RELEASE="+release)
+		"READY="+h.ready, "RELEASE="+release, "STARTED="+h.started, "DONE="+h.done)
 	h.cmd.Stderr = errf
 	if err := h.cmd.Start(); err != nil {
 		t.Fatal(err)
@@ -123,6 +129,24 @@ func (h *helper) waitReady(t *testing.T) {
 		}
 	}
 	t.Fatal("helper never took the lock")
+}
+
+// waitBlocked checks that an update-ticket helper has started and is still
+// waiting for the lock, so a test races what it means to.
+func (h *helper) waitBlocked(t *testing.T) {
+	t.Helper()
+	for deadline := time.Now().Add(20 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		if _, err := os.Stat(h.started); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("helper never started")
+		}
+	}
+	time.Sleep(200 * time.Millisecond) // long enough to have finished, unblocked
+	if _, err := os.Stat(h.done); err == nil {
+		t.Fatal("the update did not wait for the lock")
+	}
 }
 
 // exit waits for the helper and returns its exit code.
@@ -166,7 +190,7 @@ func TestConcurrentUpdatesKeepBothChanges(t *testing.T) {
 	b := startHelper(t, s, "update-ticket", path)
 	// Without the lock, B would load, save and exit while A still waits, and A
 	// would then save over B's ticket.
-	time.Sleep(300 * time.Millisecond)
+	b.waitBlocked(t)
 	release()
 	if code := a.exit(t); code != 0 {
 		t.Fatalf("A exited %d: %s", code, a.errText())

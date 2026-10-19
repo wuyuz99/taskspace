@@ -122,13 +122,38 @@ func (s *Store) RemoveNotes(taskName string) ([]string, error) {
 	return held, nil
 }
 
+// Notes reads a task's brief and handoff as they are, changing nothing. For an
+// outdated record that is what its upgrade would leave: an inline note shows
+// where no note file holds text, keeping its recorded handoff time.
+func (s *Store) Notes(t *Task) (brief, handoff Note, err error) {
+	if brief, err = s.ReadNote(t.Name, BriefFile); err != nil {
+		return brief, handoff, err
+	}
+	if handoff, err = s.ReadNote(t.Name, HandoffFile); err != nil {
+		return brief, handoff, err
+	}
+	if inlineWins(brief, t.LegacyBrief) {
+		brief = Note{Text: t.LegacyBrief}
+	}
+	if inlineWins(handoff, t.LegacyHandoff) {
+		handoff = Note{Text: t.LegacyHandoff}
+		if t.LegacyHandoffUpdatedAt != nil {
+			handoff.UpdatedAt = *t.LegacyHandoffUpdatedAt
+		}
+	}
+	return brief, handoff, nil
+}
+
+// inlineWins reports whether a legacy inline note is the task's rather than
+// its note file: a file with text is the newer of the two by definition, and
+// an empty file holds no note.
+func inlineWins(file Note, inline string) bool { return inline != "" && file.Text == "" }
+
 // moveLegacyNotes is the migration to version 1: it writes t's inline notes to
 // files and clears them from t, which is saved afterwards.
 //
-// A note file that already holds text wins: it is the newer of the two by
-// definition. An empty file holds no note, so the inline text fills it. Run
-// again after a failure part way, it finds the notes it already wrote and
-// leaves them.
+// Which copy wins is inlineWins', as for Notes. Run again after a failure part
+// way, it finds the notes it already wrote and leaves them.
 func (s *Store) moveLegacyNotes(t *Task) error {
 	var handoffAt time.Time
 	if t.LegacyHandoffUpdatedAt != nil {
@@ -149,7 +174,7 @@ func (s *Store) moveLegacyNotes(t *Task) error {
 		if err != nil {
 			return err
 		}
-		if existing.Text != "" {
+		if !inlineWins(existing, m.text) {
 			continue
 		}
 		if err := s.WriteNote(t.Name, m.file, m.text); err != nil {
