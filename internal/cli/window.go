@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/wuyuz99/taskspace/internal/runtime"
 	"github.com/wuyuz99/taskspace/internal/task"
+	"github.com/wuyuz99/taskspace/internal/workspace"
 )
 
 // extraWindowPrefix starts the name of every window `tspace window` opens.
@@ -62,7 +63,10 @@ func (a *App) newWindowCmd() *cobra.Command {
 			if useAgent && len(argv) > 0 {
 				return fmt.Errorf("choose either --agent or a command after --")
 			}
-			managing := forget != "" || rename != ""
+			managing := cmd.Flags().Changed("forget") || cmd.Flags().Changed("rename")
+			if (cmd.Flags().Changed("forget") && strings.TrimSpace(forget) == "") || (cmd.Flags().Changed("rename") && strings.TrimSpace(rename) == "") {
+				return fmt.Errorf("--forget and --rename need a window name")
+			}
 			if managing && (root || useAgent || save || detach || name != "") {
 				return fmt.Errorf("--forget and --rename take only the task and window names")
 			}
@@ -94,22 +98,27 @@ func (a *App) newWindowCmd() *cobra.Command {
 				return fmt.Errorf("--root cannot be combined with a repository")
 			}
 
+			ctx := cmd.Context()
+			session := a.Runtime.SessionName(t.Name)
+			st, stateErr := a.Runtime.State(ctx, session)
+			running := stateErr == nil && st.Exists
+			if !running && !save {
+				if stateErr != nil {
+					return stateErr
+				}
+				return fmt.Errorf("task %s has no running session; start it with: tspace open %s", t.Name, t.Name)
+			}
 			// A window saved for later, with nothing running to open it in,
 			// only needs its repository to be the task's: start makes the
 			// worktree.
-			later := save && !a.sessionRunning(cmd.Context(), t)
+			later := !running
 			place, dir := "root", a.Store.TaskDir(t.Name)
 			if !root && !defaultsToRoot(t, repoArg) {
-				r, repoName, err := a.worktreeDir(t, repoArg)
-				if err != nil && later {
-					if repoName = repoArg; repoName == "" {
-						repoName = t.RepoNames()[0]
-					}
-					var ok bool
-					if r, ok = t.Repo(repoName); ok {
-						err = nil
-					}
+				resolve := a.worktreeDir
+				if later {
+					resolve = workspace.ResolveRepo
 				}
+				r, repoName, err := resolve(t, repoArg)
 				if err != nil {
 					return err
 				}
@@ -149,21 +158,12 @@ func (a *App) newWindowCmd() *cobra.Command {
 				return a.Store.Save(t)
 			}
 
-			ctx := cmd.Context()
-			session := a.Runtime.SessionName(t.Name)
-			st, err := a.Runtime.State(ctx, session)
-			if err != nil && !save {
-				return err
-			}
-			if err != nil || !st.Exists {
-				if save {
-					if err := saveWindow(); err != nil {
-						return err
-					}
-					a.printf("saved window %s for %s; start opens it\n", saved.SessionName(), t.Name)
-					return nil
+			if later {
+				if err := saveWindow(); err != nil {
+					return err
 				}
-				return fmt.Errorf("task %s has no running session; start it with: tspace open %s", t.Name, t.Name)
+				a.printf("saved window %s for %s; start opens it\n", saved.SessionName(), t.Name)
+				return nil
 			}
 			taken := func(n string) bool {
 				_, ok := st.Pane(a.Runtime.WindowName(n))
@@ -175,7 +175,7 @@ func (a *App) newWindowCmd() *cobra.Command {
 				if err := task.ValidateName("window", name); err != nil {
 					return err
 				}
-				window = extraWindowPrefix + name
+				window = task.Window{Name: name}.SessionName()
 				if taken(window) {
 					return fmt.Errorf("window %s already exists in %s's session", window, t.Name)
 				}
@@ -193,6 +193,10 @@ func (a *App) newWindowCmd() *cobra.Command {
 
 			// An extra window has no signal of its own, so its agent falls back to the directory.
 			w := runtime.Window{Name: window, Dir: dir, Command: argv, Transient: len(argv) == 0, Env: a.windowEnv(t.Name, "")}
+			if save {
+				// Exactly as start will recreate it.
+				w = workspace.ExtraWindow(a.Store, t, saved)
+			}
 			if err := a.Runtime.OpenWindow(ctx, session, w); err != nil {
 				return err
 			}
@@ -262,12 +266,14 @@ func (a *App) renameWindow(ctx context.Context, t *task.Task, from, to string) e
 	}
 	i, saved := t.SavedWindow(from)
 	session := a.Runtime.SessionName(t.Name)
+	// Without the session's state, an open window could keep its old name
+	// while the saved one changes, and start would open it twice.
 	st, err := a.Runtime.State(ctx, session)
-	if err != nil && !saved {
+	if err != nil {
 		return err
 	}
 	open := false
-	if err == nil && st.Exists {
+	if st.Exists {
 		_, open = st.Pane(a.Runtime.WindowName(oldName))
 		if _, taken := st.Pane(a.Runtime.WindowName(newName)); taken {
 			return fmt.Errorf("%s's session already has a window %s", t.Name, newName)
@@ -290,7 +296,13 @@ func (a *App) renameWindow(ctx context.Context, t *task.Task, from, to string) e
 			return err
 		}
 	}
-	where := map[[2]bool]string{{true, true}: "open and saved", {true, false}: "open", {false, true}: "saved"}[[2]bool{open, saved}]
+	where := "open and saved"
+	switch {
+	case !saved:
+		where = "open"
+	case !open:
+		where = "saved"
+	}
 	a.printf("renamed %s to %s in %s (%s)\n", oldName, newName, t.Name, where)
 	return nil
 }

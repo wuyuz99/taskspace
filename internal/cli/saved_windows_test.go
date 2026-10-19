@@ -75,6 +75,12 @@ func TestSavedWindows(t *testing.T) {
 	if err := window("--save", "--", "x"); err == nil {
 		t.Fatal("--save accepted without --name")
 	}
+	if err := window("--root", "--name", "root", "--save"); err == nil {
+		t.Fatal("a window saved as the root window")
+	}
+	if err := window("--rename=", "x"); err == nil || !strings.Contains(err.Error(), "need a window name") {
+		t.Fatalf("empty --rename = %v", err)
+	}
 	if got := h.load(t, "PAY-1").Windows; len(got) != 2 || got[0].Repo != "backend" || !slices.Equal(got[0].Command, []string{"lazygit"}) || got[1].Repo != "" {
 		t.Fatalf("saved %+v", got)
 	}

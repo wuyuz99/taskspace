@@ -22,7 +22,7 @@ import (
 // its handoff — lives in Markdown files under the task's .context directory,
 // where a person and an agent in a worktree can both reach it. See notes.go.
 type Task struct {
-	// Version is the record's format; see CurrentVersion.
+	// Version is the record's format; see CurrentVersion and formatVersion.
 	Version   int             `json:"version,omitempty"`
 	Name      string          `json:"name"`
 	Repos     map[string]Repo `json:"repos,omitempty"`
@@ -223,7 +223,9 @@ func (t *Task) CanRunAgentIn(name string) bool {
 
 // New returns an empty task with the given name.
 func New(name string) *Task {
-	return &Task{Version: CurrentVersion, Name: name, Repos: map[string]Repo{}}
+	t := &Task{Name: name, Repos: map[string]Repo{}}
+	t.Version = t.formatVersion()
+	return t
 }
 
 // RepoNames returns the repo names in stable sorted order, so that output and

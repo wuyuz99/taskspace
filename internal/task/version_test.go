@@ -125,7 +125,7 @@ func TestUpgradeKeepsEverythingAndMovesTheNotes(t *testing.T) {
 		t.Fatal(err)
 	}
 	checkLegacyFields(t, reloaded)
-	if reloaded.Version != CurrentVersion || reloaded.Outdated() {
+	if reloaded.Version != 1 || reloaded.Outdated() {
 		t.Errorf("version %d after upgrade", reloaded.Version)
 	}
 	raw := string(rawRecord(t, s, "t"))
@@ -208,19 +208,24 @@ func TestFailedUpgradeLeavesTheRecordForARetry(t *testing.T) {
 	}
 }
 
-func TestNewRecordsCarryTheCurrentVersion(t *testing.T) {
+// A record is written in the oldest format that holds it: version 2 only
+// with saved windows, which a version 1 tspace would drop.
+func TestRecordsCarryTheVersionTheyNeed(t *testing.T) {
 	s := newTestStore(t)
 	if _, err := s.Create("t"); err != nil {
 		t.Fatal(err)
 	}
-	var raw struct {
-		Version int `json:"version"`
+	version := func() int {
+		var raw struct {
+			Version int `json:"version"`
+		}
+		if err := json.Unmarshal(rawRecord(t, s, "t"), &raw); err != nil {
+			t.Fatal(err)
+		}
+		return raw.Version
 	}
-	if err := json.Unmarshal(rawRecord(t, s, "t"), &raw); err != nil {
-		t.Fatal(err)
-	}
-	if raw.Version != CurrentVersion {
-		t.Fatalf("new record has version %d", raw.Version)
+	if v := version(); v != 1 {
+		t.Fatalf("new record has version %d", v)
 	}
 	tk, err := s.Load("t")
 	if err != nil {
@@ -228,15 +233,28 @@ func TestNewRecordsCarryTheCurrentVersion(t *testing.T) {
 	}
 	tk.Title, tk.Agent = "kept", []string{"a", "b"}
 	tk.SetRepo("r", Repo{Path: "/p", Branch: "b", Worktree: "/w", Resume: []string{"a", "-c"}})
+	tk.Windows = []Window{{Name: "git", Repo: "r", Command: []string{"lazygit"}}}
 	if err := s.Save(tk); err != nil {
 		t.Fatal(err)
+	}
+	if v := version(); v != CurrentVersion {
+		t.Fatalf("record with windows has version %d", v)
 	}
 	back, err := s.Load("t")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if back.Title != "kept" || !slices.Equal(back.Agent, tk.Agent) || !slices.Equal(back.Repos["r"].Resume, []string{"a", "-c"}) {
+	if back.Title != "kept" || !slices.Equal(back.Agent, tk.Agent) || !slices.Equal(back.Repos["r"].Resume, []string{"a", "-c"}) ||
+		len(back.Windows) != 1 || back.Windows[0].Repo != "r" {
 		t.Fatalf("round trip: %+v", back)
+	}
+	// Without its windows again, older tspace can read it again.
+	back.Windows = nil
+	if err := s.Save(back); err != nil {
+		t.Fatal(err)
+	}
+	if v := version(); v != 1 {
+		t.Fatalf("record without windows has version %d", v)
 	}
 }
 

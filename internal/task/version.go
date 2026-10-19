@@ -15,8 +15,10 @@ import (
 //   - Load reads any version up to CurrentVersion as it is, and rewrites
 //     nothing: listing, status and showing a task never change state. A
 //     newer version is refused with ErrUnsupportedVersion and left alone.
-//   - Save brings the record to CurrentVersion first, running each migration
-//     in order. Every write goes through Save under the task's lock (see
+//   - Save brings the record up to date first, running each migration in
+//     order, and then writes it in the oldest format that holds everything in
+//     it (see formatVersion): a change that only some records use, such as
+//     saved windows, locks an older tspace out of those records alone. Every write goes through Save under the task's lock (see
 //     Lock), so a migration is a write like any other: it starts from the
 //     latest record and cannot race an update. Update upgrades before it
 //     applies its change, and so must anything that writes a note of an
@@ -56,9 +58,19 @@ func init() {
 	}
 }
 
-// Outdated reports whether t's record is in an older format, which its next
-// save brings up to date.
-func (t *Task) Outdated() bool { return t.Version < CurrentVersion }
+// Outdated reports whether t's record is in an older format than it needs,
+// which its next save brings up to date.
+func (t *Task) Outdated() bool { return t.Version < t.formatVersion() }
+
+// formatVersion is the oldest format that holds everything in t. Version 2
+// adds only saved windows, so a task without any stays readable by a tspace
+// that knows version 1.
+func (t *Task) formatVersion() int {
+	if len(t.Windows) > 0 {
+		return 2
+	}
+	return 1
+}
 
 func checkVersion(t *Task) error {
 	if t.Version < 0 {
@@ -83,5 +95,6 @@ func (s *Store) upgrade(t *Task) error {
 		}
 		t.Version++
 	}
+	t.Version = t.formatVersion()
 	return nil
 }
