@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 )
 
@@ -36,6 +37,31 @@ type Config struct {
 	// Adapters maps a multiplexer name to the command of its adapter, for
 	// adapters not on PATH as tspace-mux-NAME.
 	Adapters map[string][]string `json:"adapters,omitempty"`
+	// TicketPattern is a regular expression that finds the ticket key in a new
+	// task's name, for tasks given no --ticket. Off when empty: tspace knows no
+	// ticket system's keys.
+	TicketPattern string `json:"ticket_pattern,omitempty"`
+}
+
+// TicketFrom is the ticket the pattern finds in a task name: its first
+// capture group if it has one, else the whole match, else "".
+func (c *Config) TicketFrom(name string) string {
+	if c.TicketPattern == "" {
+		return ""
+	}
+	re, err := regexp.Compile(c.TicketPattern)
+	if err != nil {
+		return ""
+	}
+	m := re.FindStringSubmatch(name)
+	switch {
+	case m == nil:
+		return ""
+	case len(m) > 1:
+		return m[1]
+	default:
+		return m[0]
+	}
 }
 
 // DefaultBranchPrefix prefixes a task's branch when the config names none.
