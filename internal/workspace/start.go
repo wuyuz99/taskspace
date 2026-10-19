@@ -31,10 +31,10 @@ type StartResult struct {
 // Start creates the task's missing worktrees, running each new one's
 // post_create hook, and brings up its session with the windows that are not
 // there yet. It is safe to repeat: existing worktrees and windows, dead ones
-// included, are left alone. It returns with the lock released, so a caller
-// may attach to the session.
+// included, are left alone. It releases the task's lock before it returns,
+// so a caller may attach to the session, unless ctx came holding it already.
 func (s *Service) Start(ctx context.Context, name string, opts StartOptions) (*StartResult, error) {
-	t, ctx, unlock, err := s.Lock(ctx, name, "tspace start", true)
+	t, ctx, unlock, err := s.Lock(ctx, name, s.command("tspace start"), true)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +84,7 @@ func (s *Service) Start(ctx context.Context, name string, opts StartOptions) (*S
 	// made from that.
 	switch {
 	case len(bases) > 0:
-		latest, err := s.Store.Update(ctx, t.Name, "tspace start "+t.Name, func(cur *task.Task) error {
+		latest, err := s.Store.Update(ctx, t.Name, s.command("tspace start")+" "+t.Name, func(cur *task.Task) error {
 			for name, base := range bases {
 				if r, ok := cur.Repos[name]; ok {
 					r.Base = base
@@ -109,10 +109,10 @@ func (s *Service) Start(ctx context.Context, name string, opts StartOptions) (*S
 	var windows []runtime.Window
 	withRoot := len(opts.Repos) == 0 && t.HasRootWindow()
 	if withRoot {
-		windows = append(windows, s.RootWindow(t))
+		windows = append(windows, RootWindow(s.Store, t))
 	}
 	for _, name := range names {
-		windows = append(windows, s.RepoWindow(t, name))
+		windows = append(windows, RepoWindow(s.Store, t, name))
 	}
 
 	if opts.NoRuntime {

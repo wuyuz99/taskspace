@@ -12,7 +12,7 @@ import (
 // Stop ends the task's session, interrupting its agents first, and leaves
 // worktrees and branches alone. It reports whether there was a session.
 func (s *Service) Stop(ctx context.Context, name string) (running bool, err error) {
-	t, ctx, unlock, err := s.Lock(ctx, name, "tspace stop", true)
+	t, ctx, unlock, err := s.Lock(ctx, name, s.command("tspace stop"), true)
 	if err != nil {
 		return false, err
 	}
@@ -36,36 +36,47 @@ func (s *Service) Stop(ctx context.Context, name string) (running bool, err erro
 	return true, nil
 }
 
-// Restart relaunches a dead window: a repository's, or the root window for
-// task.RootWindowName. With resume it runs the window's resume command,
-// which brings the agent back with its conversation, instead of its command.
-// It returns the window's label, such as "PAY-1/backend".
-func (s *Service) Restart(ctx context.Context, name, window string, resume bool) (label string, err error) {
-	t, ctx, unlock, err := s.Lock(ctx, name, "tspace restart", true)
+// RestartOptions choose the window Restart relaunches, and how.
+type RestartOptions struct {
+	// Root is the task-root window; otherwise Repo's.
+	Root bool
+	Repo string
+	// Resume runs the window's resume command, which brings the agent back
+	// with its conversation, instead of its command.
+	Resume bool
+}
+
+// Restart relaunches a dead window. It returns the window's label, such as
+// "PAY-1/backend".
+func (s *Service) Restart(ctx context.Context, name string, opts RestartOptions) (label string, err error) {
+	t, ctx, unlock, err := s.Lock(ctx, name, s.command("tspace restart"), true)
 	if err != nil {
 		return "", err
 	}
 	defer unlock()
 	var w runtime.Window
 	label = t.Name
-	if window == task.RootWindowName {
+	if opts.Root {
 		if !t.HasRootWindow() {
 			return "", fmt.Errorf("task %s has no root window; its agent runs in %s: tspace restart %s %s", t.Name, t.AgentRepo, t.Name, t.AgentRepo)
 		}
-		w = s.RootWindow(t)
+		w = RootWindow(s.Store, t)
 		if info, err := os.Stat(w.Dir); err != nil || !info.IsDir() {
 			return "", fmt.Errorf("task directory %s is missing; run: tspace start %s", w.Dir, t.Name)
 		}
 		label += " root window"
 	} else {
-		_, repo, err := WorktreeDir(t, window)
+		if opts.Repo == "" {
+			return "", fmt.Errorf("name a repository of %s to restart, or its root window", t.Name)
+		}
+		_, repo, err := WorktreeDir(t, opts.Repo)
 		if err != nil {
 			return "", err
 		}
-		w = s.RepoWindow(t, repo)
+		w = RepoWindow(s.Store, t, repo)
 		label += "/" + repo
 	}
-	if resume {
+	if opts.Resume {
 		argv := t.ResumeFor(w.Name)
 		switch {
 		case len(argv) > 0:
@@ -74,7 +85,7 @@ func (s *Service) Restart(ctx context.Context, name, window string, resume bool)
 		default:
 			return "", fmt.Errorf("%s has no resume command; set one with the agent's own, e.g. %s", label, ResumeHint(t, w.Name))
 		}
-		w.Command = s.ExpandArgv(t, argv)
+		w.Command = ExpandArgv(s.Store, t, argv)
 	}
 	if err := s.ensureContextDir(t); err != nil {
 		return "", err

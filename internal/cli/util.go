@@ -78,3 +78,17 @@ func isTerminal(w io.Writer) bool {
 	}
 	return info.Mode()&os.ModeCharDevice != 0
 }
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
+}
+
+func stashPlural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "es"
+}

@@ -20,7 +20,7 @@ func (a *App) newCleanCmd() *cobra.Command {
 			"remove it here once the worktrees are gone, finishing the task in one step.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return a.workspace().Clean(cmd.Context(), args[0], workspace.CleanOptions{DeleteBranch: deleteBranch, Force: force, Remove: rm})
+			return a.workspaceFor(cmd).Clean(cmd.Context(), args[0], workspace.CleanOptions{DeleteBranch: deleteBranch, Force: force, Remove: rm})
 		},
 	}
 	cmd.Flags().BoolVar(&deleteBranch, "delete-branch", false,
@@ -30,18 +30,4 @@ func (a *App) newCleanCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&rm, "rm", false,
 		"also delete the task record and its notes, as tspace task rm does")
 	return cmd
-}
-
-func plural(n int) string {
-	if n == 1 {
-		return ""
-	}
-	return "s"
-}
-
-func stashPlural(n int) string {
-	if n == 1 {
-		return ""
-	}
-	return "es"
 }

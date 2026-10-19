@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -315,36 +316,33 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if err != nil {
 				return "", err
 			}
-			return fmt.Sprintf("session %s is up; attach with: tspace attach %s", res.Session, res.Task.Name), nil
+			return startedText(res), nil
 		})
 	case "r":
 		if row.Runtime != status.RuntimeDead {
 			m.note = fmt.Sprintf("%s is %s; only a dead window can be restarted", row.label(), row.Runtime)
 			return m, nil
 		}
-		window := row.Window
+		opts := workspace.RestartOptions{Root: row.root(), Repo: row.Window}
 		if row.root() {
-			window = task.RootWindowName
+			opts.Repo = ""
 		}
 		return m, m.act(func(ws *workspace.Service) (string, error) {
-			label, err := ws.Restart(m.ctx, row.Task, window, false)
+			label, err := ws.Restart(m.ctx, row.Task, opts)
 			if err != nil {
 				return "", err
 			}
-			return fmt.Sprintf("relaunched %s; use tspace status %s to check its state", label, row.Task), nil
+			return restartedText(label, row.Task), nil
 		})
 	case "x":
 		m.confirm = &dashConfirm{
 			prompt: fmt.Sprintf("stop %s and end all its windows? worktrees are kept (y/N)", row.Task),
 			run: m.act(func(ws *workspace.Service) (string, error) {
 				running, err := ws.Stop(m.ctx, row.Task)
-				switch {
-				case err != nil:
+				if err != nil {
 					return "", err
-				case !running:
-					return "nothing running for " + row.Task, nil
 				}
-				return "stopped " + row.Task + "; worktrees left in place", nil
+				return stoppedText(row.Task, running), nil
 			}),
 		}
 		return m, nil
@@ -377,17 +375,31 @@ func (m dashModel) focus(row dashRow) tea.Cmd {
 }
 
 // act performs a lifecycle action through the same service the CLI's
-// commands use, so the dashboard and the CLI cannot drift apart, on a copy of
-// the App whose output is captured so nothing is written over the screen. It
-// does not wait for a task another command is changing: nobody would see the
-// wait, or be able to stop it.
+// commands use, and says what it did in the CLI's words, so the two cannot
+// drift apart. Nothing is written over the screen: the last warning, as the
+// CLI would show it, goes after the text instead, and hooks' output nowhere.
+// It does not wait for a task another command is changing: nobody would see
+// the wait, or be able to stop it.
 func (m dashModel) act(do func(*workspace.Service) (string, error)) tea.Cmd {
 	return func() tea.Msg {
-		var out bytes.Buffer
+		var warning bytes.Buffer
 		sub := *m.app
-		sub.Out, sub.Err = &out, &out
+		sub.Out, sub.Err = io.Discard, &warning
 		sub.noWait = true
-		text, err := do(sub.workspace())
+		ws := sub.workspace()
+		ws.Stdout, ws.Stderr = io.Discard, io.Discard
+		last := ""
+		ws.Progress = func(e workspace.Event) {
+			warning.Reset()
+			sub.render(e)
+			if w := strings.TrimSpace(warning.String()); w != "" {
+				last = oneLine(w)
+			}
+		}
+		text, err := do(ws)
+		if err == nil && last != "" {
+			text += "; " + last
+		}
 		return dashDoneMsg{text: text, err: err}
 	}
 }

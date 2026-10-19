@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -39,7 +38,7 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			res, err := a.workspace().Start(ctx, args[0], workspace.StartOptions{Repos: args[1:], NoRuntime: noRuntime})
+			res, err := a.workspaceFor(cmd).Start(ctx, args[0], workspace.StartOptions{Repos: args[1:], NoRuntime: noRuntime})
 			if err != nil || noRuntime {
 				return err
 			}
@@ -50,7 +49,7 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 				setTitle(a.Out, "tspace: "+res.Task.Name, a.noTitle)
 				return a.Runtime.Attach(ctx, res.Session)
 			}
-			a.printf("\nsession %s is up; attach with: tspace attach %s\n", res.Session, res.Task.Name)
+			a.printf("\n%s\n", startedText(res))
 			return nil
 		},
 	}
@@ -71,12 +70,6 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 	return cmd
 }
 
-// runPostCreate runs a repository's post_create hook; see
-// workspace.Service.RunPostCreate.
-func (a *App) runPostCreate(ctx context.Context, t *task.Task, name string, r task.Repo) error {
-	return a.workspace().RunPostCreate(ctx, t, name, r)
-}
-
 func (a *App) newStopCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "stop TASK",
@@ -85,15 +78,11 @@ func (a *App) newStopCmd() *cobra.Command {
 			"Worktrees and branches are not touched.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			running, err := a.workspace().Stop(cmd.Context(), args[0])
+			running, err := a.workspaceFor(cmd).Stop(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}
-			if !running {
-				a.printf("nothing running for %s\n", args[0])
-				return nil
-			}
-			a.printf("stopped %s; worktrees left in place\n", args[0])
+			a.printf("%s\n", stoppedText(args[0], running))
 			return nil
 		},
 	}
@@ -121,15 +110,15 @@ func (a *App) newRestartCmd() *cobra.Command {
 			case !root && len(args) == 1:
 				return fmt.Errorf("name a repository, or use --root for the task-root window")
 			}
-			window := task.RootWindowName
+			opts := workspace.RestartOptions{Root: root, Resume: resume}
 			if !root {
-				window = args[1]
+				opts.Repo = args[1]
 			}
-			label, err := a.workspace().Restart(cmd.Context(), args[0], window, resume)
+			label, err := a.workspaceFor(cmd).Restart(cmd.Context(), args[0], opts)
 			if err != nil {
 				return err
 			}
-			a.printf("relaunched %s; use tspace status %s to check its state\n", label, args[0])
+			a.printf("%s\n", restartedText(label, args[0]))
 			return nil
 		}}
 	cmd.Flags().BoolVar(&root, "root", false, "restart the task-root window")
