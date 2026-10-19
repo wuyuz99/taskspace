@@ -135,3 +135,20 @@ func TestNewPicksBuiltinOrAdapter(t *testing.T) {
 		}
 	}
 }
+
+func TestRenameWindowCommands(t *testing.T) {
+	f := tsexec.NewFake()
+	if err := NewTmux(f).RenameWindow(ctx(), "tspace@t", "_git", "_lg"); err != nil {
+		t.Fatal(err)
+	}
+	if !f.Ran("rename-window -t =tspace@t:=_git _lg") {
+		t.Errorf("tmux: %v", f.Commands())
+	}
+	g := tsexec.NewFake()
+	if err := NewAdapter("wez", nil, g).RenameWindow(ctx(), "tspace@t", "_git", "_lg"); err != nil {
+		t.Fatal(err)
+	}
+	if !g.Ran("tspace-mux-wez rename tspace@t _git _lg") {
+		t.Errorf("adapter: %v", g.Commands())
+	}
+}

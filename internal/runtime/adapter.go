@@ -37,6 +37,9 @@ const AdapterPrefix = "tspace-mux-"
 //	ADAPTER attach SESSION           take over the terminal (stdin/stdout/stderr inherited)
 //	ADAPTER focus SESSION NAME       show NAME if tspace runs inside a client; print "yes" if it did
 //	ADAPTER select SESSION NAME      make NAME the window a later attach lands on
+//	ADAPTER rename SESSION OLD NEW   rename window OLD to NEW (optional: an
+//	                                 adapter without it fails, and only
+//	                                 renaming windows is unavailable)
 //
 // WIN is the arguments NAME DIR keep|close -- COMMAND...: COMMAND is never
 // empty (tspace resolves the user's shell), and keep says the window must stay
@@ -236,6 +239,14 @@ func (a *Adapter) Focus(ctx context.Context, session, window string) (bool, erro
 func (a *Adapter) Select(ctx context.Context, session, window string) error {
 	if _, err := a.call(ctx, "select", session, WindowName(window)); err != nil {
 		return fmt.Errorf("select %s in %s: %w", window, session, err)
+	}
+	return nil
+}
+
+// RenameWindow implements Runtime.
+func (a *Adapter) RenameWindow(ctx context.Context, session, from, to string) error {
+	if _, err := a.call(ctx, "rename", session, WindowName(from), WindowName(to)); err != nil {
+		return fmt.Errorf("rename %s to %s in %s (an adapter may not support renaming): %w", from, to, session, err)
 	}
 	return nil
 }

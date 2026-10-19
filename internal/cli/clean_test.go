@@ -43,8 +43,9 @@ func (s *stubRuntime) Stop(context.Context, string) error {
 	s.stopped = true
 	return nil
 }
-func (s *stubRuntime) Attach(context.Context, string) error         { return nil }
-func (s *stubRuntime) Select(context.Context, string, string) error { return nil }
+func (s *stubRuntime) Attach(context.Context, string) error                       { return nil }
+func (s *stubRuntime) Select(context.Context, string, string) error               { return nil }
+func (s *stubRuntime) RenameWindow(context.Context, string, string, string) error { return nil }
 func (s *stubRuntime) Focus(context.Context, string, string) (bool, error) {
 	return false, nil
 }

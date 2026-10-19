@@ -47,6 +47,9 @@ type Task struct {
 	// is added, or by task create --with-root, and never cleared on its own: a
 	// running root window must not vanish because a repository went.
 	RootWindow bool `json:"root_window,omitempty"`
+	// Windows are the extra windows its session gets on every start, besides
+	// the root and repository windows.
+	Windows []Window `json:"windows,omitempty"`
 
 	// Legacy fields of a version 0 record, which carried the Markdown inline
 	// before notes became files; the upgrade to version 1 moves them out.
@@ -86,6 +89,35 @@ func (r Repo) AgentLabel() string {
 		return "shell"
 	}
 	return filepath.Base(r.Agent[0])
+}
+
+// Window is an extra window saved with a task or a project.
+type Window struct {
+	// Name is the window's name without ExtraWindowPrefix.
+	Name string `json:"name"`
+	// Repo is the repository whose worktree it opens in; empty, the task root.
+	Repo string `json:"repo,omitempty"`
+	// Command is what it runs, as argv; empty, the user's shell.
+	Command []string `json:"command,omitempty"`
+}
+
+// ExtraWindowPrefix starts the name of every extra window. Repository names
+// must start with a letter or digit, so an extra window can never take a
+// repository's window name, and RootWindowName is already reserved.
+const ExtraWindowPrefix = "_"
+
+// SessionName is the window's name in the session.
+func (w Window) SessionName() string { return ExtraWindowPrefix + w.Name }
+
+// SavedWindow is the saved window named name, with or without its prefix.
+func (t *Task) SavedWindow(name string) (int, bool) {
+	name = strings.TrimPrefix(name, ExtraWindowPrefix)
+	for i, w := range t.Windows {
+		if w.Name == name {
+			return i, true
+		}
+	}
+	return -1, false
 }
 
 // RootWindowName names the task's root window. Repository names must start with
@@ -157,14 +189,29 @@ func (t *Task) AgentWindow() string {
 // back to the task-root window. Either way the task keeps a root window from
 // then on: one may have run an agent whose history is in the task directory,
 // so a later first repository must not move the agent into a worktree.
-func (t *Task) RemoveRepo(name string) {
+//
+// The saved windows that open in it go too, and are returned.
+func (t *Task) RemoveRepo(name string) (dropped []Window) {
 	delete(t.Repos, name)
+	kept := t.Windows[:0]
+	for _, w := range t.Windows {
+		if w.Repo == name {
+			dropped = append(dropped, w)
+		} else {
+			kept = append(kept, w)
+		}
+	}
+	t.Windows = kept
+	if len(t.Windows) == 0 {
+		t.Windows = nil
+	}
 	if name == t.AgentRepo {
 		t.AgentRepo = ""
 	}
 	if t.AgentRepo == "" {
 		t.RootWindow = true
 	}
+	return dropped
 }
 
 // CanRunAgentIn reports whether repository name can be AgentRepo: one with

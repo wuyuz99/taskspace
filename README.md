@@ -216,9 +216,25 @@ Extra windows are named with a leading `_` — `_backend-claude`,
 `_staging` — so they never take a repository's window name, and a name already
 in use is refused rather than duplicated. A shell window closes when you exit
 it; a command's window stays open after the command exits, so its output can
-still be read. Inside the multiplexer you are switched to the new window. Extra windows are
-not part of the task record: `start` and `open` do not recreate them, and `stop`
-ends them with the rest of the session.
+still be read. Inside the multiplexer you are switched to the new window. `stop`
+ends extra windows with the rest of the session.
+
+Windows you want every time — lazygit, a log tail, a spare shell — can be saved
+with the task. `start` and `open` then recreate them whenever they are not
+there, and project recipes saved from the task carry them to new tasks:
+
+```bash
+tspace window PAY-142 backend --name git --save -- lazygit   # open it now, and on every start
+tspace window PAY-142 --rename git lg                        # rename it, open and saved alike
+tspace window PAY-142 --forget lg                            # start no longer opens it
+```
+
+`--save` needs `--name`, which the window is recreated by; with no session
+running it only saves the window, so it can be set up before the first start.
+Starting some repositories (`tspace start TASK REPO`) opens only their saved
+windows, and `repo rm` forgets the ones that opened in the repository it
+removes. `task show` lists them. `--rename` works on any extra window, saved
+or not; the root and repository windows are named by the task.
 
 `tspace shell` is the other way to get a terminal: a plain subshell in the terminal
 you are already in, labelled and with `TSPACE_*` variables set, whether or not the
@@ -853,7 +869,8 @@ only once every worktree is gone: safely, unless `--force` discarded their work.
 | `tspace restart TASK REPO` / `tspace restart TASK --root` [`--resume`] | Relaunch a dead repository or root window, optionally resuming its conversation |
 | `tspace stop TASK` | Interrupt agents, end the session, keep worktrees |
 | `tspace attach TASK` | Attach (or switch the client when already inside the multiplexer) |
-| `tspace window TASK [REPO / --root] [--agent / -- CMD]` | Open another window in the running session |
+| `tspace window TASK [REPO / --root] [--agent / -- CMD] [--name N [--save]]` | Open another window in the running session, and with `--save` on every start |
+| `tspace window TASK --forget N` / `tspace window TASK --rename OLD NEW` | Forget a saved window; rename an extra window |
 | `tspace shell TASK [REPO / --root]` | Interactive shell in a worktree or the task root |
 | `tspace path TASK [REPO / --root]` | Print a worktree or task-root path, for `cd "$(...)"` |
 | `tspace exec TASK -- CMD` | Run a command in every worktree |

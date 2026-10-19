@@ -275,6 +275,14 @@ func (t *Tmux) Select(ctx context.Context, session, window string) error {
 	return nil
 }
 
+// RenameWindow implements Runtime.
+func (t *Tmux) RenameWindow(ctx context.Context, session, from, to string) error {
+	if _, err := t.tmux(ctx, "rename-window", "-t", windowTarget(session, WindowName(from)), WindowName(to)); err != nil {
+		return fmt.Errorf("rename %s to %s in %s: %w", from, to, session, err)
+	}
+	return nil
+}
+
 // launchArgv renders the command for a window. tmux takes the command as
 // trailing arguments.
 func (t *Tmux) launchArgv(w Window) []string { return launchArgv(w, t.Shell) }

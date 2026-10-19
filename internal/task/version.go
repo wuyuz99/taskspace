@@ -35,7 +35,7 @@ import (
 // config.json, projects and signals carry no version: they change only by
 // adding optional fields, which older and newer tspace alike ignore or leave
 // empty. They will get one when a change cannot be made that way.
-const CurrentVersion = 1
+const CurrentVersion = 2
 
 // ErrUnsupportedVersion is returned for a record from a newer tspace.
 var ErrUnsupportedVersion = errors.New("record written by a newer tspace")
@@ -44,6 +44,10 @@ var ErrUnsupportedVersion = errors.New("record written by a newer tspace")
 var migrations = []func(s *Store, t *Task) error{
 	// 0 -> 1: move the inline brief and handoff into note files.
 	(*Store).moveLegacyNotes,
+	// 1 -> 2: nothing to move. Version 2 records may hold saved windows,
+	// which a tspace that knows only version 1 would drop when it saved the
+	// record; it refuses a version 2 record instead.
+	func(*Store, *Task) error { return nil },
 }
 
 func init() {

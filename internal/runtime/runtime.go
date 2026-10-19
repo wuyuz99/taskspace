@@ -77,6 +77,8 @@ type Runtime interface {
 	Focus(ctx context.Context, session, window string) (bool, error)
 	// Select makes a window the one a later Attach lands on.
 	Select(ctx context.Context, session, window string) error
+	// RenameWindow gives a window of a running session another name.
+	RenameWindow(ctx context.Context, session, from, to string) error
 	// State reports what is observably running.
 	State(ctx context.Context, session string) (SessionState, error)
 }

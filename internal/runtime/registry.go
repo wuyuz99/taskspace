@@ -80,6 +80,9 @@ func (u Unavailable) Restart(context.Context, string, Window) error    { return 
 func (u Unavailable) Stop(context.Context, string) error               { return u.Err }
 func (u Unavailable) Attach(context.Context, string) error             { return u.Err }
 func (u Unavailable) Select(context.Context, string, string) error     { return u.Err }
+func (u Unavailable) RenameWindow(context.Context, string, string, string) error {
+	return u.Err
+}
 func (u Unavailable) Focus(context.Context, string, string) (bool, error) {
 	return false, u.Err
 }

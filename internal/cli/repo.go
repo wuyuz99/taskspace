@@ -775,7 +775,9 @@ func (a *App) newRepoRmCmd() *cobra.Command {
 			if args[1] == t.AgentRepo && len(t.Resume) > 0 {
 				a.warnf("note: the task's agent moves to the root window, at %s; a resume command that finds its conversation by directory will not find the one from %s\n", a.Store.TaskDir(t.Name), args[1])
 			}
-			t.RemoveRepo(args[1])
+			for _, w := range t.RemoveRepo(args[1]) {
+				a.warnf("note: forgot saved window %s, which opened in %s\n", w.SessionName(), args[1])
+			}
 			if err := a.Store.Save(t); err != nil {
 				return err
 			}
