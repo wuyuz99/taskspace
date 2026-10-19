@@ -53,7 +53,7 @@ func (a *App) newShellCmd() *cobra.Command {
 				label += "/" + name
 			}
 			setTitle(a.Out, "tspace: "+label, a.noTitle)
-			a.printTaskContext(cmd.Context(), t)
+			a.printTaskContext(t)
 
 			sh := os.Getenv("SHELL")
 			if sh == "" {

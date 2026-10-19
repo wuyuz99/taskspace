@@ -405,7 +405,7 @@ func TestTaskJSONReportsTheAgentWindow(t *testing.T) {
 	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--agent", "claude", "--repo", "backend="+h.repo); err != nil {
 		t.Fatal(err)
 	}
-	got := h.app.describeTask(context.Background(), h.load(t, "PAY-1"))
+	got := h.app.describeTask(h.load(t, "PAY-1"))
 	if got.AgentWindow != "backend" || got.RootWindow || !slices.Equal(got.Repos[0].Agent, []string{"claude"}) {
 		t.Fatalf("json: %+v", got)
 	}

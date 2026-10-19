@@ -179,6 +179,9 @@ func (s *Store) Load(name string) (*Task, error) {
 	}
 	// Trust the filename over the recorded name; the file is the identity.
 	t.Name = name
+	if err := checkVersion(&t); err != nil {
+		return nil, err
+	}
 	return &t, nil
 }
 
@@ -189,8 +192,12 @@ func (s *Store) Exists(name string) bool {
 }
 
 // Save writes a task atomically: temp file in the same directory, then rename.
+// It brings an outdated record to the current format first; see version.go.
 func (s *Store) Save(t *Task) error {
 	if err := ValidateName("task", t.Name); err != nil {
+		return err
+	}
+	if err := s.upgrade(t); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(s.TasksDir(), 0o755); err != nil {

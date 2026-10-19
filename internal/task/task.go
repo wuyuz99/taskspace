@@ -22,6 +22,8 @@ import (
 // its handoff — lives in Markdown files under the task's .context directory,
 // where a person and an agent in a worktree can both reach it. See notes.go.
 type Task struct {
+	// Version is the record's format; see CurrentVersion.
+	Version   int             `json:"version,omitempty"`
 	Name      string          `json:"name"`
 	Repos     map[string]Repo `json:"repos,omitempty"`
 	Title     string          `json:"title,omitempty"`
@@ -46,9 +48,9 @@ type Task struct {
 	// running root window must not vanish because a repository went.
 	RootWindow bool `json:"root_window,omitempty"`
 
-	// Legacy fields, read once and cleared by Store.MigrateNotes. Records
-	// written before notes became files carried the Markdown inline. Nothing
-	// should read these directly.
+	// Legacy fields of a version 0 record, which carried the Markdown inline
+	// before notes became files; the upgrade to version 1 moves them out.
+	// Only that migration, and a read of an outdated record, look at them.
 	//
 	// The timestamp is a pointer because `omitempty` does nothing for a struct:
 	// as a plain time.Time it wrote "0001-01-01T00:00:00Z" into every record
@@ -174,7 +176,7 @@ func (t *Task) CanRunAgentIn(name string) bool {
 
 // New returns an empty task with the given name.
 func New(name string) *Task {
-	return &Task{Name: name, Repos: map[string]Repo{}}
+	return &Task{Version: CurrentVersion, Name: name, Repos: map[string]Repo{}}
 }
 
 // RepoNames returns the repo names in stable sorted order, so that output and

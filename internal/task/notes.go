@@ -1,7 +1,6 @@
 package task
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -123,36 +122,13 @@ func (s *Store) RemoveNotes(taskName string) ([]string, error) {
 	return held, nil
 }
 
-// MigrateNotes moves a legacy record's inline Markdown into note files.
+// moveLegacyNotes is the migration to version 1: it writes t's inline notes to
+// files and clears them from t, which is saved afterwards.
 //
-// Records written before notes were files carried the text in JSON. This runs
-// the first time anything reads or writes a note, and clears the inline copy so
-// there is exactly one home for it. A note file that already exists wins: it is
-// the newer of the two by definition.
-//
-// It reloads the record under the task's lock, which ctx may carry, so a
-// process that loaded t earlier does not save over newer changes; t is updated
-// to match.
-func (s *Store) MigrateNotes(ctx context.Context, t *Task) (bool, error) {
-	if t.LegacyBrief == "" && t.LegacyHandoff == "" {
-		return false, nil
-	}
-	moved := false
-	_, err := s.Update(ctx, t.Name, "tspace (moving the notes of "+t.Name+" into files)", func(cur *Task) error {
-		if cur.LegacyBrief == "" && cur.LegacyHandoff == "" {
-			return nil // another process got there first
-		}
-		moved = true
-		return s.moveLegacyNotes(cur)
-	})
-	if err != nil {
-		return false, err
-	}
-	t.LegacyBrief, t.LegacyHandoff, t.LegacyHandoffUpdatedAt = "", "", nil
-	return moved, nil
-}
-
-// moveLegacyNotes writes t's inline notes to files and clears them from t.
+// A note file that already holds text wins: it is the newer of the two by
+// definition. An empty file holds no note, so the inline text fills it. Run
+// again after a failure part way, it finds the notes it already wrote and
+// leaves them.
 func (s *Store) moveLegacyNotes(t *Task) error {
 	var handoffAt time.Time
 	if t.LegacyHandoffUpdatedAt != nil {
