@@ -358,3 +358,36 @@ func (g *Git) Rebase(ctx context.Context, worktree, onto, upstream string) (undo
 	}
 	return true, err
 }
+
+// StashCount is the number of stashes made on branch, in any worktree of
+// repo: they share one stash list.
+func (g *Git) StashCount(ctx context.Context, repo, branch string) (int, error) {
+	return g.stashCount(ctx, repo, branch)
+}
+
+// Upstream is the branch branch tracks, such as "origin/main", or "".
+func (g *Git) Upstream(ctx context.Context, repo, branch string) (string, error) {
+	return g.upstreamOf(ctx, repo, branch)
+}
+
+// UnsetUpstream stops branch tracking anything.
+func (g *Git) UnsetUpstream(ctx context.Context, repo, branch string) error {
+	if _, err := g.git(ctx, repo, "branch", "--unset-upstream", branch); err != nil {
+		return fmt.Errorf("stop %s tracking its upstream: %w", branch, err)
+	}
+	return nil
+}
+
+// FullRefName is the full name of the ref ref names, such as
+// "refs/remotes/origin/main", or "" when it names a commit some other way:
+// HEAD~1, a reflog entry, an object ID.
+func (g *Git) FullRefName(ctx context.Context, repo, ref string) (string, error) {
+	res, err := g.git(ctx, repo, "rev-parse", "--symbolic-full-name", ref)
+	if err != nil {
+		if tsexec.IsExit(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return res.Out(), nil
+}

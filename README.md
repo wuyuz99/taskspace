@@ -309,10 +309,13 @@ tspace repo update PAY-142 backend --base origin/release           # compare wit
 tspace repo update PAY-142 backend --base origin/release --rebase  # and move the work onto it
 ```
 
-`--branch` renames the branch, checked out in the worktree if there is one, and
-never takes over a branch that already exists. `--base` changes what status and
-clean compare the branch with, and what `start` creates it from; on its own it
-leaves the branch where it is. `--rebase` moves the branch's commits from the
+`--branch` renames the branch, checked out in the worktree if there is one. It
+never takes over a branch that already exists, locally or on a remote, never
+renames one checked out outside the task, such as in your own clone, and drops
+the old name's upstream, saying how to push the new one. `--base` changes what status and
+clean compare the branch with, and what `start` creates it from, and is
+recorded as a branch, tag or commit, never something like `HEAD~1` that moves
+on its own; on its own it leaves the branch where it is. `--rebase` moves the branch's commits from the
 old base onto the new one, in a clean worktree; a rebase that stops on a
 conflict is undone, the record keeps the old base, and the error gives the git
 command to do it by hand.
