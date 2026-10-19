@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -30,6 +31,9 @@ func (a *App) newConfigCmd() *cobra.Command {
 			}
 			a.printf("branch: %s (new repositories' default branch)\n", c.Branch("TASK"))
 			a.printf("multiplexer: %s\n", multiplexerDisplay(multiplexerName(c), c))
+			if c.TicketPattern != "" {
+				a.printf("ticket pattern: %s\n", c.TicketPattern)
+			}
 			if len(c.Repos) == 0 {
 				a.printf("repos:  none registered (tspace config repo NAME PATH)\n")
 				return nil
@@ -39,7 +43,7 @@ func (a *App) newConfigCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.AddCommand(a.newConfigAgentCmd(), a.newConfigRepoCmd(), a.newConfigBranchPrefixCmd(), a.newConfigMultiplexerCmd(), a.newConfigHooksCmd(), a.newConfigResumeCmd())
+	cmd.AddCommand(a.newConfigAgentCmd(), a.newConfigRepoCmd(), a.newConfigBranchPrefixCmd(), a.newConfigMultiplexerCmd(), a.newConfigHooksCmd(), a.newConfigResumeCmd(), a.newConfigTicketPatternCmd())
 	return cmd
 }
 
@@ -172,6 +176,61 @@ func (a *App) newConfigBranchPrefixCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&unset, "unset", false, "restore the default prefix, agent/")
+	return cmd
+}
+
+func (a *App) newConfigTicketPatternCmd() *cobra.Command {
+	var unset bool
+	cmd := &cobra.Command{
+		Use:   "ticket-pattern [REGEXP | --unset]",
+		Short: "Show or set how a task's ticket is found in its name",
+		Long: "A task created without --ticket gets as its ticket what REGEXP matches in\n" +
+			"its name: the first parenthesized group if there is one, else the whole\n" +
+			"match. A name it does not match gets no ticket. Unset, names are never read\n" +
+			"as tickets. The syntax is Go's (RE2):\n\n" +
+			"  tspace config ticket-pattern '[A-Z][A-Z0-9]+-[0-9]+'   # ENG-123-login -> ENG-123\n" +
+			"  tspace config ticket-pattern '^gh-([0-9]+)$'           # gh-42 -> 42\n\n" +
+			"The ticket is recorded when the task is created, so changing the pattern\n" +
+			"leaves existing tasks alone.",
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if unset && len(args) > 0 {
+				return fmt.Errorf("choose either a pattern or --unset")
+			}
+			c, err := a.Store.LoadConfig()
+			if err != nil {
+				return err
+			}
+			switch {
+			case unset:
+				c.TicketPattern = ""
+			case len(args) == 0:
+				if c.TicketPattern == "" {
+					a.printf("none; task names are not read as tickets\n")
+				} else {
+					a.printf("%s\n", c.TicketPattern)
+				}
+				return nil
+			case args[0] == "":
+				return fmt.Errorf("pattern is empty; use --unset to clear it")
+			default:
+				if _, err := regexp.Compile(args[0]); err != nil {
+					return fmt.Errorf("pattern: %w", err)
+				}
+				c.TicketPattern = args[0]
+			}
+			if err := a.Store.SaveConfig(c); err != nil {
+				return err
+			}
+			if unset {
+				a.printf("cleared the ticket pattern\n")
+				return nil
+			}
+			a.printf("ticket pattern: %s (applies to tasks created from now on)\n", c.TicketPattern)
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&unset, "unset", false, "stop reading tickets from task names")
 	return cmd
 }
 

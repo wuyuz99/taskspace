@@ -34,8 +34,9 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 	var withRoot, start bool
 
 	cmd := &cobra.Command{
-		Use:   "create NAME [REPO...]",
-		Short: "Create a task",
+		Use:     "create NAME [REPO...]",
+		Aliases: []string{"new", "add"},
+		Short:   "Create a task",
 		Long: "create records a task and the repositories it spans. Each REPO is a name\n" +
 			"registered with `tspace config repo` or a path, optionally with a branch and\n" +
 			"a base, as for `tspace repo add`:\n\n" +
@@ -50,6 +51,8 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 			"agent runs in that repository's worktree, and keeps running there when\n" +
 			"`tspace repo add` brings a second, which opens a root window with a shell.\n" +
 			"--with-root keeps the task-root window for a single-repository task too.\n\n" +
+			"Without --ticket, the ticket is found in NAME by the pattern from `tspace\n" +
+			"config ticket-pattern`, if one is set.\n\n" +
 			"--brief-file stores the task's instructions where its agents will look\n" +
 			"for them; see `tspace task brief --help`.\n\n" +
 			"No worktree is created until `tspace start` or `tspace open`; --start runs\n" +
@@ -121,6 +124,13 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 				}
 				if err := a.addRepoSpec(cmd.Context(), t, c, spec, addRepoOptions{}); err != nil {
 					return err
+				}
+			}
+			// Like the agent, a broken config does not stop a task that needs
+			// nothing from it.
+			if !cmd.Flags().Changed("ticket") {
+				if c, err := config(); err == nil {
+					t.Ticket = c.TicketFrom(name)
 				}
 			}
 			// A resume command goes with the agent it resumes: the recipe's or

@@ -397,6 +397,17 @@ values on `task update` clear those fields. `--brief-file` is also available
 on create/update. Jira discovery, synchronization, and automatic updates are
 not implemented.
 
+If your task names carry their ticket key, tell tspace how to find it, and a
+task created without `--ticket` gets it. The pattern is a regular expression,
+so it fits whatever your tracker's keys look like; the first parenthesized
+group, if any, is the ticket:
+
+```bash
+tspace config ticket-pattern '[A-Z][A-Z0-9]+-[0-9]+'   # ENG-123-login -> ENG-123
+tspace config ticket-pattern '^gh-([0-9]+)$'           # gh-42 -> 42
+tspace config ticket-pattern --unset                   # off, the default
+```
+
 ## Workspace structure
 
 **Task** — a logical unit of work. The thing you actually think in. It has a
@@ -772,9 +783,10 @@ only once every worktree is gone: safely, unless `--force` discarded their work.
 | `tspace config resume [CMD ARGS... / --unset]` | Set how the default agent resumes, for `restart --resume` |
 | `tspace config repo [NAME [PATH] / NAME --unset]` | Register source repositories by name |
 | `tspace config branch-prefix [PREFIX / --unset]` | Set the prefix of new task branches (default `agent/`) |
+| `tspace config ticket-pattern [REGEXP / --unset]` | Read new tasks' tickets from their names |
 | `tspace project save NAME --from TASK [--replace]` | Save a reusable repository recipe |
 | `tspace project list` / `tspace project show NAME` | Inspect saved recipes |
-| `tspace task create NAME [REPO...] [--agent CMD / --shell] [--start]` | Create a task; each REPO is `REPO[@BRANCH][:BASE]`; `--start` starts it too |
+| `tspace task create NAME [REPO...] [--agent CMD / --shell] [--start]` | Create a task; each REPO is `REPO[@BRANCH][:BASE]`; `--start` starts it too. Also `tspace new`, `task new` and `task add` |
 | `tspace task update NAME [--agent CMD / --shell] [--title ...]` | Update a task's root agent and details |
 | `tspace task list [--json]` | List tasks |
 | `tspace task show NAME [--json]` | Show a task's repos in detail |

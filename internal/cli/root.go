@@ -107,6 +107,16 @@ func (a *App) warnf(format string, args ...any) {
 	fmt.Fprintf(a.Err, format, args...)
 }
 
+// newShortcutCmd puts a subcommand at the top level under another name, for the
+// commands typed often enough to deserve one. It is left out of the help, which
+// lists each command once.
+func (a *App) newShortcutCmd(cmd *cobra.Command, name string) *cobra.Command {
+	cmd.Use = name + strings.TrimPrefix(cmd.Use, strings.Fields(cmd.Use)[0])
+	cmd.Aliases = nil
+	cmd.Hidden = true
+	return cmd
+}
+
 // warnNearerRoot warns when dir is inside a tspace root other than the one in
 // use, where a command would quietly read and write state that is not the one
 // around it. It does not switch to that root: which state a command touches
@@ -163,6 +173,30 @@ func checksRoot(cmd *cobra.Command) bool {
 	}
 	quiet, err := cmd.Flags().GetBool("quiet")
 	return err != nil || !quiet
+}
+
+// requireSubcommand makes every command that only groups others fail on an
+// argument that names none of them, with cobra's suggestions, instead of
+// printing help and exiting 0 as if a mistyped command had run.
+func requireSubcommand(cmd *cobra.Command) {
+	for _, c := range cmd.Commands() {
+		requireSubcommand(c)
+	}
+	if cmd.HasParent() && cmd.HasAvailableSubCommands() && cmd.Run == nil && cmd.RunE == nil {
+		cmd.Args = cobra.ArbitraryArgs
+		cmd.DisableFlagsInUseLine = true
+		cmd.SuggestionsMinimumDistance = 2 // cobra's own, which it sets only on the root
+		cmd.RunE = func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return cmd.Help()
+			}
+			msg := fmt.Sprintf("unknown command %q for %q", args[0], cmd.CommandPath())
+			if s := cmd.SuggestionsFor(args[0]); len(s) > 0 {
+				msg += "\n\nDid you mean this?\n\t" + strings.Join(s, "\n\t")
+			}
+			return errors.New(msg)
+		}
+	}
 }
 
 // loadTask is the common "resolve the task argument" step.
@@ -261,7 +295,9 @@ func Execute(ctx context.Context) int {
 		app.newDashCmd(),
 		app.newSignalCmd(),
 		app.newCleanCmd(),
+		app.newShortcutCmd(app.newTaskCreateCmd(), "new"),
 	)
+	requireSubcommand(root)
 
 	if err := root.ExecuteContext(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "tspace: %v\n", err)
