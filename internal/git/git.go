@@ -394,21 +394,21 @@ func (g *Git) FullRefName(ctx context.Context, repo, ref string) (string, error)
 	return res.Out(), nil
 }
 
-// Clone clones url into dest, a directory that does not exist yet. It runs on
-// the terminal rather than through the runner, so git can show its progress
-// and ask for credentials as it would for the user; out receives both.
+// Clone clones url into dest, a directory that is missing or empty, with its
+// remote named origin whatever clone.defaultRemoteName says. It runs on the
+// terminal rather than through the runner, so git can show its progress and
+// ask for credentials as it would for the user; out receives both. The error
+// leaves url out, as it may hold a token.
 func (g *Git) Clone(ctx context.Context, url, dest string, in io.Reader, out io.Writer) error {
-	cmd := osexec.CommandContext(ctx, "git", "clone", "--", url, dest)
+	cmd := osexec.CommandContext(ctx, "git", "clone", "--origin", "origin", "--", url, dest)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = in, out, out
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("git clone %s: %w", url, err)
-	}
-	return nil
+	return cmd.Run()
 }
 
-// RemoteURL is the URL repo fetches remote from, or "".
-func (g *Git) RemoteURL(ctx context.Context, repo, remote string) (string, error) {
-	res, err := g.git(ctx, repo, "remote", "get-url", remote)
+// OriginURL is the URL configured for repo's origin, as written, before any
+// url.insteadOf rewrite; "" when it has none.
+func (g *Git) OriginURL(ctx context.Context, repo string) (string, error) {
+	res, err := g.git(ctx, repo, "config", "--get", "remote.origin.url")
 	if err != nil {
 		if tsexec.IsExit(err) {
 			return "", nil
