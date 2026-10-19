@@ -2,6 +2,8 @@ package cli
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -48,8 +50,9 @@ func (a *App) newConfigCmd() *cobra.Command {
 
 func (a *App) newConfigRepoCmd() *cobra.Command {
 	var unset bool
+	var into string
 	cmd := &cobra.Command{
-		Use:   "repo [NAME [PATH] | NAME --unset]",
+		Use:   "repo [NAME [PATH | URL] | NAME --unset]",
 		Short: "Register source repositories by name",
 		Long: "Register each repository you work in once, then give tasks its name\n" +
 			"instead of a path:\n\n" +
@@ -59,7 +62,11 @@ func (a *App) newConfigRepoCmd() *cobra.Command {
 			"  tspace config repo                  list the registered repositories\n" +
 			"  tspace config repo backend          print backend's path\n" +
 			"  tspace config repo backend PATH     register backend, or move it to PATH\n" +
+			"  tspace config repo backend URL      clone it, then register the clone\n" +
 			"  tspace config repo backend --unset  forget backend\n\n" +
+			"A URL (https://, ssh://, file://, or git@host:path) is cloned into\n" +
+			"$TSPACE_ROOT/repos/NAME, or --into DIR, with git's own credentials and\n" +
+			"progress. A clone of the same URL already there is registered as it is.\n\n" +
 			"Tasks record the path when a repository is added, so moving or\n" +
 			"unregistering one later leaves existing tasks alone.",
 		Args: cobra.MaximumNArgs(2),
@@ -110,7 +117,21 @@ func (a *App) newConfigRepoCmd() *cobra.Command {
 			if err := task.ValidateName("repo", name); err != nil {
 				return err
 			}
-			canonical, err := a.Git.Validate(cmd.Context(), expandHome(args[1]))
+			path := expandHome(args[1])
+			if into != "" && !looksLikeURL(args[1]) {
+				return fmt.Errorf("--into says where to clone a URL; %s is a path", args[1])
+			}
+			// A directory by that name wins over reading it as a URL.
+			if looksLikeURL(args[1]) && !isDir(path) {
+				dest := filepath.Join(a.Store.ReposDir(), name)
+				if into != "" {
+					dest = expandHome(into)
+				}
+				if path, err = a.cloneRepo(cmd, args[1], dest); err != nil {
+					return err
+				}
+			}
+			canonical, err := a.Git.Validate(cmd.Context(), path)
 			if err != nil {
 				return err
 			}
@@ -131,7 +152,48 @@ func (a *App) newConfigRepoCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&unset, "unset", false, "forget a registered repository")
+	cmd.Flags().StringVar(&into, "into", "", "clone a URL into this directory instead of $TSPACE_ROOT/repos/NAME")
 	return cmd
+}
+
+// cloneRepo clones url into dest for config repo, and returns the clone's
+// path. A clone of url already at dest is used as it is; anything else there
+// is refused rather than cloned over or registered in its place.
+func (a *App) cloneRepo(cmd *cobra.Command, url, dest string) (string, error) {
+	ctx := cmd.Context()
+	dest, err := filepath.Abs(dest)
+	if err != nil {
+		return "", err
+	}
+	if _, err := os.Stat(dest); err == nil {
+		if !isDir(dest) {
+			return "", fmt.Errorf("%s exists and is not a directory; choose another place with --into", dest)
+		}
+		if have, err := a.Git.RemoteURL(ctx, dest, "origin"); err == nil && have == url {
+			a.printf("%s is already a clone of %s\n", dest, url)
+			return dest, nil
+		}
+		return "", fmt.Errorf("%s already exists and is not a clone of %s; choose another place with --into", dest, url)
+	}
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return "", err
+	}
+	a.printf("cloning %s into %s\n", url, dest)
+	if err := a.Git.Clone(ctx, url, dest, cmd.InOrStdin(), a.Err); err != nil {
+		return "", err
+	}
+	return dest, nil
+}
+
+// looksLikeURL reports whether a repository argument is something to clone:
+// a URL with a scheme, or git's scp-like user@host:path, which a Windows
+// drive (C:\src) is not.
+func looksLikeURL(s string) bool {
+	if strings.Contains(s, "://") {
+		return true
+	}
+	i := strings.Index(s, ":")
+	return i > 1 && !strings.ContainsAny(s[:i], `/\`)
 }
 
 func (a *App) newConfigBranchPrefixCmd() *cobra.Command {

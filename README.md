@@ -97,6 +97,7 @@ tspace config agent claude
 tspace config repo backend  ~/src/backend
 tspace config repo frontend ~/src/frontend
 tspace config repo infra    ~/src/infra
+tspace config repo docs     git@github.com:acme/docs.git   # cloned into $TSPACE_ROOT/repos/docs
 
 # one logical task spanning the repositories it needs: a new branch in
 # backend, a colleague's existing branch in frontend, and a new branch in
@@ -834,7 +835,7 @@ only once every worktree is gone: safely, unless `--force` discarded their work.
 | `tspace init` | Create/report state directories (never required) |
 | `tspace config` / `tspace config agent [CMD ARGS... / --unset]` | Show defaults; set the default task-root agent |
 | `tspace config resume [CMD ARGS... / --unset]` | Set how the default agent resumes, for `restart --resume` |
-| `tspace config repo [NAME [PATH] / NAME --unset]` | Register source repositories by name |
+| `tspace config repo [NAME [PATH / URL [--into DIR]] / NAME --unset]` | Register source repositories by name; a URL is cloned first |
 | `tspace config branch-prefix [PREFIX / --unset]` | Set the prefix of new task branches (default `agent/`) |
 | `tspace config ticket-pattern [REGEXP / --unset]` | Read new tasks' tickets from their names |
 | `tspace project save NAME --from TASK [--replace]` | Save a reusable repository recipe |
