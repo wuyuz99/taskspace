@@ -2,6 +2,7 @@ package cli
 
 import (
 	"os"
+	osexec "os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -181,8 +182,12 @@ func TestRepoUpdateBranchAndBaseSafety(t *testing.T) {
 		return h.exec(t, h.app.newRepoCmd(), append([]string{"update", "PAY-1", "backend"}, args...)...)
 	}
 
-	if err := update("--base", "HEAD"); err == nil {
-		t.Error("--base HEAD accepted")
+	// A base is recorded by a name that means the same in every worktree.
+	if err := update("--base", "HEAD~0"); err == nil {
+		t.Error("--base HEAD~0 accepted")
+	}
+	if err := update("--base", "HEAD"); err != nil || h.load(t, "PAY-1").Repos["backend"].Base != "main" {
+		t.Errorf("--base HEAD = %v, recorded %q", err, h.load(t, "PAY-1").Repos["backend"].Base)
 	}
 	// A remote's branch of that name, even one not fetched yet, is taken.
 	if err := update("--branch", "develop"); err == nil || !strings.Contains(err.Error(), "already exists as origin/develop") {
@@ -205,13 +210,20 @@ func TestRepoUpdateBranchAndBaseSafety(t *testing.T) {
 	}
 	gitIn(t, r.Worktree, "checkout", "-q", "agent/PAY-1")
 
-	// A recorded base of HEAD, which ResolveBase falls back to, still keeps
-	// the branch's work when rebasing.
+	// A recorded base of HEAD, which ResolveBase falls back to, no longer
+	// says where the branch started: the source clone may be anywhere now.
 	tk := h.load(t, "PAY-1")
 	rr := tk.Repos["backend"]
 	rr.Base = "HEAD"
 	tk.SetRepo("backend", rr)
 	if err := h.app.Store.Save(tk); err != nil {
+		t.Fatal(err)
+	}
+	if err := update("--base", "release", "--rebase"); err == nil || !strings.Contains(err.Error(), "rebase by hand") {
+		t.Fatalf("rebase from a recorded HEAD = %v", err)
+	}
+	// From a real base, the branch's work survives the rebase.
+	if err := update("--base", "main"); err != nil {
 		t.Fatal(err)
 	}
 	if err := update("--base", "release", "--rebase"); err != nil {
@@ -232,4 +244,49 @@ func TestRepoUpdateBranchAndBaseSafety(t *testing.T) {
 	if log := gitIn(t, h.repo, "log", "--format=%s", "me/PAY-1"); !strings.Contains(log, "task work") {
 		t.Fatalf("renamed branch lost its work:\n%s", log)
 	}
+}
+
+// A branch checked out in the user's own clone is not the task's to rename,
+// and a renamed branch stops tracking the old name's remote branch.
+func TestRepoUpdateRenameOwnershipAndUpstream(t *testing.T) {
+	h := newHarness(t)
+	gitIdentity(t)
+	withRemote(t, h.repo)
+	gitIn(t, h.repo, "checkout", "-q", "-b", "side")
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--repo", "backend="+h.repo+"@side"); err != nil {
+		t.Fatal(err)
+	}
+	err := h.exec(t, h.app.newRepoCmd(), "update", "PAY-1", "backend", "--branch", "me/side")
+	if err == nil || !strings.Contains(err.Error(), "outside the task") {
+		t.Fatalf("rename of a branch checked out in the clone = %v", err)
+	}
+	if gitIn(t, h.repo, "branch", "--show-current") != "side" {
+		t.Fatal("the clone's branch was renamed")
+	}
+	gitIn(t, h.repo, "checkout", "-q", "main")
+
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-2", "--repo", "backend="+h.repo); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newStartCmd(), "PAY-2", "--no-runtime"); err != nil {
+		t.Fatal(err)
+	}
+	wt := h.load(t, "PAY-2").Repos["backend"].Worktree
+	gitIn(t, wt, "push", "-q", "-u", "origin", "agent/PAY-2")
+	if err := h.exec(t, h.app.newRepoCmd(), "update", "PAY-2", "backend", "--branch", "me/PAY-2"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.out.String(), "no longer tracks origin/agent/PAY-2") {
+		t.Fatalf("out: %s", h.out.String())
+	}
+	cmd := gitCmd(wt, "rev-parse", "--abbrev-ref", "me/PAY-2@{upstream}")
+	if out, err := cmd.CombinedOutput(); err == nil {
+		t.Fatalf("me/PAY-2 still tracks %s", out)
+	}
+}
+
+func gitCmd(dir string, args ...string) *osexec.Cmd {
+	cmd := osexec.Command("git", args...)
+	cmd.Dir = dir
+	return cmd
 }

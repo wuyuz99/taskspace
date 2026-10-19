@@ -406,14 +406,6 @@ func TestTaskShow(t *testing.T) {
 	}
 }
 
-// samePath compares paths the way the OS does, so a short-name or symlinked
-// temp directory does not fail a test for an uninteresting reason.
-func samePath(a, b string) bool {
-	ai, err1 := os.Stat(a)
-	bi, err2 := os.Stat(b)
-	return err1 == nil && err2 == nil && os.SameFile(ai, bi)
-}
-
 // After clean the worktree is gone, so rm has nothing to say about it.
 func TestRepoRmAfterCleanSaysNothingOfTheWorktree(t *testing.T) {
 	h := newHarness(t)
