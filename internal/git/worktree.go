@@ -294,3 +294,12 @@ func (g *Git) RemoveWorktree(ctx context.Context, repo, path string, force bool)
 	}
 	return nil
 }
+
+// MoveWorktree moves a linked worktree of repo, untracked and ignored files
+// along with it, and tells git where it went.
+func (g *Git) MoveWorktree(ctx context.Context, repo, from, to string) error {
+	if _, err := g.git(ctx, repo, "worktree", "move", from, to); err != nil {
+		return fmt.Errorf("move worktree %s to %s: %w", from, to, err)
+	}
+	return nil
+}

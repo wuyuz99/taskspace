@@ -1,0 +1,118 @@
+package cli
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// linkedWorktree adds a worktree of repo on a new branch, outside tspace.
+func linkedWorktree(t *testing.T, repo, branch string) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), strings.ReplaceAll(branch, "/", "-"))
+	gitIn(t, repo, "worktree", "add", "-q", "-b", branch, dir)
+	if r, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = r
+	}
+	return dir
+}
+
+func TestImportAdoptsAWorktree(t *testing.T) {
+	h := newHarness(t)
+	gitIdentity(t)
+	wt := linkedWorktree(t, h.repo, "fix-login")
+	commitFile(t, wt, "fix.txt", "fix\n", "the fix")
+	if err := os.WriteFile(filepath.Join(wt, ".env"), []byte("SECRET=1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := h.exec(t, h.app.newImportCmd(), wt); err != nil {
+		t.Fatalf("import: %v\n%s", err, h.errb.String())
+	}
+	tk := h.load(t, "fix-login")
+	if len(tk.Repos) != 1 {
+		t.Fatalf("repos %+v", tk.Repos)
+	}
+	name := tk.RepoNames()[0]
+	r := tk.Repos[name]
+	if r.Branch != "fix-login" || !samePath(r.Path, h.repo) || r.Base == "" {
+		t.Fatalf("recorded %+v", r)
+	}
+	if _, err := os.Stat(wt); !os.IsNotExist(err) {
+		t.Fatalf("the old place is still there: %v", err)
+	}
+	if b, err := os.ReadFile(filepath.Join(r.Worktree, ".env")); err != nil || string(b) != "SECRET=1\n" {
+		t.Fatalf("untracked file not carried over: %q, %v", b, err)
+	}
+	if got := gitIn(t, r.Worktree, "branch", "--show-current"); got != "fix-login" {
+		t.Fatalf("moved worktree on %q", got)
+	}
+	if !strings.Contains(gitIn(t, h.repo, "worktree", "list"), filepath.ToSlash(filepath.Base(r.Worktree))) {
+		t.Fatal("git does not know the worktree's new place")
+	}
+	// A single-repository task runs its agent in the worktree.
+	if tk.AgentRepo != name {
+		t.Errorf("agent repo %q", tk.AgentRepo)
+	}
+	// start reuses it as it is.
+	if err := h.exec(t, h.app.newStartCmd(), "fix-login", "--no-runtime"); err != nil || !strings.Contains(h.out.String(), "worktree ready") {
+		t.Fatalf("start after import = %v\n%s", err, h.out.String())
+	}
+
+	// Into an existing task, beside another repository.
+	other := mkRepo(t)
+	wt2 := linkedWorktree(t, other, "fix-api")
+	if err := h.exec(t, h.app.newImportCmd(), wt2, "--task", "fix-login", "--name", "api"); err != nil {
+		t.Fatal(err)
+	}
+	tk = h.load(t, "fix-login")
+	if _, ok := tk.Repos["api"]; !ok || !tk.HasRootWindow() {
+		t.Fatalf("second import: %+v", tk)
+	}
+}
+
+func TestImportRefuses(t *testing.T) {
+	h := newHarness(t)
+	gitIdentity(t)
+
+	// The main checkout cannot move.
+	if err := h.exec(t, h.app.newImportCmd(), h.repo); err == nil || !strings.Contains(err.Error(), "main checkout") {
+		t.Fatalf("import of the main checkout = %v", err)
+	}
+	// Uncommitted changes to tracked files.
+	dirty := linkedWorktree(t, h.repo, "dirty")
+	if err := os.WriteFile(filepath.Join(dirty, "README.md"), []byte("changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newImportCmd(), dirty); err == nil || !strings.Contains(err.Error(), "uncommitted") {
+		t.Fatalf("import of a dirty worktree = %v", err)
+	}
+	// A detached HEAD.
+	detached := filepath.Join(t.TempDir(), "detached")
+	gitIn(t, h.repo, "worktree", "add", "-q", "--detach", detached)
+	if err := h.exec(t, h.app.newImportCmd(), detached); err == nil || !strings.Contains(err.Error(), "detached") {
+		t.Fatalf("import of a detached worktree = %v", err)
+	}
+	for _, name := range []string{"dirty", "detached"} {
+		if h.app.Store.Exists(name) {
+			t.Errorf("a refused import left task %s", name)
+		}
+	}
+
+	// A failure once the task exists does not leave a new one behind.
+	wt := linkedWorktree(t, h.repo, "blocked")
+	dest := h.app.Store.WorktreePath("blocked", filepath.Base(h.repo))
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newImportCmd(), wt); err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("import onto an existing directory = %v", err)
+	}
+	if h.app.Store.Exists("blocked") {
+		t.Error("the failed import left its new task")
+	}
+	if _, err := os.Stat(wt); err != nil {
+		t.Errorf("the worktree moved anyway: %v", err)
+	}
+}

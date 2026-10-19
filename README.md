@@ -649,6 +649,23 @@ and `tspace task handoff` reach the right state whatever environment the
 multiplexer was started with. A pane you split or open yourself has the
 multiplexer's environment instead.
 
+## Adopting a worktree you already have: `import`
+
+A worktree you made yourself with `git worktree add` can become a task's:
+
+```bash
+tspace import ../backend-fix                   # a new task, named backend-fix
+tspace import ~/wt/api-login --task PAY-142    # into an existing task
+```
+
+`import` moves the worktree into the task's directory with `git worktree move`,
+so its `.env`, `node_modules` and other untracked files come along, and records
+its repository and branch. It refuses uncommitted changes to tracked files, a
+detached HEAD, an unfinished merge or rebase, a locked worktree, and a
+repository's main checkout, which cannot be moved: register that with
+`tspace config repo` instead. Commits not pushed or not pulled are reported and
+kept. The base is the branch's upstream, or the repository's default branch.
+
 ## Fresh worktrees are empty: `post_create`
 
 A new worktree has your tracked files and nothing else. No `.env`, no
@@ -901,6 +918,7 @@ only once every worktree is gone: safely, unless `--force` discarded their work.
 | `tspace signal STATE [MESSAGE] [--task --repo / --root] [--quiet]` | Report an agent as `working`, `blocked`, `done` or `failed` |
 | `tspace config hooks claude [--remove]` | Install the Claude Code hooks that call `tspace signal` |
 | `tspace clean TASK [--delete-branch] [--force] [--rm]` | Remove worktrees, safely; `--rm` deletes the task record too |
+| `tspace import PATH [--task NAME] [--name REPO]` | Move a worktree made with `git worktree add` into a task |
 
 `--no-title` (or `TSPACE_NO_TITLE=1`) suppresses terminal tab titling.
 
