@@ -410,6 +410,9 @@ func (a *App) resolveBase(ctx context.Context, repo, ref string, fetch func() er
 }
 
 type addRepoOptions struct {
+	// Adopt is a worktree, on Branch, that import is about to move to the
+	// repository's place in the task.
+	Adopt      string
 	Name       string
 	Branch     string
 	Base       string
@@ -471,21 +474,7 @@ func (a *App) newRepoAddCmd() *cobra.Command {
 			if err := a.addRepoSpec(ctx, t, c, args[1], opts); err != nil {
 				return err
 			}
-			running := a.sessionRunning(ctx, t)
-			openRoot := false
-			switch {
-			case first && t.HasRootWindow() && !t.RootWindow && !running && t.CanRunAgentIn(t.RepoNames()[0]):
-				// Nothing has run in a root window that the agent could be
-				// moved out of, so this task starts as a single-repo one.
-				t.AgentRepo = t.RepoNames()[0]
-				a.printf("  agent:    %s (runs in this worktree)\n", agentDisplay(task.Repo{Agent: t.RepoAgent(t.AgentRepo)}))
-			case !t.HasRootWindow() && len(t.Repos) > 1:
-				t.RootWindow = true
-				openRoot = running
-				if !running {
-					a.printf("the next start opens a root window for %s; its agent stays in %s\n", t.Name, t.AgentRepo)
-				}
-			}
+			openRoot := a.settleLayout(ctx, t, first)
 			if err := a.Store.Save(t); err != nil {
 				return err
 			}
@@ -503,6 +492,29 @@ func (a *App) newRepoAddCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.PostCreate, "post-create", "",
 		`shell command run once in a new worktree, e.g. 'cp "$TSPACE_REPO_PATH/.env" . && pnpm install'`)
 	return cmd
+}
+
+// settleLayout decides where the task's agent runs once a repository has
+// been added: in a first repository's worktree, when nothing has run in a
+// root window yet, and with a root window again once there is a second. It
+// reports whether that root window should be opened now, in the running
+// session.
+func (a *App) settleLayout(ctx context.Context, t *task.Task, first bool) (openRoot bool) {
+	running := a.sessionRunning(ctx, t)
+	switch {
+	case first && t.HasRootWindow() && !t.RootWindow && !running && t.CanRunAgentIn(t.RepoNames()[0]):
+		// Nothing has run in a root window that the agent could be moved out
+		// of, so this task starts as a single-repo one.
+		t.AgentRepo = t.RepoNames()[0]
+		a.printf("  agent:    %s (runs in this worktree)\n", agentDisplay(task.Repo{Agent: t.RepoAgent(t.AgentRepo)}))
+	case !t.HasRootWindow() && len(t.Repos) > 1:
+		t.RootWindow = true
+		openRoot = running
+		if !running {
+			a.printf("the next start opens a root window for %s; its agent stays in %s\n", t.Name, t.AgentRepo)
+		}
+	}
+	return openRoot
 }
 
 // sessionRunning reports whether the task's session is up. A runtime that
@@ -716,7 +728,9 @@ func (a *App) addRepo(ctx context.Context, t *task.Task, c *task.Config, path st
 		// Checked out at this repo's own worktree path, as after repo rm and
 		// add again, start reuses the worktree; only elsewhere does it refuse.
 		if wt, err := a.Git.FindWorktreeForBranch(ctx, canonical, branch); err == nil && wt != nil {
-			if own, err := a.Git.FindWorktree(ctx, canonical, worktree); err == nil && own != nil && own.Branch == branch {
+			if opts.Adopt != "" && samePath(wt.Path, opts.Adopt) {
+				// Where import is moving it from: it will be the task's.
+			} else if own, err := a.Git.FindWorktree(ctx, canonical, worktree); err == nil && own != nil && own.Branch == branch {
 				a.printf("note: %s is already checked out at %s; start will reuse that worktree\n", branch, own.Path)
 			} else {
 				a.warnf("note: %s is checked out at %s; start will refuse until it is switched away there\n", branch, wt.Path)
