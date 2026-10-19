@@ -813,8 +813,9 @@ enter attach · s start · r restart · x stop · t new tab · c clear signal ·
 the multiplexer it switches the client instead and the dashboard keeps running in its own
 window. Every key runs the command you would have typed.
 
-`t` opens the selected task in a new tab of your terminal, running
-`tspace open TASK` there, so the dashboard stays where it is. Terminals each
+`t` opens the selected window in a new tab of your terminal, running
+`tspace attach TASK` there, so the dashboard stays where it is; like `enter`,
+it needs the task to be running. Terminals each
 open tabs their own way, so tell tspace yours once; it adds its command at the
 end, or puts it where an argument says `{command}`:
 
@@ -941,11 +942,9 @@ GOOS=linux GOARCH=amd64 go build -o tspace-linux ./cmd/tspace
   sessions; there is no Windows path.
 - **Submodules** are detected and reported, but not recursed into.
 - **No notifications.** `internal/status` is the single place one would attach.
-- **Extra windows are not remembered.** `tspace window` adds to the running
-  session only; after `stop`, `start` recreates the root and repository
-  windows, not the extras.
-- **Agent windows get no `TSPACE_*` variables.** Shells from `tspace shell` and hooks
-  do; session windows, including `tspace window`, start from the multiplexer's environment.
+- **Windows you open yourself get no `TSPACE_*` variables.** The windows tspace
+  opens, `tspace shell` and hooks do; a pane you split or a window you open in
+  the multiplexer starts from its environment.
 - **Briefs and handoffs render with control characters stripped.** The stored
   Markdown keeps every byte; what reaches the terminal cannot move the cursor or
   retitle the tab, because a brief is usually pasted in from somewhere else.
