@@ -32,6 +32,12 @@ type Note struct {
 	UpdatedAt time.Time
 }
 
+// CodeWorkspacePath is where `tspace editor` writes the task's
+// .code-workspace file, beside its notes.
+func (s *Store) CodeWorkspacePath(taskName string) string {
+	return filepath.Join(s.ContextDir(taskName), taskName+".code-workspace")
+}
+
 // NotePath is where a note lives. The task's worktrees are siblings of
 // .context, so a program running in any of them reaches a note as
 // ../.context/TASK.md.

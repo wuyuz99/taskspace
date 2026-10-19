@@ -58,7 +58,7 @@ func TestEditorWorkspaceFile(t *testing.T) {
 	if !strings.Contains(h.errb.String(), "left out frontend") {
 		t.Errorf("stderr %q", h.errb.String())
 	}
-	if got := strings.Join(folderPaths(t, readWorkspace(t, path)), " "); got != "backend=../backend notes=." {
+	if got := strings.Join(folderPaths(t, readWorkspace(t, path)), " "); got != "backend=../backend .context=." {
 		t.Fatalf("folders %s", got)
 	}
 	// The editor finds the folders where the file says.
@@ -82,8 +82,44 @@ func TestEditorWorkspaceFile(t *testing.T) {
 	if string(doc["settings"]) == "" || !strings.Contains(string(doc["settings"]), "tabSize") {
 		t.Fatalf("settings lost: %s", doc["settings"])
 	}
-	if got := strings.Join(folderPaths(t, doc), " "); got != "backend=../backend frontend=../frontend notes=." {
+	if got := strings.Join(folderPaths(t, doc), " "); got != "backend=../backend frontend=../frontend .context=." {
 		t.Fatalf("folders after start %s", got)
+	}
+
+	// Nothing to change, nothing rewritten: the user's formatting stays.
+	mine := "{\n  \"settings\": {},\n  \"folders\": [{\"name\": \"backend\", \"path\": \"../backend\"}, {\"name\": \"frontend\", \"path\": \"../frontend\"}, {\"name\": \".context\", \"path\": \".\"}]\n}\n"
+	if err := os.WriteFile(path, []byte(mine), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newEditorCmd(), "PAY-1", "--print"); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(path); string(b) != mine {
+		t.Fatalf("an up-to-date file was rewritten:\n%s", b)
+	}
+	// A folder the user added from outside the task stays.
+	docs := t.TempDir()
+	withDocs := strings.Replace(mine, `"path": "."}]`, `"path": "."}, {"path": "`+filepath.ToSlash(docs)+`"}]`, 1)
+	if err := os.WriteFile(path, []byte(withDocs), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newRepoCmd(), "rm", "PAY-1", "frontend"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newEditorCmd(), "PAY-1", "--print"); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(folderPaths(t, readWorkspace(t, path)), " "); got != "backend=../backend .context=. ="+filepath.ToSlash(docs) {
+		t.Fatalf("folders with the user's: %s", got)
+	}
+	// An empty file, or one with a byte-order mark, is written over.
+	for _, start := range []string{"", "\xef\xbb\xbf{}"} {
+		if err := os.WriteFile(path, []byte(start), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.exec(t, h.app.newEditorCmd(), "PAY-1", "--print"); err != nil {
+			t.Fatalf("over %q: %v", start, err)
+		}
 	}
 
 	// A file with comments is left as it is.
@@ -120,11 +156,15 @@ func TestEditorWorkspaceFile(t *testing.T) {
 		t.Fatalf("editor ran with %q", args)
 	}
 
-	// task rm takes it with the notes.
-	if err := h.exec(t, h.app.newCleanCmd(), "PAY-1", "--rm"); err != nil {
+	// clean takes it with the worktrees it lists, and the empty directory goes.
+	if err := h.exec(t, h.app.newCleanCmd(), "PAY-1"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Fatalf("workspace file left after clean --rm: %v", err)
+		t.Fatalf("workspace file left after clean: %v", err)
+	}
+	// Nor does it keep the notes directory, empty of notes, alive.
+	if _, err := os.Stat(h.app.Store.ContextDir("PAY-1")); !os.IsNotExist(err) {
+		t.Fatalf(".context left after clean: %v", err)
 	}
 }

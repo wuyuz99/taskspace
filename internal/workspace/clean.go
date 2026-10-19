@@ -86,6 +86,9 @@ func (s *Service) Clean(ctx context.Context, name string, opts CleanOptions) err
 		s.report(BranchDeleted{Repo: p.Name, Branch: p.Repo.Branch, Reason: p.Discard.Reason()})
 	}
 
+	// The editor workspace lists the worktrees just removed, and is written
+	// again by tspace editor; it must not keep the directory alive.
+	_ = os.Remove(s.Store.CodeWorkspacePath(t.Name))
 	if err := s.Store.ClearSignals(t.Name); err != nil {
 		s.warnf("tspace: %v", err)
 	}
