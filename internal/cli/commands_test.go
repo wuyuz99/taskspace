@@ -28,6 +28,7 @@ func TestMain(m *testing.M) {
 				env = append(env, kv)
 			}
 		}
+		env = append(env, "ARGS="+strings.Join(os.Args[1:], " "))
 		_ = os.WriteFile(out, []byte(strings.Join(env, "\n")), 0o644)
 		if os.Getenv("TSPACE_TEST_SHELL_FAIL") != "" {
 			os.Exit(3)

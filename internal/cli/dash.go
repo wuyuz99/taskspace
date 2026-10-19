@@ -336,12 +336,20 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return restartedText(label, row.Task), nil
 		})
 	case "t":
-		m.note = "opening " + row.Task + " in a new tab..."
+		// As enter does: to a window that is there, the one selected.
+		if row.Runtime != status.RuntimeRunning && row.Runtime != status.RuntimeDead {
+			m.note = fmt.Sprintf("%s has no window to attach to (%s); press s to start the task", row.label(), row.Runtime)
+			return m, nil
+		}
+		m.note = "opening " + row.label() + " in a new tab..."
 		return m, func() tea.Msg {
+			if err := m.app.Runtime.Select(m.ctx, m.app.Runtime.SessionName(row.Task), row.Window); err != nil {
+				return dashDoneMsg{err: err}
+			}
 			if err := m.app.openInNewTab(m.ctx, row.Task); err != nil {
 				return dashDoneMsg{err: err}
 			}
-			return dashDoneMsg{text: "opened " + row.Task + " in a new tab"}
+			return dashDoneMsg{text: "opened " + row.label() + " in a new tab"}
 		}
 	case "x":
 		m.confirm = &dashConfirm{

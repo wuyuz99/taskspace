@@ -342,8 +342,8 @@ func (a *App) newConfigTerminalCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "terminal [COMMAND [ARGS...] | --unset]",
 		Short: "Show or set how a task opens in a new terminal tab",
-		Long: "dash's t key opens the selected task in a new tab or window of your\n" +
-			"terminal, running `tspace open TASK` there. Every terminal does that its own\n" +
+		Long: "dash's t key opens the selected window in a new tab or window of your\n" +
+			"terminal, running `tspace attach TASK` there. Every terminal does that its own\n" +
 			"way and tspace knows none of them, so you tell it: the command is run with\n" +
 			"tspace's own command added at the end, or, if an argument holds {command},\n" +
 			"with the command as one shell string put there instead:\n\n" +
@@ -372,6 +372,8 @@ func (a *App) newConfigTerminalCmd() *cobra.Command {
 				return nil
 			case strings.TrimSpace(args[0]) == "":
 				return fmt.Errorf("terminal command is empty; use --unset to clear it")
+			case slices.Contains(args[1:], "--unset"):
+				return fmt.Errorf("--unset goes alone, before any command: tspace config terminal --unset")
 			default:
 				c.Terminal = args
 			}

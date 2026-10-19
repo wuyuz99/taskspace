@@ -8,13 +8,18 @@ import (
 )
 
 func TestTerminalArgv(t *testing.T) {
-	cmd := []string{"/bin/tspace", "open", "PAY-1"}
-	if got := terminalArgv([]string{"wezterm", "cli", "spawn", "--"}, cmd); !slices.Equal(got, []string{"wezterm", "cli", "spawn", "--", "/bin/tspace", "open", "PAY-1"}) {
+	cmd := []string{"/bin/tspace", "attach", "PAY-1"}
+	if got := terminalArgvFor("linux", []string{"wezterm", "cli", "spawn", "--"}, cmd); !slices.Equal(got, []string{"wezterm", "cli", "spawn", "--", "/bin/tspace", "attach", "PAY-1"}) {
 		t.Errorf("appended: %q", got)
 	}
-	got := terminalArgv([]string{"osascript", "-e", `do script "{command}"`}, cmd)
-	if len(got) != 3 || got[2] != `do script "/bin/tspace open PAY-1"` {
+	got := terminalArgvFor("darwin", []string{"osascript", "-e", `do script "{command}"`}, cmd)
+	if len(got) != 3 || got[2] != `do script "/bin/tspace attach PAY-1"` {
 		t.Errorf("placed: %q", got)
+	}
+	// Quoted for cmd.exe on Windows, not POSIX-style.
+	win := terminalArgvFor("windows", []string{"wt.exe", "new-tab", "cmd", "/c", "{command}"}, []string{`C:\Program Files\tspace.exe`, "attach", "PAY-1"})
+	if got := win[4]; got != `"C:\Program Files\tspace.exe" attach PAY-1` {
+		t.Errorf("windows: %q", got)
 	}
 }
 
@@ -37,7 +42,19 @@ func TestOpenInNewTab(t *testing.T) {
 	if !samePath(env["TSPACE_ROOT"], h.app.Store.Root()) {
 		t.Errorf("the tab's TSPACE_ROOT = %q", env["TSPACE_ROOT"])
 	}
-	if err := h.exec(t, h.app.newConfigCmd(), "terminal", "--unset"); err != nil {
-		t.Fatal(err)
+	if !strings.HasSuffix(env["ARGS"], " attach PAY-1") {
+		t.Errorf("the terminal ran %q", env["ARGS"])
+	}
+	// A --unset after the command would be saved as part of it.
+	if err := h.exec(t, h.app.newConfigCmd(), "terminal", "kitty", "--unset"); err == nil {
+		t.Error("--unset after the command accepted")
+	}
+}
+
+// The tab does not inherit what says where dash runs.
+func TestNewTabEnv(t *testing.T) {
+	env := newTabEnv([]string{"TMUX=/tmp/x,1,0", "ZELLIJ=0", "TSPACE_TASK=PAY-1", "TSPACE_WINDOW=_root", "TSPACE_ROOT=/old", "HOME=/h"}, "/state")
+	if !slices.Equal(env, []string{"HOME=/h", "TSPACE_ROOT=/state"}) {
+		t.Fatalf("env %q", env)
 	}
 }
