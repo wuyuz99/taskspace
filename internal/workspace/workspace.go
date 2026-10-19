@@ -289,6 +289,20 @@ func ExpandArgv(st *task.Store, t *task.Task, argv []string) []string {
 // WorktreeDir resolves a task's repository, or its only one when repoArg is
 // empty, to a worktree that exists.
 func WorktreeDir(t *task.Task, repoArg string) (task.Repo, string, error) {
+	r, name, err := ResolveRepo(t, repoArg)
+	if err != nil {
+		return r, name, err
+	}
+	if info, err := os.Stat(r.Worktree); err != nil || !info.IsDir() {
+		return task.Repo{}, "", fmt.Errorf("worktree for %s is missing (%s); run: tspace start %s",
+			name, r.Worktree, t.Name)
+	}
+	return r, name, nil
+}
+
+// ResolveRepo resolves a task's repository, or its only one when repoArg is
+// empty, whether or not its worktree exists yet.
+func ResolveRepo(t *task.Task, repoArg string) (task.Repo, string, error) {
 	names := t.RepoNames()
 	if len(names) == 0 {
 		return task.Repo{}, "", fmt.Errorf("task %q has no repositories", t.Name)
@@ -306,10 +320,6 @@ func WorktreeDir(t *task.Task, repoArg string) (task.Repo, string, error) {
 	if !ok {
 		return task.Repo{}, "", fmt.Errorf("task %q has no repo named %q (has: %s)",
 			t.Name, name, strings.Join(names, ", "))
-	}
-	if info, err := os.Stat(r.Worktree); err != nil || !info.IsDir() {
-		return task.Repo{}, "", fmt.Errorf("worktree for %s is missing (%s); run: tspace start %s",
-			name, r.Worktree, t.Name)
 	}
 	return r, name, nil
 }

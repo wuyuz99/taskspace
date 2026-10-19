@@ -72,6 +72,16 @@ func (a *App) newProjectCmd() *cobra.Command {
 			if len(p.Resume) > 0 {
 				a.printf("resume:  %s\n", shellJoin(p.Resume))
 			}
+			for _, w := range p.Windows {
+				where, what := "at the root", "shell"
+				if w.Repo != "" {
+					where = "in " + w.Repo
+				}
+				if len(w.Command) > 0 {
+					what = shellJoin(w.Command)
+				}
+				a.printf("window:  %s %s: %s\n", w.SessionName(), where, what)
+			}
 			for _, name := range p.RepoNames() {
 				r := p.Repos[name]
 				base := r.Base
