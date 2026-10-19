@@ -649,6 +649,32 @@ and `tspace task handoff` reach the right state whatever environment the
 multiplexer was started with. A pane you split or open yourself has the
 multiplexer's environment instead.
 
+## Every worktree in one editor window: `editor`
+
+`tspace editor TASK` writes the task's worktrees, and its notes, into one
+`.code-workspace` file and opens it with your editor. The format is VS Code's
+multi-root workspace, which the editors built on it read too; tell tspace yours
+once:
+
+```bash
+tspace config editor code          # or cursor, codium --new-window, ...
+tspace editor PAY-142
+tspace editor PAY-142 --print      # write it and print its path; open it yourself
+```
+
+The file is `.context/TASK.code-workspace`, so `clean` keeps it with the notes
+and `task rm` removes it. Each run rewrites only its `folders`, from the task as
+it is then, so a repository added or removed shows up the next time; your
+`settings`, `extensions` and anything else in the file are kept. A worktree not
+created yet is left out until `start` makes it, and a file with comments in it,
+which tspace cannot rewrite faithfully, is left alone. `editor` starts and
+removes nothing: tspace keeps the worktrees, the editor its windows and
+terminals.
+
+Run it where the editor runs. From WSL, `code` opens the workspace through VS
+Code's WSL support, with the paths as WSL sees them; on a remote machine, the
+paths are that machine's, for an editor connected to it.
+
 ## Adopting a worktree you already have: `import`
 
 A worktree you made yourself with `git worktree add` can become a task's:
@@ -899,6 +925,7 @@ only once every worktree is gone: safely, unless `--force` discarded their work.
 | `tspace config branch-prefix [PREFIX / --unset]` | Set the prefix of new task branches (default `agent/`) |
 | `tspace config ticket-pattern [REGEXP / --unset]` | Read new tasks' tickets from their names |
 | `tspace config terminal [CMD ARGS... / --unset]` | How dash's `t` opens a task in a new terminal tab |
+| `tspace config editor [CMD ARGS... / --unset]` | The editor `tspace editor` opens a task's workspace with |
 | `tspace project save NAME --from TASK [--replace]` | Save a reusable repository recipe |
 | `tspace project list` / `tspace project show NAME` | Inspect saved recipes |
 | `tspace task create NAME [REPO...] [--agent CMD / --shell] [--start]` | Create a task; each REPO is `REPO[@BRANCH][:BASE]`; `--start` starts it too. Also `tspace new` and `task new` |
@@ -925,6 +952,7 @@ only once every worktree is gone: safely, unless `--force` discarded their work.
 | `tspace config hooks claude [--remove]` | Install the Claude Code hooks that call `tspace signal` |
 | `tspace clean TASK [--delete-branch] [--force] [--rm]` | Remove worktrees, safely; `--rm` deletes the task record too |
 | `tspace import PATH [--task NAME] [--name REPO]` | Move a worktree made with `git worktree add` into a task |
+| `tspace editor TASK [--print]` | Write the task's `.code-workspace` and open it in your editor |
 
 `--no-title` (or `TSPACE_NO_TITLE=1`) suppresses terminal tab titling.
 

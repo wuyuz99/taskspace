@@ -333,6 +333,7 @@ func Execute(ctx context.Context) int {
 		app.newSignalCmd(),
 		app.newCleanCmd(),
 		app.newImportCmd(),
+		app.newEditorCmd(),
 		shortcut(app.newTaskCreateCmd(), "new"),
 	)
 	// cobra adds its completion group only on Execute; added now, it is
