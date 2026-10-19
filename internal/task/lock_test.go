@@ -39,14 +39,14 @@ func lockHelper(mode string) int {
 	var err error
 	switch mode {
 	case "update-title":
-		_, err = s.Update(ctx, "t", func(t *Task) error {
+		_, err = s.Update(ctx, "t", "test", func(t *Task) error {
 			ready()
 			release()
 			t.Title = "from A"
 			return nil
 		})
 	case "update-ticket":
-		_, err = s.Update(ctx, "t", func(t *Task) error {
+		_, err = s.Update(ctx, "t", "test", func(t *Task) error {
 			t.Ticket = "from B"
 			return nil
 		})
@@ -273,8 +273,8 @@ func TestLockIsReleasedWhenItsHolderDies(t *testing.T) {
 	}
 }
 
-// Taking a lock again is free with the context that carries it, and an error,
-// not a wait on itself, without.
+// Taking a lock again is free with the context that carries it. Another
+// command of the same process, as in dash, waits for it like any other.
 func TestNestedLocks(t *testing.T) {
 	s := newTestStore(t)
 	if _, err := s.Create("t"); err != nil {
@@ -284,23 +284,46 @@ func TestNestedLocks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer l.Unlock()
 	ctx := WithLock(context.Background(), l)
-	if _, err := s.Update(ctx, "t", func(t *Task) error { t.Title = "nested"; return nil }); err != nil {
+	if _, err := s.Update(ctx, "t", "nested", func(t *Task) error { t.Title = "nested"; return nil }); err != nil {
 		t.Fatalf("nested Update: %v", err)
 	}
+	var waitedFor LockHolder
 	done := make(chan error, 1)
 	go func() {
-		_, err := s.Update(context.Background(), "t", func(*Task) error { return nil })
+		other, err := s.Lock(context.Background(), "t", "other", func(h LockHolder) { waitedFor = h })
+		if err == nil {
+			other.Unlock()
+		}
 		done <- err
 	}()
 	select {
 	case err := <-done:
-		if !errors.Is(err, ErrLockedHere) {
-			t.Fatalf("Update without the lock's context = %v", err)
+		t.Fatalf("a second command of this process did not wait: %v", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+	l.Unlock()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("Update without the lock's context waited on itself")
+		t.Fatal("the second command never got the lock")
+	}
+	if waitedFor.Command != "outer" {
+		t.Errorf("waited for %+v", waitedFor)
+	}
+	// A done context makes one attempt, and does not wait.
+	l, err = s.Lock(context.Background(), "t", "outer", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Unlock()
+	try, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := s.Lock(try, "t", "try", nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Lock with a done context = %v", err)
 	}
 }
 
@@ -315,7 +338,7 @@ func TestInheritedLock(t *testing.T) {
 	h := startHelper(t, s, "hold", path)
 	h.waitReady(t)
 
-	t.Setenv(EnvLocked, fmt.Sprintf("t:%d", h.cmd.Process.Pid))
+	t.Setenv(EnvLocked, "u:x,t:"+readHolder(s.LockPath("t")).token)
 	l, err := s.Lock(context.Background(), "t", "hook", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -325,8 +348,8 @@ func TestInheritedLock(t *testing.T) {
 	}
 	l.Unlock()
 
-	// A value naming another process is not the holder's.
-	t.Setenv(EnvLocked, "t:1")
+	// A value from another acquisition is not this one's.
+	t.Setenv(EnvLocked, "t:0123456789abcdef")
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 	if _, err := s.Lock(ctx, "t", "hook", nil); !errors.Is(err, context.DeadlineExceeded) {

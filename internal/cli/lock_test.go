@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	osexec "os/exec"
@@ -101,4 +102,86 @@ while [ ! -f "$RELEASE" ]; do sleep 0.05; done`
 	if got := h.load(t, "PAY-1").Title; got != "from-hook" {
 		t.Fatalf("title %q: the hook's update was lost", got)
 	}
+}
+
+// Reading a task never waits for a command changing it, even when the read
+// would move a legacy record's inline notes into files.
+func TestReadsDoNotWaitForTheLock(t *testing.T) {
+	h := newHarness(t)
+	tk, err := h.app.Store.Create("PAY-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tk.LegacyHandoff = "inline handoff"
+	if err := h.app.Store.Save(tk); err != nil {
+		t.Fatal(err)
+	}
+	l, err := h.app.Store.Lock(context.Background(), "PAY-1", "busy", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Unlock()
+
+	done := make(chan error, 1)
+	go func() {
+		if err := h.exec(t, h.app.newTaskCmd(), "handoff", "PAY-1"); err != nil {
+			done <- err
+			return
+		}
+		out := h.out.String()
+		if err := h.exec(t, h.app.newTaskCmd(), "show", "PAY-1"); err != nil {
+			done <- err
+			return
+		}
+		if !strings.Contains(out, "inline handoff") {
+			done <- fmt.Errorf("handoff printed %q", out)
+			return
+		}
+		done <- nil
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("a read waited for the lock")
+	}
+	if got, err := h.app.Store.Load("PAY-1"); err != nil || got.LegacyHandoff == "" {
+		t.Fatalf("migrated while another command held the task: %+v, %v", got, err)
+	}
+}
+
+// A post_create hook may change the task while start runs it, and start
+// launches what the hook left, not what it loaded first.
+func TestStartUsesWhatItsHookChanged(t *testing.T) {
+	h := newHarness(t)
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TSPACE_TEST_CLI", "1")
+	t.Setenv("TSPACE_ROOT", h.app.Store.Root())
+	t.Setenv("TSPACE_MULTIPLEXER", "tspace-test-none")
+	t.Setenv("TSPACE_BIN", self)
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--with-root", "--repo", "backend="+h.repo); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newRepoCmd(), "update", "PAY-1", "backend",
+		"--post-create", `"$TSPACE_BIN" repo update PAY-1 backend --agent hook-agent`); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newStartCmd(), "PAY-1"); err != nil {
+		t.Fatalf("start: %v\n%s", err, h.errb.String())
+	}
+	rt := h.app.Runtime.(*stubRuntime)
+	for _, w := range rt.started {
+		if w.Name == "backend" {
+			if len(w.Command) == 0 || w.Command[len(w.Command)-1] != "hook-agent" {
+				t.Fatalf("backend launched %v, not the hook's agent", w.Command)
+			}
+			return
+		}
+	}
+	t.Fatalf("backend not started: %+v", rt.started)
 }

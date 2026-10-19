@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -14,15 +15,32 @@ import (
 
 // notes reads a task's brief and handoff, moving a legacy record's inline
 // Markdown into files on the way past.
+//
+// Reading never waits: if another command has the task, the inline text is
+// shown from the record and moved another time.
 func (a *App) notes(ctx context.Context, t *task.Task) (brief, handoff task.Note, err error) {
-	if _, err := a.Store.MigrateNotes(ctx, t); err != nil {
+	try, cancel := context.WithCancel(ctx)
+	cancel() // one attempt at the lock, unless ctx already holds it
+	if _, err := a.Store.MigrateNotes(try, t); err != nil && !errors.Is(err, context.Canceled) {
 		return brief, handoff, err
 	}
 	if brief, err = a.Store.ReadNote(t.Name, task.BriefFile); err != nil {
 		return brief, handoff, err
 	}
-	handoff, err = a.Store.ReadNote(t.Name, task.HandoffFile)
-	return brief, handoff, err
+	if handoff, err = a.Store.ReadNote(t.Name, task.HandoffFile); err != nil {
+		return brief, handoff, err
+	}
+	// Not moved yet; a note file, when there is one, is the newer copy.
+	if brief.Text == "" {
+		brief.Text = t.LegacyBrief
+	}
+	if handoff.Text == "" && t.LegacyHandoff != "" {
+		handoff.Text = t.LegacyHandoff
+		if t.LegacyHandoffUpdatedAt != nil {
+			handoff.UpdatedAt = *t.LegacyHandoffUpdatedAt
+		}
+	}
+	return brief, handoff, nil
 }
 
 type taskDetails struct{ title, ticket, ticketURL, briefFile string }
@@ -170,14 +188,6 @@ func (a *App) newTaskNoteCmd(handoff bool) *cobra.Command {
 			"Notes survive tspace clean and are deleted with the task record.",
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			t, unlock, err := a.lockTask(cmd, args[0], false)
-			if err != nil {
-				return err
-			}
-			defer unlock()
-			if _, err := a.Store.MigrateNotes(cmd.Context(), t); err != nil {
-				return err
-			}
 			modes := 0
 			if len(args) == 2 {
 				modes++
@@ -194,14 +204,19 @@ func (a *App) newTaskNoteCmd(handoff bool) *cobra.Command {
 			if modes > 1 {
 				return fmt.Errorf("choose only one of TEXT, --file, --clear or --edit")
 			}
-			if edit {
-				unlock() // the editor writes the file itself, for as long as it is open
-				return a.editTaskNote(cmd.Context(), t, noteFile)
-			}
 			if modes == 0 {
-				stored, err := a.Store.ReadNote(t.Name, noteFile)
+				// Reading takes no lock, so it never waits.
+				t, err := a.loadTask(args[0])
 				if err != nil {
 					return err
+				}
+				brief, handoff, err := a.notes(cmd.Context(), t)
+				if err != nil {
+					return err
+				}
+				stored := brief
+				if noteFile == task.HandoffFile {
+					stored = handoff
 				}
 				// Exported verbatim so the Markdown round-trips through --file,
 				// but never without a final newline: the shell prompt would
@@ -212,6 +227,18 @@ func (a *App) newTaskNoteCmd(handoff bool) *cobra.Command {
 				}
 				_, err = fmt.Fprint(a.Out, out)
 				return err
+			}
+			t, unlock, err := a.lockTask(cmd, args[0], false)
+			if err != nil {
+				return err
+			}
+			defer unlock()
+			if _, err := a.Store.MigrateNotes(cmd.Context(), t); err != nil {
+				return err
+			}
+			if edit {
+				unlock() // the editor writes the file itself, for as long as it is open
+				return a.editTaskNote(cmd.Context(), t, noteFile)
 			}
 			var note string
 			if len(args) == 2 {

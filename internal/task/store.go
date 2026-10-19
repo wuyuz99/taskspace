@@ -1,7 +1,6 @@
 package task
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -240,16 +239,13 @@ func (s *Store) Create(name string) (*Task, error) {
 	if err := ValidateName("task", name); err != nil {
 		return nil, err
 	}
-	l, err := s.Lock(context.Background(), name, "tspace task create "+name, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer l.Unlock()
-	if s.Exists(name) {
-		return nil, fmt.Errorf("%q: %w", name, ErrExists)
-	}
+	// Published without replacing, as CreatePrepared does, so of two creates
+	// at once exactly one wins, lock or no lock.
 	t := New(name)
-	if err := s.Save(t); err != nil {
+	if err := s.CreatePrepared(t); err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return nil, fmt.Errorf("%q: %w", name, ErrExists)
+		}
 		return nil, err
 	}
 	return t, nil

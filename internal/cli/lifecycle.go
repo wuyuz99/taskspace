@@ -57,14 +57,7 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 			}
 
 			bases := map[string]string{}
-			var windows []runtime.Window
-			// The root window comes first, so a fresh session opens on the agent
-			// that can see every repository. Naming repositories starts only those.
-			// A single-repo task has none: its agent runs in the repository.
-			withRoot := len(args) == 1 && t.HasRootWindow()
-			if withRoot {
-				windows = append(windows, a.rootWindow(t))
-			}
+			hooked := false
 			for _, name := range names {
 				r := t.Repos[name]
 				res, err := a.Git.EnsureWorktree(ctx, r.Path, r.Worktree, r.Branch, r.Base)
@@ -86,6 +79,7 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 				}
 
 				if res.Created {
+					hooked = hooked || r.PostCreate != ""
 					if err := a.runPostCreate(ctx, t, name, r); err != nil {
 						// A half-provisioned worktree the user can inspect beats
 						// destroying one, so this is a warning, not a rollback.
@@ -97,14 +91,14 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 						bases[name] = res.Base
 					}
 				}
-
-				windows = append(windows, a.repoWindow(t, name))
 			}
 
 			// A post_create hook may have updated the record meanwhile, so
-			// the bases resolved here go onto the latest one, not over it.
-			if len(bases) > 0 {
-				latest, err := a.Store.Update(ctx, t.Name, func(cur *task.Task) error {
+			// the bases resolved here go onto the latest one, not over it,
+			// and the windows are made from that.
+			switch {
+			case len(bases) > 0:
+				latest, err := a.Store.Update(ctx, t.Name, cmd.CommandPath()+" "+t.Name, func(cur *task.Task) error {
 					for name, base := range bases {
 						if r, ok := cur.Repos[name]; ok {
 							r.Base = base
@@ -117,6 +111,21 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 					return err
 				}
 				t = latest
+			case hooked:
+				if t, err = a.Store.Load(t.Name); err != nil {
+					return err
+				}
+			}
+			// The root window comes first, so a fresh session opens on the agent
+			// that can see every repository. Naming repositories starts only those.
+			// A single-repo task has none: its agent runs in the repository.
+			var windows []runtime.Window
+			withRoot := len(args) == 1 && t.HasRootWindow()
+			if withRoot {
+				windows = append(windows, a.rootWindow(t))
+			}
+			for _, name := range names {
+				windows = append(windows, a.repoWindow(t, name))
 			}
 
 			if noRuntime {

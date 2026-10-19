@@ -2,7 +2,8 @@ package task
 
 import (
 	"context"
-	"errors"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,44 +23,47 @@ import (
 //   - A command that changes a task takes the task's lock before it loads the
 //     record, and holds it until it is done, so what it saves was read under
 //     the lock. Tasks have a lock each; different tasks never wait for each
-//     other. Reading needs no lock: records are replaced atomically.
-//   - The lock is an advisory OS lock (flock, or LockFileEx on Windows) on
-//     tasks/.locks/TASK.lock. The OS drops it when its process exits however
-//     it exits, so there is never a stale lock to clean up, and lock files are
-//     never deleted: removing one while another process waits on it would let
-//     two processes hold "the" lock.
-//   - A waiting command says who holds the lock and waits until it is free or
-//     its context is cancelled (Ctrl-C).
-//   - Within a process the lock travels in the context (WithLock): code that
-//     already holds it, such as `task create --start` running start, takes it
-//     again for free. Taking it again without that context is a bug, and fails
-//     at once rather than waiting on itself forever.
+//     other. Reading needs no lock, and never waits: records are replaced
+//     atomically.
+//   - Between processes the lock is an advisory OS lock (flock, or LockFileEx
+//     on Windows) on tasks/.locks/TASK.lock. The OS drops it when its process
+//     exits however it exits, so there is never a stale lock to clean up, and
+//     lock files are never deleted: removing one while another process waits
+//     on it would let two processes hold "the" lock. Within a process, as in
+//     dash, commands on one task wait for each other the same way.
+//   - A waiting command says who holds the lock, again whenever that changes,
+//     and waits until it is free or its context is cancelled (Ctrl-C).
+//   - The lock travels in the context (WithLock): code that already holds it,
+//     such as `task create --start` running start, takes it again for free.
+//     Code that holds a lock must pass that context on; taking the lock
+//     without it waits for itself until the context is cancelled.
 //   - A process the holder runs and waits for, such as a post_create hook, gets
 //     the lock in $TSPACE_LOCKED and may change the record, which the holder
-//     reloads before saving its own changes. It may not run commands that take
-//     the lock to change worktrees or the session (Inherited reports that): the
-//     holder is partway through doing that itself.
+//     reloads before using it again. It may not run commands that take the
+//     lock to change worktrees or the session (Inherited reports that): the
+//     holder is partway through doing that itself. The variable names this
+//     one acquisition, so a copy that outlives it, as in a background job
+//     the hook left behind, does not match the next.
 //   - Nobody holds a lock while attached to a terminal: open releases it
 //     before it attaches.
 type Lock struct {
 	store *Store
 	name  string
-	// f is the locked file; nil for a lock this one re-enters or inherits.
+	// f is the locked file and token this acquisition's name for itself; both
+	// unset for a lock this one re-enters or inherits.
 	f         *os.File
+	token     string
 	inherited bool
+	release   func()
 	once      sync.Once
 }
 
 // EnvLocked passes the task locks held by the processes a process was run by,
-// and waits on, to it: TASK:PID entries separated by commas.
+// and waits on, to it: TASK:TOKEN entries separated by commas.
 const EnvLocked = "TSPACE_LOCKED"
 
 // lockPoll is how often a waiting command tries again.
 const lockPoll = 50 * time.Millisecond
-
-// ErrLockedHere is returned when a process asks for a lock it already holds
-// without the context that carries it.
-var ErrLockedHere = errors.New("already locked by this process")
 
 type lockKey struct{ root, name string }
 
@@ -83,10 +87,10 @@ func (l *Lock) Inherited() bool { return l.inherited }
 // waiting on that one.
 func (l *Lock) Env() string {
 	held := os.Getenv(EnvLocked)
-	if l.inherited {
+	if l.token == "" {
 		return EnvLocked + "=" + held
 	}
-	mine := l.name + ":" + strconv.Itoa(os.Getpid())
+	mine := l.name + ":" + l.token
 	if held != "" {
 		mine = held + "," + mine
 	}
@@ -98,8 +102,13 @@ func (l *Lock) Env() string {
 func (l *Lock) Unlock() {
 	l.once.Do(func() {
 		if l.f != nil {
+			// No holder is named while nobody holds it.
+			_ = l.f.Truncate(0)
 			_ = unlockFile(l.f)
 			_ = l.f.Close()
+		}
+		if l.release != nil {
+			l.release()
 		}
 	})
 }
@@ -109,11 +118,12 @@ func (s *Store) LockPath(name string) string {
 	return filepath.Join(s.TasksDir(), ".locks", name+".lock")
 }
 
-// LockHolder describes the process holding a lock, as far as it said.
+// LockHolder describes the holder of a lock, as far as it said.
 type LockHolder struct {
 	PID     int
 	Command string
 	Since   time.Time
+	token   string
 }
 
 func (h LockHolder) String() string {
@@ -130,9 +140,22 @@ func (h LockHolder) String() string {
 	return s
 }
 
+// inProcess holds, per lock file, a one-slot channel taken by whichever of
+// this process's commands has that task, and that command's details. An OS
+// lock does not order commands of one process: dash runs several at once.
+var inProcess sync.Map // path -> *localLock
+
+type localLock struct {
+	slot   chan struct{}
+	mu     sync.Mutex
+	holder LockHolder
+}
+
 // Lock takes the task's lock for command, which is recorded for anyone who
-// has to wait. If the lock is busy, waiting is called once with its holder,
-// and Lock tries again until it is free or ctx is done.
+// has to wait. If the lock is busy, waiting is called with its holder, and
+// again if that changes, and Lock tries again until it is free or ctx is done.
+// A ctx that is already done makes one attempt, for callers that must not
+// wait.
 func (s *Store) Lock(ctx context.Context, name, command string, waiting func(LockHolder)) (*Lock, error) {
 	if err := ValidateName("task", name); err != nil {
 		return nil, err
@@ -141,19 +164,60 @@ func (s *Store) Lock(ctx context.Context, name, command string, waiting func(Loc
 		return &Lock{store: s, name: name, inherited: held.inherited}, nil
 	}
 	path := s.LockPath(name)
+	var told LockHolder
+	toldAny := false
+	tell := func(h LockHolder) {
+		if waiting != nil && (!toldAny || h.PID != 0 && h != told) {
+			told, toldAny = h, true
+			waiting(h)
+		}
+	}
+	wait := func() error {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("waiting for task %q: %w", name, ctx.Err())
+		case <-time.After(lockPoll):
+			return nil
+		}
+	}
+
+	// This process's other commands on the task first.
+	v, _ := inProcess.LoadOrStore(path, &localLock{slot: make(chan struct{}, 1)})
+	local := v.(*localLock)
+	for acquired := false; !acquired; {
+		select {
+		case local.slot <- struct{}{}:
+			acquired = true
+		default:
+			local.mu.Lock()
+			h := local.holder
+			local.mu.Unlock()
+			tell(h)
+			if err := wait(); err != nil {
+				return nil, err
+			}
+		}
+	}
+	release := func() { <-local.slot }
+
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		release()
 		return nil, fmt.Errorf("create %s: %w", filepath.Dir(path), err)
 	}
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
+		release()
 		return nil, fmt.Errorf("open lock for task %q: %w", name, err)
 	}
-	told := false
+	fail := func(err error) (*Lock, error) {
+		f.Close()
+		release()
+		return nil, err
+	}
 	for {
 		ok, err := tryLockFile(f)
 		if err != nil {
-			f.Close()
-			return nil, fmt.Errorf("lock task %q: %w", name, err)
+			return fail(fmt.Errorf("lock task %q: %w", name, err))
 		}
 		if ok {
 			break
@@ -161,41 +225,47 @@ func (s *Store) Lock(ctx context.Context, name, command string, waiting func(Loc
 		holder := readHolder(path)
 		if inheritedFrom(name, holder) {
 			f.Close()
+			release()
 			return &Lock{store: s, name: name, inherited: true}, nil
 		}
-		if holder.PID == os.Getpid() {
-			f.Close()
-			return nil, fmt.Errorf("task %q: %w", name, ErrLockedHere)
-		}
-		if !told && waiting != nil {
-			told = true
-			waiting(holder)
-		}
-		select {
-		case <-ctx.Done():
-			f.Close()
-			return nil, fmt.Errorf("waiting for task %q: %w", name, ctx.Err())
-		case <-time.After(lockPoll):
+		tell(holder)
+		if err := wait(); err != nil {
+			return fail(err)
 		}
 	}
-	// Who holds it, for whoever waits next. A reader that comes between the
-	// lock and this write sees no holder, and says "another tspace".
-	info := fmt.Sprintf("pid=%d\ncommand=%s\nsince=%s\n", os.Getpid(),
-		strings.ReplaceAll(command, "\n", " "), time.Now().UTC().Format(time.RFC3339))
+
+	token := newToken()
+	holder := LockHolder{PID: os.Getpid(), Command: strings.ReplaceAll(command, "\n", " "),
+		Since: time.Now().UTC().Truncate(time.Second), token: token}
+	local.mu.Lock()
+	local.holder = holder
+	local.mu.Unlock()
+	// For whoever waits next. One that reads before this sees no holder, and
+	// says "another tspace" until it does.
+	info := fmt.Sprintf("pid=%d\ncommand=%s\nsince=%s\ntoken=%s\n", holder.PID, holder.Command,
+		holder.Since.Format(time.RFC3339), token)
 	if err := f.Truncate(0); err == nil {
 		_, _ = f.WriteAt([]byte(info), 0)
 	}
-	return &Lock{store: s, name: name, f: f}, nil
+	return &Lock{store: s, name: name, f: f, token: token, release: release}, nil
+}
+
+func newToken() string {
+	b := make([]byte, 8)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 // inheritedFrom reports whether $TSPACE_LOCKED hands this process the lock
-// holder has: the process that ran it holds it and is waiting for it. A stale
-// value, as in a shell started from a hook that is long gone, names a process
-// that is not the holder.
+// holder has: the process that ran it holds it, in this very acquisition, and
+// is waiting for it.
 func inheritedFrom(name string, holder LockHolder) bool {
+	if holder.token == "" {
+		return false
+	}
 	for _, v := range strings.Split(os.Getenv(EnvLocked), ",") {
-		task, pid, ok := strings.Cut(v, ":")
-		if ok && task == name && holder.PID != 0 && pid == strconv.Itoa(holder.PID) {
+		task, token, ok := strings.Cut(v, ":")
+		if ok && task == name && token == holder.token {
 			return true
 		}
 	}
@@ -217,6 +287,8 @@ func readHolder(path string) LockHolder {
 			h.Command = v
 		case "since":
 			h.Since, _ = time.Parse(time.RFC3339, v)
+		case "token":
+			h.token = v
 		}
 	}
 	return h
@@ -224,9 +296,10 @@ func readHolder(path string) LockHolder {
 
 // Update applies fn to the task's latest record under its lock and saves the
 // result, so changes made by others meanwhile are kept. A task deleted
-// meanwhile stays deleted: Update returns ErrNotFound.
-func (s *Store) Update(ctx context.Context, name string, fn func(*Task) error) (*Task, error) {
-	l, err := s.Lock(ctx, name, "tspace update "+name, nil)
+// meanwhile stays deleted: Update returns ErrNotFound. command names it for
+// anyone who has to wait.
+func (s *Store) Update(ctx context.Context, name, command string, fn func(*Task) error) (*Task, error) {
+	l, err := s.Lock(ctx, name, command, nil)
 	if err != nil {
 		return nil, err
 	}
