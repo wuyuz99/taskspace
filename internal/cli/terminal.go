@@ -37,14 +37,22 @@ func (a *App) openInNewTab(ctx context.Context, taskName string) error {
 		command = append(command, "--no-title")
 	}
 	command = append(command, "attach", taskName)
-	argv := terminalArgv(c.Terminal, command)
+	return a.launch(ctx, terminalArgv(c.Terminal, command))
+}
 
-	// Not tied to ctx: the tab outlives dash.
+// launch starts a program the user configured to open something of theirs,
+// a terminal tab or an editor, and lets it be: it is not waited for, beyond
+// launchWait to report one that fails at once, and neither ctx nor tspace
+// exiting ends it. It gets newTabEnv's environment.
+func (a *App) launch(ctx context.Context, argv []string) error {
 	cmd := osexec.Command(argv[0], argv[1:]...)
+	if cmd.Err != nil {
+		return fmt.Errorf("%s not found (%v); change it with tspace config", argv[0], cmd.Err)
+	}
 	cmd.Env = newTabEnv(os.Environ(), a.Store.Root())
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
-	// A launcher's child may keep the output open for as long as the tab.
+	// A launcher's child may keep the output open for as long as it runs.
 	cmd.WaitDelay = launchWait / 2
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("%s: %w", argv[0], err)
@@ -66,10 +74,9 @@ func (a *App) openInNewTab(ctx context.Context, taskName string) error {
 	return nil
 }
 
-// newTabEnv is the environment a new tab is opened with: dash's, without
-// what says where dash itself runs, which would make the tab's tspace switch
-// dash's multiplexer client, or report for dash's task window, instead of
-// attaching in the tab. TSPACE_ROOT is the state dash shows, for terminals
+// newTabEnv is the environment a new tab or editor is opened with: tspace's,
+// without what says where tspace itself runs, which would make a tspace run
+// in it switch this multiplexer client, or report for this task window. TSPACE_ROOT is the state dash shows, for terminals
 // whose new tabs inherit the environment.
 func newTabEnv(environ []string, root string) []string {
 	drop := []string{"TMUX=", "TMUX_PANE=", "ZELLIJ=", "ZELLIJ_SESSION_NAME=", "ZELLIJ_PANE_ID=",

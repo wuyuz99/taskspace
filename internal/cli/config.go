@@ -341,64 +341,25 @@ func (a *App) newConfigTicketPatternCmd() *cobra.Command {
 }
 
 func (a *App) newConfigEditorCmd() *cobra.Command {
-	var unset bool
-	cmd := &cobra.Command{
-		Use:   "editor [COMMAND [ARGS...] | --unset]",
-		Short: "Show or set the editor tspace editor opens a task in",
-		Long: "tspace editor TASK writes the task's worktrees into a .code-workspace\n" +
+	return a.newConfigProgramCmd(configProgram{
+		use:   "editor",
+		short: "Show or set the editor tspace editor opens a task in",
+		long: "tspace editor TASK writes the task's worktrees into a .code-workspace\n" +
 			"file and opens it with this command, the file's path added at the end.\n" +
 			"Any editor that reads the format will do:\n\n" +
 			"  tspace config editor code\n" +
 			"  tspace config editor cursor\n" +
 			"  tspace config editor codium --new-window",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if unset && len(args) > 0 {
-				return fmt.Errorf("choose either a command or --unset")
-			}
-			c, err := a.Store.LoadConfig()
-			if err != nil {
-				return err
-			}
-			switch {
-			case unset:
-				c.Editor = nil
-			case len(args) == 0:
-				if len(c.Editor) == 0 {
-					a.printf("none; tspace editor only writes the workspace file\n")
-				} else {
-					a.printf("%s\n", shellJoin(c.Editor))
-				}
-				return nil
-			case strings.TrimSpace(args[0]) == "":
-				return fmt.Errorf("editor command is empty; use --unset to clear it")
-			case slices.Contains(args[1:], "--unset"):
-				return fmt.Errorf("--unset goes alone, before any command: tspace config editor --unset")
-			default:
-				c.Editor = args
-			}
-			if err := a.Store.SaveConfig(c); err != nil {
-				return err
-			}
-			if unset {
-				a.printf("cleared the editor command\n")
-				return nil
-			}
-			a.printf("editor: %s\n", shellJoin(c.Editor))
-			return nil
-		},
-	}
-	// Flags after COMMAND belong to it, not to tspace.
-	cmd.Flags().SetInterspersed(false)
-	cmd.Flags().BoolVar(&unset, "unset", false, "clear the editor command")
-	return cmd
+		none:  "none; tspace editor only writes the workspace file",
+		field: func(c *task.Config) *[]string { return &c.Editor },
+	})
 }
 
 func (a *App) newConfigTerminalCmd() *cobra.Command {
-	var unset bool
-	cmd := &cobra.Command{
-		Use:   "terminal [COMMAND [ARGS...] | --unset]",
-		Short: "Show or set how a task opens in a new terminal tab",
-		Long: "dash's t key opens the selected window in a new tab or window of your\n" +
+	return a.newConfigProgramCmd(configProgram{
+		use:   "terminal",
+		short: "Show or set how a task opens in a new terminal tab",
+		long: "dash's t key opens the selected window in a new tab or window of your\n" +
 			"terminal, running `tspace attach TASK` there. Every terminal does that its own\n" +
 			"way and tspace knows none of them, so you tell it: the command is run with\n" +
 			"tspace's own command added at the end, or, if an argument holds {command},\n" +
@@ -408,6 +369,24 @@ func (a *App) newConfigTerminalCmd() *cobra.Command {
 			"  tspace config terminal kitty @ launch --type=tab\n" +
 			"  tspace config terminal gnome-terminal --tab --\n" +
 			"  tspace config terminal osascript -e 'tell app \"Terminal\" to do script \"{command}\"'",
+		none:  "none; dash cannot open new tabs until one is set",
+		field: func(c *task.Config) *[]string { return &c.Terminal },
+	})
+}
+
+// configProgram is a config setting naming a program of the user's to run,
+// as argv: their editor or terminal, which tspace knows nothing of.
+type configProgram struct {
+	use, short, long, none string
+	field                  func(*task.Config) *[]string
+}
+
+func (a *App) newConfigProgramCmd(p configProgram) *cobra.Command {
+	var unset bool
+	cmd := &cobra.Command{
+		Use:   p.use + " [COMMAND [ARGS...] | --unset]",
+		Short: p.short,
+		Long:  p.long,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if unset && len(args) > 0 {
 				return fmt.Errorf("choose either a command or --unset")
@@ -416,37 +395,38 @@ func (a *App) newConfigTerminalCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			field := p.field(c)
 			switch {
 			case unset:
-				c.Terminal = nil
+				*field = nil
 			case len(args) == 0:
-				if len(c.Terminal) == 0 {
-					a.printf("none; dash cannot open new tabs until one is set\n")
+				if len(*field) == 0 {
+					a.printf("%s\n", p.none)
 				} else {
-					a.printf("%s\n", shellJoin(c.Terminal))
+					a.printf("%s\n", shellJoin(*field))
 				}
 				return nil
 			case strings.TrimSpace(args[0]) == "":
-				return fmt.Errorf("terminal command is empty; use --unset to clear it")
+				return fmt.Errorf("%s command is empty; use --unset to clear it", p.use)
 			case slices.Contains(args[1:], "--unset"):
-				return fmt.Errorf("--unset goes alone, before any command: tspace config terminal --unset")
+				return fmt.Errorf("--unset goes alone, before any command: tspace config %s --unset", p.use)
 			default:
-				c.Terminal = args
+				*field = args
 			}
 			if err := a.Store.SaveConfig(c); err != nil {
 				return err
 			}
 			if unset {
-				a.printf("cleared the terminal command\n")
+				a.printf("cleared the %s command\n", p.use)
 				return nil
 			}
-			a.printf("terminal: %s\n", shellJoin(c.Terminal))
+			a.printf("%s: %s\n", p.use, shellJoin(*field))
 			return nil
 		},
 	}
 	// Flags after COMMAND belong to it, not to tspace.
 	cmd.Flags().SetInterspersed(false)
-	cmd.Flags().BoolVar(&unset, "unset", false, "clear the terminal command")
+	cmd.Flags().BoolVar(&unset, "unset", false, "clear the "+p.use+" command")
 	return cmd
 }
 

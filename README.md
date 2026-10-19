@@ -662,14 +662,15 @@ tspace editor PAY-142
 tspace editor PAY-142 --print      # write it and print its path; open it yourself
 ```
 
-The file is `.context/TASK.code-workspace`, so `clean` keeps it with the notes
-and `task rm` removes it. Each run rewrites only its `folders`, from the task as
-it is then, so a repository added or removed shows up the next time; your
-`settings`, `extensions` and anything else in the file are kept. A worktree not
+The file is `.context/TASK.code-workspace`, beside the notes, which appear in it
+as `.context`. Each run brings its folders up to date with the task, so a
+repository added or removed shows up the next time; folders you add from
+outside the task, your `settings`, `extensions` and anything else in the file
+are kept, and a file with nothing to change is not touched. A worktree not
 created yet is left out until `start` makes it, and a file with comments in it,
-which tspace cannot rewrite faithfully, is left alone. `editor` starts and
-removes nothing: tspace keeps the worktrees, the editor its windows and
-terminals.
+which tspace cannot rewrite faithfully, is left alone. `clean` removes the file
+with the worktrees it lists. `editor` starts and removes nothing: tspace keeps
+the worktrees, the editor its windows and terminals.
 
 Run it where the editor runs. From WSL, `code` opens the workspace through VS
 Code's WSL support, with the paths as WSL sees them; on a remote machine, the
