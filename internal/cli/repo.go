@@ -50,10 +50,11 @@ func (a *App) newRepoUpdateCmd() *cobra.Command {
 			if setAgent && (len(agent) == 0 || strings.TrimSpace(agent[0]) == "") {
 				return fmt.Errorf("agent command is empty; use --shell to restore the default shell")
 			}
-			t, err := a.loadTask(args[0])
+			t, unlock, err := a.lockTask(cmd, args[0], false)
 			if err != nil {
 				return err
 			}
+			defer unlock()
 			r, ok := t.Repo(args[1])
 			if !ok {
 				return fmt.Errorf("task %q has no repo named %q", t.Name, args[1])
@@ -161,11 +162,12 @@ func (a *App) newRepoAddCmd() *cobra.Command {
 			"Nothing else is created on disk here — `tspace start` makes the worktrees.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-			t, err := a.loadTask(args[0])
+			t, unlock, err := a.lockTask(cmd, args[0], true)
 			if err != nil {
 				return err
 			}
+			defer unlock()
+			ctx := cmd.Context()
 			c, err := a.Store.LoadConfig()
 			if err != nil {
 				return err
@@ -476,10 +478,11 @@ func (a *App) newRepoRmCmd() *cobra.Command {
 			"`tspace clean TASK` for that, so the safety checks apply.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			t, err := a.loadTask(args[0])
+			t, unlock, err := a.lockTask(cmd, args[0], true)
 			if err != nil {
 				return err
 			}
+			defer unlock()
 			r, ok := t.Repo(args[1])
 			if !ok {
 				return fmt.Errorf("task %q has no repo named %q", t.Name, args[1])

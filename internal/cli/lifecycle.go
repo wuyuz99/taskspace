@@ -42,11 +42,12 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 			"--no-runtime creates them and stops there, successfully.",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-			t, err := a.loadTask(args[0])
+			t, unlock, err := a.lockTask(cmd, args[0], true)
 			if err != nil {
 				return err
 			}
+			defer unlock()
+			ctx := cmd.Context()
 			names, err := selectRepos(t, args[1:])
 			if err != nil {
 				return err
@@ -55,7 +56,7 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 				return fmt.Errorf("task %q has no repositories; add one with: tspace repo add %s REPO", t.Name, t.Name)
 			}
 
-			changed := false
+			bases := map[string]string{}
 			var windows []runtime.Window
 			// The root window comes first, so a fresh session opens on the agent
 			// that can see every repository. Naming repositories starts only those.
@@ -93,17 +94,29 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 					if res.Base != "" && r.Base != res.Base {
 						r.Base = res.Base
 						t.SetRepo(name, r)
-						changed = true
+						bases[name] = res.Base
 					}
 				}
 
 				windows = append(windows, a.repoWindow(t, name))
 			}
 
-			if changed {
-				if err := a.Store.Save(t); err != nil {
+			// A post_create hook may have updated the record meanwhile, so
+			// the bases resolved here go onto the latest one, not over it.
+			if len(bases) > 0 {
+				latest, err := a.Store.Update(ctx, t.Name, func(cur *task.Task) error {
+					for name, base := range bases {
+						if r, ok := cur.Repos[name]; ok {
+							r.Base = base
+							cur.SetRepo(name, r)
+						}
+					}
+					return nil
+				})
+				if err != nil {
 					return err
 				}
+				t = latest
 			}
 
 			if noRuntime {
@@ -146,8 +159,9 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 			}
 			if open {
 				a.printf("\nworkspace: %s\n", t.Name)
-				a.printTaskContext(t)
+				a.printTaskContext(cmd.Context(), t)
 				setTitle(a.Out, "tspace: "+t.Name, a.noTitle)
+				unlock() // nobody holds a task while attached to it
 				return a.Runtime.Attach(ctx, session)
 			}
 			a.printf("\nsession %s is up; attach with: tspace attach %s\n", session, t.Name)
@@ -244,6 +258,11 @@ func (a *App) runPostCreate(ctx context.Context, t *task.Task, name string, r ta
 		"TSPACE_TASK_DIR="+a.Store.TaskDir(t.Name),
 		"TSPACE_CONTEXT_DIR="+a.Store.ContextDir(t.Name),
 	)
+	// The hook runs while start holds the task, so a tspace it runs on the
+	// task inherits the lock instead of waiting for start, which waits for it.
+	if l := a.Store.HeldLock(ctx, t.Name); l != nil {
+		cmd.Env = append(cmd.Env, l.Env())
+	}
 	return cmd.Run()
 }
 
@@ -255,10 +274,11 @@ func (a *App) newStopCmd() *cobra.Command {
 			"Worktrees and branches are not touched.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			t, err := a.loadTask(args[0])
+			t, unlock, err := a.lockTask(cmd, args[0], true)
 			if err != nil {
 				return err
 			}
+			defer unlock()
 			session := a.Runtime.SessionName(t.Name)
 
 			running, err := a.Runtime.HasSession(cmd.Context(), session)
@@ -304,10 +324,11 @@ func (a *App) newRestartCmd() *cobra.Command {
 			case !root && len(args) == 1:
 				return fmt.Errorf("name a repository, or use --root for the task-root window")
 			}
-			t, err := a.loadTask(args[0])
+			t, unlock, err := a.lockTask(cmd, args[0], true)
 			if err != nil {
 				return err
 			}
+			defer unlock()
 			var w runtime.Window
 			label := t.Name
 			if root {
@@ -383,7 +404,7 @@ func (a *App) newAttachCmd() *cobra.Command {
 			// Label the hosting tab before handing the terminal over, so the tab
 			// is identifiable even after detaching.
 			setTitle(a.Out, "tspace: "+t.Name, a.noTitle)
-			a.printTaskContext(t)
+			a.printTaskContext(cmd.Context(), t)
 			return a.Runtime.Attach(cmd.Context(), a.Runtime.SessionName(t.Name))
 		},
 	}

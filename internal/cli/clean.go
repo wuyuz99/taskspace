@@ -35,11 +35,12 @@ func (a *App) newCleanCmd() *cobra.Command {
 			"remove it here once the worktrees are gone, finishing the task in one step.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-			t, err := a.loadTask(args[0])
+			t, unlock, err := a.lockTask(cmd, args[0], true)
 			if err != nil {
 				return err
 			}
+			defer unlock()
+			ctx := cmd.Context()
 			if len(t.Repos) == 0 {
 				a.printf("task %s has no repositories\n", t.Name)
 				if !rm {

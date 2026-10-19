@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -47,8 +48,10 @@ func (e SkippedError) orNil() error {
 //
 // One file per task rather than one global file: the premise of the tool is
 // many concurrent tasks, and a single file means two tspace processes racing on a
-// read-modify-write. Per-task files never touch the same bytes, so no lockfile
-// is needed. Writes within a task are atomic via temp file + rename.
+// read-modify-write of unrelated tasks. Writes are atomic via temp file +
+// rename, so a reader never sees half a record; commands changing the same task
+// serialize on its lock (see Lock), and Save is for a caller holding it that
+// loaded the record under it, as Update does.
 type Store struct {
 	root string
 }
@@ -237,6 +240,11 @@ func (s *Store) Create(name string) (*Task, error) {
 	if err := ValidateName("task", name); err != nil {
 		return nil, err
 	}
+	l, err := s.Lock(context.Background(), name, "tspace task create "+name, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer l.Unlock()
 	if s.Exists(name) {
 		return nil, fmt.Errorf("%q: %w", name, ErrExists)
 	}
