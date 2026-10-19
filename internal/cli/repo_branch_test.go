@@ -162,3 +162,74 @@ func TestRepoUpdateRebaseConflictChangesNothing(t *testing.T) {
 		t.Fatal("the failed rebase recorded the new base")
 	}
 }
+
+// The cases the review found could lose or misplace work.
+func TestRepoUpdateBranchAndBaseSafety(t *testing.T) {
+	h := newHarness(t)
+	gitIdentity(t)
+	withRemote(t, h.repo)
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--repo", "backend="+h.repo); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newStartCmd(), "PAY-1", "--no-runtime"); err != nil {
+		t.Fatal(err)
+	}
+	r := h.load(t, "PAY-1").Repos["backend"]
+	commitFile(t, r.Worktree, "feature.txt", "mine\n", "task work")
+	gitIn(t, h.repo, "branch", "release", "main")
+	update := func(args ...string) error {
+		return h.exec(t, h.app.newRepoCmd(), append([]string{"update", "PAY-1", "backend"}, args...)...)
+	}
+
+	if err := update("--base", "HEAD"); err == nil {
+		t.Error("--base HEAD accepted")
+	}
+	// A remote's branch of that name, even one not fetched yet, is taken.
+	if err := update("--branch", "develop"); err == nil || !strings.Contains(err.Error(), "already exists as origin/develop") {
+		t.Errorf("rename onto a remote branch = %v", err)
+	}
+	// Stashes on the old name would be lost track of.
+	if err := os.WriteFile(filepath.Join(r.Worktree, "wip.txt"), []byte("wip"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, r.Worktree, "stash", "-u")
+	if err := update("--branch", "me/PAY-1"); err == nil || !strings.Contains(err.Error(), "stash") {
+		t.Errorf("rename with stashes = %v", err)
+	}
+	gitIn(t, r.Worktree, "stash", "drop")
+
+	// The worktree on another branch is neither rebased nor renamed.
+	gitIn(t, r.Worktree, "checkout", "-q", "-b", "elsewhere")
+	if err := update("--base", "release", "--rebase"); err == nil || !strings.Contains(err.Error(), "not on agent/PAY-1") {
+		t.Errorf("rebase of another branch = %v", err)
+	}
+	gitIn(t, r.Worktree, "checkout", "-q", "agent/PAY-1")
+
+	// A recorded base of HEAD, which ResolveBase falls back to, still keeps
+	// the branch's work when rebasing.
+	tk := h.load(t, "PAY-1")
+	rr := tk.Repos["backend"]
+	rr.Base = "HEAD"
+	tk.SetRepo("backend", rr)
+	if err := h.app.Store.Save(tk); err != nil {
+		t.Fatal(err)
+	}
+	if err := update("--base", "release", "--rebase"); err != nil {
+		t.Fatal(err)
+	}
+	if log := gitIn(t, r.Worktree, "log", "--format=%s"); !strings.Contains(log, "task work") {
+		t.Fatalf("the rebase dropped the task's commits:\n%s", log)
+	}
+
+	// With the worktree gone, the branch is still renamed in git.
+	gitIn(t, h.repo, "worktree", "remove", "--force", r.Worktree)
+	if err := update("--branch", "me/PAY-1"); err != nil {
+		t.Fatal(err)
+	}
+	if gitIn(t, h.repo, "branch", "--list", "me/PAY-1") == "" || gitIn(t, h.repo, "branch", "--list", "agent/PAY-1") != "" {
+		t.Fatal("the branch was not renamed in git")
+	}
+	if log := gitIn(t, h.repo, "log", "--format=%s", "me/PAY-1"); !strings.Contains(log, "task work") {
+		t.Fatalf("renamed branch lost its work:\n%s", log)
+	}
+}

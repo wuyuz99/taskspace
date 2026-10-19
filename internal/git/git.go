@@ -317,18 +317,44 @@ func (g *Git) RenameBranch(ctx context.Context, repo, from, to string) error {
 	return nil
 }
 
-// Rebase moves the commits the branch checked out in worktree has beyond
-// upstream onto onto. A rebase that stops, on a conflict or anything else,
-// is aborted, leaving the branch and worktree as they were; the error says
-// why it stopped.
-func (g *Git) Rebase(ctx context.Context, worktree, onto, upstream string) error {
-	if _, err := g.git(ctx, worktree, "rebase", "--onto", onto, upstream); err != nil {
-		if inProgress, _ := g.InProgress(ctx, worktree); inProgress != "" {
-			if _, abortErr := g.git(ctx, worktree, "rebase", "--abort"); abortErr != nil {
-				return fmt.Errorf("rebase onto %s stopped, and could not be aborted (%v); finish or abort it in %s: %w", onto, abortErr, worktree, err)
-			}
+// Commit resolves ref in repo to the commit it names.
+func (g *Git) Commit(ctx context.Context, repo, ref string) (string, error) {
+	res, err := g.git(ctx, repo, "rev-parse", "--verify", "--quiet", ref+"^{commit}")
+	if err != nil {
+		if tsexec.IsExit(err) {
+			return "", fmt.Errorf("%s is not a commit in %s", ref, repo)
 		}
-		return fmt.Errorf("rebase onto %s: %w", onto, err)
+		return "", err
 	}
-	return nil
+	return res.Out(), nil
+}
+
+// MergeBase is the best common ancestor of two commits in repo.
+func (g *Git) MergeBase(ctx context.Context, repo, a, b string) (string, error) {
+	res, err := g.git(ctx, repo, "merge-base", a, b)
+	if err != nil {
+		return "", fmt.Errorf("merge-base of %s and %s: %w", a, b, err)
+	}
+	return res.Out(), nil
+}
+
+// Rebase moves the commits the branch checked out in worktree has beyond
+// upstream onto onto. A rebase that stops, on a conflict, Ctrl-C or anything
+// else, is aborted; undone reports whether that left the branch and worktree
+// as they were, and the error says why it stopped.
+func (g *Git) Rebase(ctx context.Context, worktree, onto, upstream string) (undone bool, err error) {
+	_, err = g.git(ctx, worktree, "rebase", "--onto", onto, upstream)
+	if err == nil {
+		return false, nil
+	}
+	err = fmt.Errorf("rebase onto %s: %w", onto, err)
+	// Undone even when ctx is what stopped it.
+	bg := context.WithoutCancel(ctx)
+	if op, opErr := g.InProgress(bg, worktree); opErr == nil && op == "" {
+		return true, err // stopped before it began
+	}
+	if _, abortErr := g.git(bg, worktree, "rebase", "--abort"); abortErr != nil {
+		return false, fmt.Errorf("%w; it could not be aborted either (%v), so finish or abort it in %s", err, abortErr, worktree)
+	}
+	return true, err
 }
