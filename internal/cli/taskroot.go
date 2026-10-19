@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/wuyuz99/taskspace/internal/runtime"
 	"github.com/wuyuz99/taskspace/internal/task"
+	"github.com/wuyuz99/taskspace/internal/workspace"
 )
 
 // agentOptions are the task-root agent flags shared by task create and update.
@@ -104,14 +105,10 @@ func defaultsToRoot(t *task.Task, repoArg string) bool {
 	return repoArg == "" && len(t.Repos) != 1
 }
 
-// rootWindow, repoWindow and expandArgv are the lifecycle service's; see
-// package workspace.
-func (a *App) rootWindow(t *task.Task) runtime.Window { return a.workspace().RootWindow(t) }
-
-func (a *App) repoWindow(t *task.Task, name string) runtime.Window {
-	return a.workspace().RepoWindow(t, name)
-}
+// rootWindow and expandArgv are the lifecycle service's; see package
+// workspace.
+func (a *App) rootWindow(t *task.Task) runtime.Window { return workspace.RootWindow(a.Store, t) }
 
 func (a *App) expandArgv(t *task.Task, argv []string) []string {
-	return a.workspace().ExpandArgv(t, argv)
+	return workspace.ExpandArgv(a.Store, t, argv)
 }

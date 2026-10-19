@@ -2,10 +2,12 @@
 // and starting its session, stopping and restarting it, and cleaning it up.
 //
 // The CLI and the dashboard both drive it, so the workflow and its safety
-// decisions live in one place. It parses no arguments and renders nothing:
-// what an operation does on the way is reported as Events, in order, and
-// what it ends with as a result or an error. Hooks are the exception; what
-// they print goes straight to Stdout and Stderr, as they print it.
+// decisions live in one place. It parses no arguments and lays nothing out:
+// what an operation does on the way is reported as Events, in order, for the
+// caller to show as it likes, and what it ends with as a result or an error.
+// Errors and Warning texts are sentences, as Go errors are, and name the
+// tspace command that fixes the problem where there is one. What hooks print
+// goes straight to Stdout and Stderr, as they print it.
 package workspace
 
 import (
@@ -40,6 +42,19 @@ type Service struct {
 	// is told when an operation has to wait, and who for.
 	NoWait  bool
 	Waiting func(name string, holder task.LockHolder)
+
+	// Command is the tspace command running the operation, such as
+	// "tspace open", named to whoever has to wait for it. Empty, each
+	// operation names its own.
+	Command string
+}
+
+// command is the name an operation runs under: Command, else its own.
+func (s *Service) command(own string) string {
+	if s.Command != "" {
+		return s.Command
+	}
+	return own
 }
 
 // Event is something an operation did or found, reported as it happened.
@@ -81,12 +96,10 @@ type NoRepositories struct{ Task string }
 // SessionStopped reports Clean ended the task's session.
 type SessionStopped struct{ Session string }
 
-// WorktreeRemoved reports Clean removed a repository's worktree, or found
-// none (Present false).
-type WorktreeRemoved struct {
-	Repo    string
-	Present bool
-}
+// WorktreeRemoved reports Clean removed a repository's worktree; NoWorktree
+// that it found none to remove.
+type WorktreeRemoved struct{ Repo string }
+type NoWorktree struct{ Repo string }
 
 // BranchKept reports Clean left a branch it was asked to delete, because
 // its work is not safe elsewhere. Orphaned says no task will refer to it.
@@ -125,6 +138,7 @@ func (WindowExited) event()     {}
 func (NoRepositories) event()   {}
 func (SessionStopped) event()   {}
 func (WorktreeRemoved) event()  {}
+func (NoWorktree) event()       {}
 func (BranchKept) event()       {}
 func (BranchDeleted) event()    {}
 func (BranchNotDeleted) event() {}
@@ -221,13 +235,13 @@ const (
 //
 // TSPACE_ROOT is set too, so that tspace run in the window uses the state that
 // launched it whatever environment the multiplexer's server was started with.
-func (s *Service) WindowEnv(taskName, window string) []string {
-	return []string{EnvTask + "=" + taskName, EnvWindow + "=" + window, task.EnvRoot + "=" + s.Store.Root()}
+func WindowEnv(st *task.Store, taskName, window string) []string {
+	return []string{EnvTask + "=" + taskName, EnvWindow + "=" + window, task.EnvRoot + "=" + st.Root()}
 }
 
 // RootWindow is the task's window at its workspace root.
-func (s *Service) RootWindow(t *task.Task) runtime.Window {
-	return runtime.Window{Name: task.RootWindowName, Dir: s.Store.TaskDir(t.Name), Command: s.ExpandArgv(t, t.RootAgent()), Env: s.WindowEnv(t.Name, task.RootWindowName)}
+func RootWindow(st *task.Store, t *task.Task) runtime.Window {
+	return runtime.Window{Name: task.RootWindowName, Dir: st.TaskDir(t.Name), Command: ExpandArgv(st, t, t.RootAgent()), Env: WindowEnv(st, t.Name, task.RootWindowName)}
 }
 
 // RepoWindow is a repository's window, in its worktree.
@@ -236,9 +250,9 @@ func (s *Service) RootWindow(t *task.Task) runtime.Window {
 // worktree in .context: clean refuses untracked files, so they cannot be
 // copied in. It finds them at ../.context or through TSPACE_CONTEXT_DIR, or
 // its command names them with {context_dir}; see ExpandArgv.
-func (s *Service) RepoWindow(t *task.Task, name string) runtime.Window {
-	env := append(s.WindowEnv(t.Name, name), "TSPACE_CONTEXT_DIR="+s.Store.ContextDir(t.Name))
-	return runtime.Window{Name: name, Dir: t.Repos[name].Worktree, Command: s.ExpandArgv(t, t.RepoAgent(name)), Env: env}
+func RepoWindow(st *task.Store, t *task.Task, name string) runtime.Window {
+	env := append(WindowEnv(st, t.Name, name), "TSPACE_CONTEXT_DIR="+st.ContextDir(t.Name))
+	return runtime.Window{Name: name, Dir: t.Repos[name].Worktree, Command: ExpandArgv(st, t, t.RepoAgent(name)), Env: env}
 }
 
 // ExpandArgv fills in the task's directories where an agent command names
@@ -247,8 +261,8 @@ func (s *Service) RepoWindow(t *task.Task, name string) runtime.Window {
 //
 //	{context_dir}  the task's .context directory, holding TASK.md and HANDOFF.md
 //	{task_dir}     the task's directory, holding every worktree
-func (s *Service) ExpandArgv(t *task.Task, argv []string) []string {
-	r := strings.NewReplacer("{context_dir}", s.Store.ContextDir(t.Name), "{task_dir}", s.Store.TaskDir(t.Name))
+func ExpandArgv(st *task.Store, t *task.Task, argv []string) []string {
+	r := strings.NewReplacer("{context_dir}", st.ContextDir(t.Name), "{task_dir}", st.TaskDir(t.Name))
 	out := make([]string, len(argv))
 	for i, a := range argv {
 		out[i] = r.Replace(a)

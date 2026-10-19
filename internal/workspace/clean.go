@@ -25,7 +25,7 @@ type CleanOptions struct {
 // it touches anything, the session included, if work could be lost. The
 // record and notes survive unless opts.Remove.
 func (s *Service) Clean(ctx context.Context, name string, opts CleanOptions) error {
-	t, ctx, unlock, err := s.Lock(ctx, name, "tspace clean", true)
+	t, ctx, unlock, err := s.Lock(ctx, name, s.command("tspace clean"), true)
 	if err != nil {
 		return err
 	}
@@ -64,8 +64,10 @@ func (s *Service) Clean(ctx context.Context, name string, opts CleanOptions) err
 			if err := s.Git.RemoveWorktree(ctx, p.Repo.Path, p.Repo.Worktree, opts.Force); err != nil {
 				return fmt.Errorf("%s: %w", p.Name, err)
 			}
+			s.report(WorktreeRemoved{Repo: p.Name})
+		} else {
+			s.report(NoWorktree{Repo: p.Name})
 		}
-		s.report(WorktreeRemoved{Repo: p.Name, Present: p.Present})
 
 		// Branch handling runs even when the worktree was already gone: a
 		// repeated `clean --delete-branch` must still evaluate the branch

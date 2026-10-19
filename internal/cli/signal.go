@@ -34,7 +34,7 @@ const (
 )
 
 func (a *App) windowEnv(taskName, window string) []string {
-	return a.workspace().WindowEnv(taskName, window)
+	return workspace.WindowEnv(a.Store, taskName, window)
 }
 
 func (a *App) newSignalCmd() *cobra.Command {

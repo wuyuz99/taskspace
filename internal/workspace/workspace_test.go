@@ -281,7 +281,7 @@ func TestRestartAndResume(t *testing.T) {
 	if _, err := f.svc.Start(context.Background(), "T", StartOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	label, err := f.svc.Restart(context.Background(), "T", "a", true)
+	label, err := f.svc.Restart(context.Background(), "T", RestartOptions{Repo: "a", Resume: true})
 	if err != nil || label != "T/a" {
 		t.Fatalf("restart = %q, %v", label, err)
 	}
@@ -289,7 +289,7 @@ func TestRestartAndResume(t *testing.T) {
 		t.Fatalf("resumed with %v", got)
 	}
 	// The root window's agent has no resume command.
-	_, err = f.svc.Restart(context.Background(), "T", task.RootWindowName, true)
+	_, err = f.svc.Restart(context.Background(), "T", RestartOptions{Root: true, Resume: true})
 	if err == nil || !strings.Contains(err.Error(), "tspace task update "+tk.Name+" --resume") {
 		t.Fatalf("restart --resume without one = %v", err)
 	}
@@ -313,5 +313,30 @@ func TestNoWait(t *testing.T) {
 	f.svc.NoWait = true
 	if _, err := f.svc.Stop(context.Background(), "T"); err == nil || !strings.Contains(err.Error(), "tspace clean T") {
 		t.Fatalf("stop of a busy task = %v", err)
+	}
+}
+
+func TestPostCreateFailureIsReported(t *testing.T) {
+	f := newFixture(t)
+	r := task.Repo{Path: gitRepo(t), Worktree: t.TempDir(), PostCreate: "exit 7"}
+	err := f.svc.RunPostCreate(context.Background(), task.New("T"), "backend", r)
+	var exit *osexec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 7 {
+		t.Fatalf("RunPostCreate = %v, want exit 7", err)
+	}
+}
+
+// A repository named like the root window is no way to the root window.
+func TestRestartNeedsRootSaidOutright(t *testing.T) {
+	f := newFixture(t)
+	f.task(t, "T", map[string]task.Repo{"a": {Path: gitRepo(t)}})
+	if _, err := f.svc.Start(context.Background(), "T", StartOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Restart(context.Background(), "T", RestartOptions{Repo: task.RootWindowName}); err == nil {
+		t.Fatal("restart of a repository named _root restarted something")
+	}
+	if len(f.rt.restarted) != 0 {
+		t.Fatalf("restarted %+v", f.rt.restarted)
 	}
 }

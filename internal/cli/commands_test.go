@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"os"
 	osexec "os/exec"
 	"path/filepath"
@@ -266,20 +265,6 @@ func TestPostCreateRunsOnceWithItsEnvironment(t *testing.T) {
 	}
 	if want := "PAY-4|" + name + "|" + r.Path + "|"; string(b) != want {
 		t.Errorf("hook saw %q, want %q", b, want)
-	}
-}
-
-func TestPostCreateFailureIsReported(t *testing.T) {
-	if _, err := osexec.LookPath("sh"); err != nil {
-		t.Skip("sh not on PATH")
-	}
-	h := newHarness(t)
-	tk := task.New("PAY-5")
-	r := task.Repo{Path: h.repo, Worktree: t.TempDir(), PostCreate: "exit 7"}
-	err := h.app.runPostCreate(t.Context(), tk, "backend", r)
-	var exit *osexec.ExitError
-	if !errors.As(err, &exit) || exit.ExitCode() != 7 {
-		t.Fatalf("runPostCreate = %v, want exit 7", err)
 	}
 }
 

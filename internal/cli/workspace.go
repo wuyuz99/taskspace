@@ -1,11 +1,21 @@
 package cli
 
 import (
+	"fmt"
 	"slices"
 
+	"github.com/spf13/cobra"
 	"github.com/wuyuz99/taskspace/internal/task"
 	"github.com/wuyuz99/taskspace/internal/workspace"
 )
+
+// workspaceFor is the lifecycle service for cmd, which it names to anyone
+// who has to wait for it.
+func (a *App) workspaceFor(cmd *cobra.Command) *workspace.Service {
+	ws := a.workspace()
+	ws.Command = cmd.CommandPath()
+	return ws
+}
 
 // workspace is the lifecycle service over this App's store, git and runtime,
 // reporting to its output.
@@ -68,11 +78,9 @@ func (a *App) render(e workspace.Event) {
 	case workspace.SessionStopped:
 		a.printf("stopped session %s\n", e.Session)
 	case workspace.WorktreeRemoved:
-		if e.Present {
-			a.printf("%-12s removed worktree\n", e.Repo)
-		} else {
-			a.printf("%-12s no worktree\n", e.Repo)
-		}
+		a.printf("%-12s removed worktree\n", e.Repo)
+	case workspace.NoWorktree:
+		a.printf("%-12s no worktree\n", e.Repo)
 	case workspace.BranchKept:
 		a.warnf("%-12s kept branch %s (%s)\n", e.Repo, e.Branch, e.Reason)
 		if e.Orphaned {
@@ -93,4 +101,21 @@ func (a *App) render(e workspace.Event) {
 	case workspace.NotesRemoved:
 		a.printf("deleted its notes (%s)\n", joinNames(e.Files))
 	}
+}
+
+// The last line each lifecycle command prints, which dash shows too.
+
+func startedText(res *workspace.StartResult) string {
+	return fmt.Sprintf("session %s is up; attach with: tspace attach %s", res.Session, res.Task.Name)
+}
+
+func restartedText(label, taskName string) string {
+	return fmt.Sprintf("relaunched %s; use tspace status %s to check its state", label, taskName)
+}
+
+func stoppedText(taskName string, running bool) string {
+	if !running {
+		return "nothing running for " + taskName
+	}
+	return "stopped " + taskName + "; worktrees left in place"
 }

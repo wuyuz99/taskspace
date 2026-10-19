@@ -259,8 +259,9 @@ internal/exec/     testable command runner
 No `internal/agent/`. Boundaries that matter: `internal/git` never formats
 output, tmux vocabulary never escapes `internal/runtime`, and `internal/task`
 knows nothing about either. `internal/workspace` holds the lifecycle workflow and
-its safety decisions, reporting typed events instead of text, and imports
-neither cobra nor the dashboard.
+its safety decisions and imports neither cobra nor the dashboard. It reports
+progress as typed events, which the CLI lays out; its errors and warnings are
+sentences, as every Go error here is, naming the command that fixes the problem.
 
 `internal/exec` is a small interface (`Run(ctx, dir, argv) (stdout, stderr, err)`)
 with a real implementation and a recording fake. It exists so we can unit-test
