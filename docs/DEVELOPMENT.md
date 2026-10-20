@@ -38,7 +38,7 @@ GOOS=linux GOARCH=amd64 go build -o tspace-linux ./cmd/tspace
 
 ## Releasing
 
-Releases come out most weeks, from `main`:
+Releases are cut from `main`:
 
 1. In [CHANGELOG.md](../CHANGELOG.md), rename `## Unreleased` to the version
    and date, for example `## v0.1.1 — 2026-10-26`, and commit.
@@ -48,4 +48,4 @@ The tag runs `.github/workflows/release.yml`, which tests, builds Linux and
 macOS archives holding the binary, the license, the changelog and `docs/`, and
 publishes the GitHub release. A published tag is permanent, since the Go module
 proxy caches it: fix a bad release with the next version, never by moving the
-tag. Skip a week with nothing worth releasing.
+tag.

@@ -1,7 +1,7 @@
 # Changelog
 
-What changed in each release of tspace. Releases come out most weeks while the
-project is at 0.1.x; see [Installation](docs/INSTALL.md) to upgrade.
+What changed in each release of tspace; see [Installation](docs/INSTALL.md) to
+upgrade.
 
 ## Unreleased
 

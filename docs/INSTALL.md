@@ -14,8 +14,7 @@ This installs the newest release and puts `tspace` in `$(go env GOPATH)/bin`,
 usually `~/go/bin`; make sure that is on your `PATH`. Run the same command again
 to upgrade.
 
-Releases come out most weeks; [CHANGELOG.md](../CHANGELOG.md) lists what each
-one changed. These docs follow the `main` branch, so a feature merged since the
+[CHANGELOG.md](../CHANGELOG.md) lists what each release changed. These docs follow the `main` branch, so a feature merged since the
 last release is described here before it is released. To try it early, install
 `@main` instead of `@latest`.
 
