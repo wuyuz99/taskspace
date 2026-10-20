@@ -1,0 +1,75 @@
+# Changelog
+
+What changed in each release of tspace. Releases come out most weeks while the
+project is at 0.1.x; see [Installation](docs/INSTALL.md) to upgrade.
+
+## Unreleased
+
+### Added
+
+- **Choose your multiplexer.** `tspace config multiplexer` picks tmux (still
+  the default), zellij 0.44+, or any other through a small adapter program;
+  `TSPACE_MULTIPLEXER` overrides it for one command. See
+  [Multiplexers](docs/MULTIPLEXERS.md).
+- **Single-repository tasks run their agent in the repository,** in the
+  worktree where the code is, with no `_root` window. Adding a second
+  repository keeps the agent where it is and adds a root window with a shell.
+  `task create --with-root` keeps the old layout.
+- **`task create --start`** creates and starts a task in one step, and
+  **`clean --rm`** removes the worktrees and then the task record.
+- **`tspace config hooks claude`** installs Claude Code hooks that report
+  `working`, `blocked` and `done` through `tspace signal`. `signal --quiet`
+  makes it safe to run from hooks outside a task.
+- **`restart --resume`** brings an agent back with its conversation, using a
+  resume command you set with `--resume` or `tspace config resume`.
+- **Ticket keys from task names** with `tspace config ticket-pattern`, and
+  `tspace new` / `task new` as aliases of `task create`.
+- **`repo update --branch` and `--base`** rename a task's branch or change its
+  base, with `--rebase` to move the work onto the new base.
+- **`config repo NAME URL`** clones a repository and registers it.
+- **Saved windows:** `window --name N --save` reopens a window on every start,
+  and is carried by project recipes; `--rename` and `--forget` manage them.
+- **dash `t`** opens the selected task in a new terminal tab, using
+  `tspace config terminal`.
+- **`tspace import`** adopts a worktree you made with `git worktree add`.
+- **`tspace editor`** opens a task's worktrees together in VS Code or another
+  editor that reads `.code-workspace` files, configured with
+  `tspace config editor`.
+- **`{context_dir}` and `{task_dir}`** in an agent command are filled in with
+  the task's directories when a window starts.
+
+### Changed
+
+- tspace no longer recognises any agent by name. The `--add-dir` it used to
+  add for Claude Code is replaced by the placeholders above:
+  `tspace config agent claude --add-dir {context_dir}`.
+- Commands that change a task lock it, so two never interleave; reads never
+  wait.
+- Task records carry a format version and are upgraded the first time a
+  command changes them. An older tspace refuses records written by a newer one
+  instead of damaging them.
+- `start` checks a second later that the session and its windows survived
+  launch, and reports any that exited.
+- A mistyped subcommand fails with suggestions instead of printing help.
+- The README is now a short introduction, with the reference moved into
+  focused guides under `docs/` (#42, thanks @dailyun). Release archives
+  include the docs and this changelog.
+
+### Fixed
+
+- `tspace signal` reports for the window the agent was launched in, even after
+  the agent changes directory.
+- New tmux windows, including `window -d` and `restart`, no longer take focus
+  from an attached client.
+- `tspace shell` and `post_create` hooks no longer report signals for the
+  window they were run from.
+- `repo rm` and `repo add` no longer print notes that contradict what `start`
+  and `clean` did.
+- Windows tspace opens, `tspace shell` and hooks get `TSPACE_ROOT`, and a
+  command run inside another root warns that it is not using it.
+
+## v0.1.0 — 2026-10-13
+
+First release: tasks spanning several repositories, a worktree per repository,
+one tmux session per task with optional agents, briefs and handoffs, project
+recipes, `status`, `dash`, signals, and `clean` that refuses to lose work.

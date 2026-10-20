@@ -25,7 +25,7 @@ task -> repos -> worktrees -> shells or optional agents
 The **task** is the first-class object. You operate on `checkout-redesign`, not
 on nine separate resources.
 
-A task created with several repositories has a window at its root, the directory
+A task with several repositories, or none yet, has a window at its root, the directory
 holding every worktree: run one agent there and it works across all the repositories,
 while a shell in each repository is on hand to review and commit. A single-repository
 task normally starts its task command in the repository window instead. Agents can also run in selected
@@ -106,5 +106,6 @@ which case they use its worktree. `--root` asks for the root explicitly and cann
 be combined with a repository. `shell` creates the root if necessary, even before
 repositories are added, but does not create worktrees or start a session. `path`
 only prints it. Shells expose `TSPACE_TASK_DIR`, `TSPACE_CONTEXT_DIR`, `TSPACE_TASK`,
-`TSPACE_WORKTREE` (the current directory), and `TSPACE_REPO` (empty at the task root).
+`TSPACE_WORKTREE` (the current directory), `TSPACE_REPO` (empty at the task root),
+and `TSPACE_ROOT`.
 The root shell has a task-only terminal label.

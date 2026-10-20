@@ -78,13 +78,15 @@ command to do it by hand.
 
 ```
 $TSPACE_ROOT/                          default ~/.tspace, override with TSPACE_ROOT
-├── config.json                    user-wide defaults: root agent, registered repos, branch prefix
+├── config.json                    user-wide defaults, shown by tspace config
+├── repos/<name>/                  repositories cloned by tspace config repo NAME URL
 ├── tasks/<name>.json              task identity and repository configuration
 ├── projects/<name>.json           reusable repository recipes
 └── worktrees/<task>/
     ├── .context/TASK.md           the brief, readable from any worktree
     ├── .context/HANDOFF.md        the handoff
     ├── .context/signals/          what each window's agent last reported
+    ├── .context/TASK.code-workspace   written by tspace editor
     └── <repo>/                    the worktrees
 ```
 

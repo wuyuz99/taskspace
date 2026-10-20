@@ -14,32 +14,36 @@
 | `tspace config ticket-pattern [REGEXP / --unset]` | Read new tasks' tickets from their names |
 | `tspace config terminal [CMD ARGS... / --unset]` | How dash's `t` opens a task in a new terminal tab |
 | `tspace config editor [CMD ARGS... / --unset]` | The editor `tspace editor` opens a task's workspace with |
+| `tspace config multiplexer [NAME [CMD ARGS...] / --unset]` | Choose tmux, zellij or an adapter; see [Multiplexers](MULTIPLEXERS.md) |
 | `tspace project save NAME --from TASK [--replace]` | Save a reusable repository recipe |
 | `tspace project list` / `tspace project show NAME` | Inspect saved recipes |
-| `tspace task create NAME [REPO...] [--agent CMD / --shell] [--start]` | Create a task; each REPO is `REPO[@BRANCH][:BASE]`; `--start` starts it too. Also `tspace new` and `task new` |
+| `tspace task create NAME [REPO...] [--agent CMD / --shell] [--project P] [--with-root] [--start]` | Create a task; each REPO is `REPO[@BRANCH][:BASE]`; `--start` starts it too. Also `tspace new` and `task new` |
 | `tspace task update NAME [--agent CMD / --shell] [--title ...]` | Update a task's root agent and details |
 | `tspace task list [--json]` | List tasks |
 | `tspace task show NAME [--json]` | Show a task's repos in detail |
-| `tspace task rm NAME` | Delete the record; refuses while worktrees exist |
+| `tspace task brief NAME [TEXT / --file F / --edit / --clear]` | Show or replace the task's brief |
+| `tspace task handoff NAME [TEXT / --file F / --edit / --clear]` | Show or replace the task's handoff |
+| `tspace task rm NAME [--force]` | Delete the record; refuses while worktrees exist unless `--force` |
 | `tspace repo add TASK REPO [--name --branch --base --agent --post-create]` | Attach a repository, by registered name or path |
 | `tspace repo rm TASK REPO` | Detach a repository (leaves the worktree) |
 | `tspace repo update TASK REPO [--agent CMD / --shell] [--post-create SH] [--branch NAME] [--base REF [--rebase]]` | Update a repository's agent, setup, branch or base |
-| `tspace start TASK [REPO...]` | Create worktrees, launch the session |
+| `tspace start TASK [REPO...] [--no-runtime]` | Create worktrees, launch the session; `--no-runtime` stops after the worktrees |
 | `tspace open TASK` | Prepare worktrees, show brief/handoff, and attach |
 | `tspace restart TASK REPO` / `tspace restart TASK --root` [`--resume`] | Relaunch a dead repository or root window, optionally resuming its conversation |
 | `tspace stop TASK` | Interrupt agents, end the session, keep worktrees |
 | `tspace attach TASK` | Attach (or switch the client when already inside the multiplexer) |
-| `tspace window TASK [REPO / --root] [--agent / -- CMD] [--name N [--save]]` | Open another window in the running session, and with `--save` on every start |
+| `tspace window TASK [REPO / --root] [--agent / -- CMD] [--name N [--save]] [-d]` | Open another window in the running session, and with `--save` on every start |
 | `tspace window TASK --forget N` / `tspace window TASK --rename OLD NEW` | Forget a saved window; rename an extra window |
 | `tspace shell TASK [REPO / --root]` | Interactive shell in a worktree or the task root |
 | `tspace path TASK [REPO / --root]` | Print a worktree or task-root path, for `cd "$(...)"` |
 | `tspace exec TASK -- CMD` | Run a command in every worktree |
 | `tspace status [TASK] [--json / --watch]` | Runtime, git and signal state |
 | `tspace dash` | Live full-screen view of every task; attach, start, restart, stop, open in a new tab |
-| `tspace signal STATE [MESSAGE] [--task --repo / --root] [--quiet]` | Report an agent as `working`, `blocked`, `done` or `failed` |
+| `tspace signal STATE [MESSAGE] [--task --repo / --root] [--quiet] [--clear]` | Report an agent as `working`, `blocked`, `done` or `failed` |
 | `tspace config hooks claude [--remove]` | Install the Claude Code hooks that call `tspace signal` |
 | `tspace clean TASK [--delete-branch] [--force] [--rm]` | Remove worktrees, safely; `--rm` deletes the task record too |
 | `tspace import PATH [--task NAME] [--name REPO]` | Move a worktree made with `git worktree add` into a task |
 | `tspace editor TASK [--print]` | Write the task's `.code-workspace` and open it in your editor |
+| `tspace completion SHELL` | Generate a shell completion script |
 
 `--no-title` (or `TSPACE_NO_TITLE=1`) suppresses terminal tab titling.
