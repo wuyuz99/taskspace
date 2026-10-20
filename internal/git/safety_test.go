@@ -249,3 +249,24 @@ func TestDiscardRequiresSurvivingReference(t *testing.T) {
 		})
 	}
 }
+
+// A branch with no history in common with its base cannot have been squash
+// merged into it; the probe must say no rather than fail.
+func TestCannotDiscardBranchWithUnrelatedHistory(t *testing.T) {
+	g := testGit(t)
+	repo := initRepo(t)
+
+	runGit(t, repo, "checkout", "-q", "--orphan", "agent/test")
+	writeFile(t, filepath.Join(repo, "alone.txt"), "alone\n")
+	runGit(t, repo, "add", "alone.txt")
+	runGit(t, repo, "commit", "-m", "unrelated root")
+	runGit(t, repo, "checkout", "-q", "main")
+
+	d, err := g.CanDiscardBranch(ctx(), repo, "agent/test", "main")
+	if err != nil {
+		t.Fatalf("CanDiscardBranch: %v", err)
+	}
+	if d.Safe() || d.Squashed {
+		t.Errorf("unrelated branch counted as safe: %s", d.Reason())
+	}
+}

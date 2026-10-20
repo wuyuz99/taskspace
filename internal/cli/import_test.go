@@ -166,3 +166,34 @@ func TestImportOfABareRepositorysWorktree(t *testing.T) {
 		t.Fatal("left a task behind")
 	}
 }
+
+func TestImportRefusesALockOrANameInUse(t *testing.T) {
+	h := newHarness(t)
+	gitIdentity(t)
+
+	locked := linkedWorktree(t, h.repo, "locked")
+	gitIn(t, h.repo, "worktree", "lock", "--reason", "in use", locked)
+	if err := h.exec(t, h.app.newImportCmd(), locked); err == nil || !strings.Contains(err.Error(), "is locked (in use)") {
+		t.Fatalf("import of a locked worktree = %v", err)
+	}
+	if _, err := os.Stat(locked); err != nil || h.app.Store.Exists("locked") {
+		t.Fatalf("refused import moved the worktree (%v) or left a task", err)
+	}
+
+	// Joining a task whose repository name is taken leaves the task as it was.
+	first := linkedWorktree(t, h.repo, "first")
+	if err := h.exec(t, h.app.newImportCmd(), first, "--task", "joined"); err != nil {
+		t.Fatal(err)
+	}
+	second := linkedWorktree(t, mkRepo(t), "second")
+	err := h.exec(t, h.app.newImportCmd(), second, "--task", "joined", "--name", filepath.Base(h.repo))
+	if err == nil || !strings.Contains(err.Error(), "already has a repo named") {
+		t.Fatalf("import over a taken name = %v", err)
+	}
+	if tk := h.load(t, "joined"); len(tk.Repos) != 1 {
+		t.Fatalf("joined task changed: %+v", tk.Repos)
+	}
+	if _, err := os.Stat(second); err != nil {
+		t.Fatalf("refused import moved the worktree: %v", err)
+	}
+}

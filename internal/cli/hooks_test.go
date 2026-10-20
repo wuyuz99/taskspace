@@ -252,3 +252,19 @@ func TestSignalQuietStillReportsMistakes(t *testing.T) {
 		t.Fatal("unknown repo accepted under --quiet")
 	}
 }
+
+// Removing tspace's hook from a group the user shares keeps the user's hook.
+func TestConfigHooksClaudeRemoveKeepsASharedGroup(t *testing.T) {
+	h := newHarness(t)
+	path := filepath.Join(t.TempDir(), "settings.json")
+	shared := `{"hooks": {"Stop": [{"matcher": "", "hooks": [{"type": "command", "command": "say done"}, {"type": "command", "command": "tspace signal done --quiet"}]}]}}`
+	if err := os.WriteFile(path, []byte(shared), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newConfigCmd(), "hooks", "claude", "--settings", path, "--remove"); err != nil {
+		t.Fatal(err)
+	}
+	if c := commands(readSettings(t, path), "Stop"); len(c) != 1 || c[0] != "say done" {
+		t.Fatalf("Stop = %v, want only the user's hook", c)
+	}
+}
