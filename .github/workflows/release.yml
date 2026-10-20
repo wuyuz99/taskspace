@@ -27,7 +27,7 @@ jobs:
             CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath \
               -ldflags "-s -w -X github.com/wuyuz99/taskspace/internal/cli.version=${GITHUB_REF_NAME}" \
               -o "build/$name/tspace" ./cmd/tspace
-            cp LICENSE README.md "build/$name/"
+            cp LICENSE README.md CHANGELOG.md "build/$name/"
             cp -R docs "build/$name/docs"
             tar -C build -czf "out/$name.tar.gz" "$name"
           done

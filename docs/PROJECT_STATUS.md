@@ -17,13 +17,14 @@
 - **Stash attribution is a heuristic.** git keeps one stash stack per
   repository, so stashes are matched by the branch recorded in their message.
   It errs toward reporting a stash, which is the safe direction.
-- **`.context/` holds two notes and the signals.** `TASK.md`, `HANDOFF.md`
-  and `signals/` exist; the `API_CONTRACT.md` and `STATUS.json` of the
-  original sketch do not, and nothing writes notes on your behalf.
+- **`.context/` holds two notes, the signals and the editor workspace.**
+  `TASK.md`, `HANDOFF.md`, `signals/` and `TASK.code-workspace` exist; the
+  `API_CONTRACT.md` and `STATUS.json` of the original sketch do not, and
+  nothing writes notes on your behalf.
 - **Little configuration.** `TSPACE_ROOT` chooses the state directory, and
-  `$TSPACE_ROOT/config.json` holds the default task-root agent, the registered
-  repositories, the branch prefix and the multiplexer. Nothing else is
-  configurable.
+  `$TSPACE_ROOT/config.json` holds the default task-root agent and its resume
+  command, the registered repositories, the branch prefix, the ticket pattern,
+  the multiplexer, the terminal and the editor. Nothing else is configurable.
 - Existing sessions from the old `aw@...` or `aw-...` naming schemes require manual inspection
   and stopping or renaming before starting their replacement.
 
