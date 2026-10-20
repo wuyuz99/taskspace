@@ -34,7 +34,7 @@ jobs:
       - run: go vet ./...
       - name: Test
         env:
-          COVERAGE_FLOOR: '0'
+          COVERAGE_FLOOR: '80'
         run: |
           go test -coverpkg=./... -coverprofile=cover.out ./...
           total=$(go tool cover -func=cover.out | awk '/^total:/ { sub(/%/, "", $3); print $3 }')
