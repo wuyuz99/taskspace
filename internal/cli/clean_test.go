@@ -441,3 +441,39 @@ func TestPostCreateHookGetsRepoPathInEnvironment(t *testing.T) {
 		t.Errorf("TSPACE_REPO_PATH = %q, want %q", strings.TrimSpace(string(got)), h.repo)
 	}
 }
+
+// The one path where clean deletes a branch: its work is already on the base.
+func TestCleanDeleteBranchDeletesAMergedBranch(t *testing.T) {
+	h := newHarness(t)
+	gitIdentity(t)
+	tk := h.startedTask(t, "merged")
+	r := tk.Repos[tk.RepoNames()[0]]
+	commitFile(t, r.Worktree, "feature.txt", "work\n", "feature work")
+	gitIn(t, h.repo, "merge", "-q", "--no-ff", "-m", "merge", r.Branch)
+
+	if err := h.exec(t, h.app.newCleanCmd(), "merged", "--delete-branch"); err != nil {
+		t.Fatalf("clean: %v\n%s", err, h.errb.String())
+	}
+	if got := gitIn(t, h.repo, "branch", "--list", r.Branch); got != "" {
+		t.Fatalf("merged branch kept: %q", got)
+	}
+	if !strings.Contains(h.out.String(), "deleted branch "+r.Branch+" (merged into") {
+		t.Errorf("stdout:\n%s", h.out.String())
+	}
+}
+
+// A lock is git's way of saying someone meant the worktree to stay.
+func TestCleanRefusesALockedWorktree(t *testing.T) {
+	h := newHarness(t)
+	tk := h.startedTask(t, "locked")
+	wt := tk.Repos[tk.RepoNames()[0]].Worktree
+	gitIn(t, h.repo, "worktree", "lock", "--reason", "agent still running", wt)
+
+	err := h.exec(t, h.app.newCleanCmd(), "locked")
+	if err == nil || !strings.Contains(err.Error(), "worktree is locked (agent still running)") {
+		t.Fatalf("clean of a locked worktree = %v", err)
+	}
+	if _, err := os.Stat(wt); err != nil {
+		t.Fatalf("refused clean removed the worktree: %v", err)
+	}
+}
