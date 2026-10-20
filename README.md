@@ -132,7 +132,8 @@ application resources; see [service isolation](docs/WORKFLOWS.md#application-and
 
 ## Project status and contributing
 
-**Early-stage, v0.1, Unix-only.** The command surface can change. See
+**Early-stage, v0.1, Unix-only.** The command surface can change;
+[CHANGELOG.md](CHANGELOG.md) lists what each release changed. See
 [current limitations and possible follow-ups](docs/PROJECT_STATUS.md) before
 relying on a particular workflow. The [implementation plan](docs/IMPLEMENTATION_PLAN.md)
 records the original design; the guides above describe shipped behaviour.
