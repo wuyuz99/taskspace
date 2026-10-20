@@ -32,7 +32,15 @@ jobs:
       - name: gofmt
         run: test -z "$(gofmt -l .)"
       - run: go vet ./...
-      - run: go test ./...
+      - name: Test
+        env:
+          COVERAGE_FLOOR: '80'
+        run: |
+          go test -coverpkg=./... -coverprofile=cover.out ./...
+          total=$(go tool cover -func=cover.out | awk '/^total:/ { sub(/%/, "", $3); print $3 }')
+          echo "Total coverage: ${total}% (floor ${COVERAGE_FLOOR}%)"
+          awk -v t="$total" -v f="$COVERAGE_FLOOR" 'BEGIN { exit !(t >= f) }' \
+            || { echo "Coverage ${total}% is below the ${COVERAGE_FLOOR}% floor"; exit 1; }
       - name: End-to-end
         run: |
           go build -o tspace ./cmd/tspace
