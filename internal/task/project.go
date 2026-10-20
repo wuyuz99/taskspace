@@ -86,6 +86,9 @@ func (s *Store) LoadProject(name string) (*Project, error) {
 		return nil, err
 	}
 	b, err := os.ReadFile(filepath.Join(s.ProjectsDir(), name+".json"))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("no project saved as %q (saved: %s)", name, s.projectNames())
+	}
 	if err != nil {
 		return nil, fmt.Errorf("read project %q: %w", name, err)
 	}
@@ -107,6 +110,22 @@ func (s *Store) SaveProject(p *Project, replace bool) error {
 		return err
 	}
 	return publishJSON(filepath.Join(s.ProjectsDir(), p.Name+".json"), p, replace)
+}
+
+// projectNames lists the saved recipes by file name, for an error that names
+// one that is missing; it reads none of them.
+func (s *Store) projectNames() string {
+	entries, _ := os.ReadDir(s.ProjectsDir())
+	var names []string
+	for _, e := range entries {
+		if !e.IsDir() && !strings.HasPrefix(e.Name(), ".") && strings.HasSuffix(e.Name(), ".json") {
+			names = append(names, strings.TrimSuffix(e.Name(), ".json"))
+		}
+	}
+	if len(names) == 0 {
+		return "none; see tspace project save --help"
+	}
+	return strings.Join(names, ", ")
 }
 
 func (s *Store) ListProjects() ([]*Project, error) {

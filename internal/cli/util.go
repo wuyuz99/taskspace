@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/mattn/go-isatty"
 )
 
 // expandHome resolves a leading ~ so that paths typed in a shell that did not
@@ -77,6 +79,16 @@ func isTerminal(w io.Writer) bool {
 		return false
 	}
 	return info.Mode()&os.ModeCharDevice != 0
+}
+
+// attachFailed explains a failed attach run without a terminal, where the
+// multiplexer's own complaint does not say what to do instead.
+func attachFailed(err error, taskName string) error {
+	// Not isTerminal: /dev/null is a character device too.
+	if err == nil || isatty.IsTerminal(os.Stdin.Fd()) {
+		return err
+	}
+	return fmt.Errorf("%w\nattaching needs a terminal; the session is up, so from a script use: tspace status %s", err, taskName)
 }
 
 func plural(n int) string {

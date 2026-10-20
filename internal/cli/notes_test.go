@@ -408,3 +408,52 @@ func TestLegacyRecordsAndCommandsThatDoNotSave(t *testing.T) {
 		t.Fatalf("brief = %q, %v", h.out.String(), err)
 	}
 }
+
+func TestTaskCreateTakesTheBriefInline(t *testing.T) {
+	h := newHarness(t)
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "inline", "--brief", "Reject expired cards."); err != nil {
+		t.Fatal(err)
+	}
+	note, err := h.app.Store.ReadNote("inline", task.BriefFile)
+	if err != nil || note.Text != "Reject expired cards." {
+		t.Fatalf("brief = %q (%v)", note.Text, err)
+	}
+	file := filepath.Join(t.TempDir(), "brief.md")
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err = h.exec(t, h.app.newTaskCmd(), "create", "both", "--brief", "x", "--brief-file", file)
+	if err == nil || !strings.Contains(err.Error(), "only one of --brief or --brief-file") {
+		t.Fatalf("both brief flags: %v", err)
+	}
+	if h.app.Store.Exists("both") {
+		t.Fatal("conflicting brief flags created a task")
+	}
+}
+
+// A repository that fails must not be preceded by a report that an earlier
+// one was added to a task that was never created.
+func TestTaskCreateReportsReposOnlyOnceCreated(t *testing.T) {
+	h := newHarness(t)
+	err := h.exec(t, h.app.newTaskCmd(), "create", "half", h.repo, "nosuch")
+	if err == nil {
+		t.Fatal("expected an unknown repository to fail")
+	}
+	if strings.Contains(h.out.String(), "added") {
+		t.Errorf("failed create reported a repository: %s", h.out.String())
+	}
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "whole", h.repo); err != nil {
+		t.Fatal(err)
+	}
+	if out := h.out.String(); !strings.Contains(out, "added ") || strings.Index(out, "added ") > strings.Index(out, "created task whole") {
+		t.Errorf("repository report missing or out of order:\n%s", out)
+	}
+}
+
+func TestTaskCreateNamesSavedProjects(t *testing.T) {
+	h := newHarness(t)
+	err := h.exec(t, h.app.newTaskCmd(), "create", "p", "--project", "nope")
+	if err == nil || !strings.Contains(err.Error(), `no project saved as "nope" (saved: none`) {
+		t.Fatalf("missing project: %v", err)
+	}
+}

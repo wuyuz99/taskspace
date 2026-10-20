@@ -76,7 +76,7 @@ func (a *App) newRepoUpdateCmd() *cobra.Command {
 			defer unlock()
 			r, ok := t.Repo(args[1])
 			if !ok {
-				return fmt.Errorf("task %q has no repo named %q", t.Name, args[1])
+				return fmt.Errorf("task %q has no repo named %q (has: %s)", t.Name, args[1], joinNames(t.RepoNames()))
 			}
 			// The agent repository's window runs the task's agent, so that is
 			// what its agent flags change.
@@ -776,7 +776,7 @@ func (a *App) newRepoRmCmd() *cobra.Command {
 			defer unlock()
 			r, ok := t.Repo(args[1])
 			if !ok {
-				return fmt.Errorf("task %q has no repo named %q", t.Name, args[1])
+				return fmt.Errorf("task %q has no repo named %q (has: %s)", t.Name, args[1], joinNames(t.RepoNames()))
 			}
 			if args[1] == t.AgentRepo && a.sessionRunning(cmd.Context(), t) {
 				return fmt.Errorf("the task's agent runs in %s's window; stop the task first: tspace stop %s", args[1], t.Name)

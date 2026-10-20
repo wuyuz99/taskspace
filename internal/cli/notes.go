@@ -16,16 +16,17 @@ func (a *App) notes(t *task.Task) (brief, handoff task.Note, err error) {
 	return a.Store.Notes(t)
 }
 
-type taskDetails struct{ title, ticket, ticketURL, briefFile string }
+type taskDetails struct{ title, ticket, ticketURL, brief, briefFile string }
 
 func (d *taskDetails) flags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&d.title, "title", "", "human-readable task title")
 	cmd.Flags().StringVar(&d.ticket, "ticket", "", "ticket key, independent of workspace name (e.g. PAY-142)")
 	cmd.Flags().StringVar(&d.ticketURL, "ticket-url", "", "ticket HTTP(S) URL; no ticket service is contacted")
+	cmd.Flags().StringVar(&d.brief, "brief", "", "the task brief, as Markdown text")
 	cmd.Flags().StringVar(&d.briefFile, "brief-file", "", "read the task brief from a Markdown file")
 }
 
-func (d *taskDetails) readBrief() (string, error) {
+func (d *taskDetails) readBrief(cmd *cobra.Command) (string, error) {
 	if d.ticketURL != "" {
 		u, err := url.Parse(d.ticketURL)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
@@ -34,6 +35,12 @@ func (d *taskDetails) readBrief() (string, error) {
 	}
 	if strings.ContainsAny(d.title+d.ticket, "\r\n\t\x1b") {
 		return "", fmt.Errorf("title and ticket must be single-line text")
+	}
+	if cmd.Flags().Changed("brief") {
+		if cmd.Flags().Changed("brief-file") {
+			return "", fmt.Errorf("choose only one of --brief or --brief-file")
+		}
+		return d.brief, nil
 	}
 	if d.briefFile == "" {
 		return "", nil
@@ -61,7 +68,7 @@ func (d *taskDetails) apply(cmd *cobra.Command, t *task.Task) {
 
 // applyBrief stores an imported brief, after the task record is on disk.
 func (a *App) applyBrief(cmd *cobra.Command, t *task.Task, brief string) error {
-	if !cmd.Flags().Changed("brief-file") {
+	if !cmd.Flags().Changed("brief") && !cmd.Flags().Changed("brief-file") {
 		return nil
 	}
 	return a.Store.WriteNote(t.Name, task.BriefFile, brief)
@@ -73,7 +80,7 @@ func (a *App) newTaskUpdateCmd() *cobra.Command {
 	var resume resumeOptions
 	cmd := &cobra.Command{Use: "update NAME", Short: "Update a task's title, ticket, brief or root agent", Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			brief, err := d.readBrief()
+			brief, err := d.readBrief(cmd)
 			if err != nil {
 				return err
 			}
