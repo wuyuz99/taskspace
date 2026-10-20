@@ -1,5 +1,9 @@
 # tspace
 
+[![CI](https://github.com/wuyuz99/taskspace/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/wuyuz99/taskspace/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/wuyuz99/taskspace)](https://github.com/wuyuz99/taskspace/releases/latest)
+[![License: MIT](https://img.shields.io/github/license/wuyuz99/taskspace)](LICENSE)
+
 > **Worktrees are per-repository. Features aren't.**
 
 <a id="the-problem"></a>
