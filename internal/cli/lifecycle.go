@@ -47,7 +47,7 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 				a.printf("\nworkspace: %s\n", res.Task.Name)
 				a.printTaskContext(res.Task)
 				setTitle(a.Out, "tspace: "+res.Task.Name, a.noTitle)
-				return a.Runtime.Attach(ctx, res.Session)
+				return attachFailed(a.Runtime.Attach(ctx, res.Session), res.Task.Name)
 			}
 			a.printf("\n%s\n", startedText(res))
 			return nil
@@ -146,7 +146,7 @@ func (a *App) newAttachCmd() *cobra.Command {
 			// is identifiable even after detaching.
 			setTitle(a.Out, "tspace: "+t.Name, a.noTitle)
 			a.printTaskContext(t)
-			return a.Runtime.Attach(cmd.Context(), a.Runtime.SessionName(t.Name))
+			return attachFailed(a.Runtime.Attach(cmd.Context(), a.Runtime.SessionName(t.Name)), t.Name)
 		},
 	}
 }
