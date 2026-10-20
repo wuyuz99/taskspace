@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -53,13 +54,14 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 			"--with-root keeps the task-root window for a single-repository task too.\n\n" +
 			"Without --ticket, the ticket is found in NAME by the pattern from `tspace\n" +
 			"config ticket-pattern`, if one is set.\n\n" +
-			"--brief-file stores the task's instructions where its agents will look\n" +
-			"for them; see `tspace task brief --help`.\n\n" +
+			"--brief, or --brief-file for a Markdown file, stores the task's\n" +
+			"instructions where its agents will look for them; see `tspace task\n" +
+			"brief --help`.\n\n" +
 			"No worktree is created until `tspace start` or `tspace open`; --start runs\n" +
 			"`tspace start NAME` straight after, which needs no terminal.",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			brief, err := details.readBrief()
+			brief, err := details.readBrief(cmd)
 			if err != nil {
 				return err
 			}
@@ -94,6 +96,13 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 			// The root agent comes from --agent/--shell, else the recipe, else
 			// the user's default. Whichever wins is recorded on the task.
 			agentFrom := ""
+			// Each repository's report is held until the record is created, so
+			// a later repository that fails does not follow "added backend"
+			// for a task that was never made.
+			out := a.Out
+			var added bytes.Buffer
+			a.Out = &added
+			defer func() { a.Out = out }()
 			if cmd.Flags().Changed("project") {
 				p, err := a.Store.LoadProject(project)
 				if err != nil {
@@ -127,6 +136,7 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 					return err
 				}
 			}
+			a.Out = out
 			// Like the agent, a broken config does not stop a task that needs
 			// nothing from it.
 			if !cmd.Flags().Changed("ticket") {
@@ -180,6 +190,9 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 			// The brief is written after the record exists, so a failure here
 			// leaves a task without a brief rather than a note without a task.
 			if err := a.applyBrief(cmd, t, brief); err != nil {
+				return err
+			}
+			if _, err := added.WriteTo(a.Out); err != nil {
 				return err
 			}
 			a.printf("created task %s\n", name)
