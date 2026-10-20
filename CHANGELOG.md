@@ -3,6 +3,23 @@
 What changed in each release of tspace; see [Installation](docs/INSTALL.md) to
 upgrade.
 
+## Unreleased
+
+### Added
+
+- **`task create --brief TEXT`** (and `task update --brief`) sets the brief
+  inline, without writing a file for `--brief-file`.
+
+### Changed
+
+- **Errors name what exists.** A missing `--project` lists the saved projects,
+  and `repo rm` and `repo update` list the task's repositories.
+- **`task create` reports its repositories only once the task exists**, so a
+  later repository that fails no longer follows an "added" line for a task
+  that was never made.
+- **`attach` and `open` without a terminal** say so and point to `tspace
+  status`, after the multiplexer's own error.
+
 ## v0.1.1 — 2026-10-19
 
 ### Added
