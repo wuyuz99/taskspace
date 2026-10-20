@@ -28,6 +28,7 @@ jobs:
               -ldflags "-s -w -X github.com/wuyuz99/taskspace/internal/cli.version=${GITHUB_REF_NAME}" \
               -o "build/$name/tspace" ./cmd/tspace
             cp LICENSE README.md "build/$name/"
+            cp -R docs "build/$name/docs"
             tar -C build -czf "out/$name.tar.gz" "$name"
           done
           (cd out && sha256sum *.tar.gz > checksums.txt)

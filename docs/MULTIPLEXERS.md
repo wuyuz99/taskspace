@@ -1,15 +1,22 @@
 # Multiplexers
 
+[Back to the README](../README.md)
+
 tspace keeps each task's agents and shells in a session of a terminal
-multiplexer: one session per task, one window per repository plus the task
-root. Which multiplexer is a user-wide choice:
+multiplexer: one session per task, one window per repository and, for multi-repository
+tasks, a task-root window. Single-repository tasks normally run without a root
+window; see [workspace layout](WORKSPACE.md#workspace-structure). Which multiplexer
+is a user-wide choice:
 
 ```bash
-tspace config multiplexer            # show the current one
-tspace config multiplexer zellij     # switch
-tspace config multiplexer --unset    # back to tmux
-TSPACE_MULTIPLEXER=zellij tspace status   # override for one command or shell
+tspace config multiplexer zellij                        # built in
+tspace config multiplexer wezterm                       # runs tspace-mux-wezterm from PATH
+tspace config multiplexer wezterm ~/bin/wez-adapter     # or a command of your choosing
+TSPACE_MULTIPLEXER=tmux tspace status                   # override for one command
 ```
+
+Run `tspace config multiplexer` to show the current choice, or
+`tspace config multiplexer --unset` to return to tmux.
 
 The choice applies to every task at once: tspace looks for each task's session
 in the chosen multiplexer. Stop running sessions (`tspace stop TASK`) before
@@ -100,3 +107,16 @@ implementations show how each rule above is kept when the multiplexer itself
 does not help. Each has fake-runner tests for the commands it builds, and a
 test against the real program that is skipped when the program is not
 installed.
+
+## Session names and upgrades
+
+Session names now use the `tspace@` namespace; dots are encoded as `~2e`, with the
+escape marker itself escaped. `a.b` and `a-b` have distinct sessions and windows.
+Window targets are exact matches, and automatic renaming is disabled.
+
+**Upgrading from old sessions:** sessions named `aw@...` (from before the rename
+to `tspace`) or `aw-...` are not adopted or stopped
+by this version. Start/restart refuse if a possible legacy session exists. Inspect
+that session using tmux, then stop or rename it manually before starting a new
+session. Old names were ambiguous, so automatic migration could affect another
+task. Worktree paths, branches, and task records do not change.
