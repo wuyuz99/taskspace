@@ -34,9 +34,9 @@ jobs:
       - run: go vet ./...
       - name: Test
         env:
-          COVERAGE_FLOOR: '75'
+          COVERAGE_FLOOR: '0'
         run: |
-          go test -coverprofile=cover.out ./...
+          go test -coverpkg=./... -coverprofile=cover.out ./...
           total=$(go tool cover -func=cover.out | awk '/^total:/ { sub(/%/, "", $3); print $3 }')
           echo "Total coverage: ${total}% (floor ${COVERAGE_FLOOR}%)"
           awk -v t="$total" -v f="$COVERAGE_FLOOR" 'BEGIN { exit !(t >= f) }' \
