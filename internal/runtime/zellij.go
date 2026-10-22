@@ -597,15 +597,28 @@ func (p zellijPane) target() string { return fmt.Sprintf("terminal_%d", p.ID) }
 // plugin panes such as the tab bar are not windows. Sessions are only listed
 // when list-panes fails, which is how a missing or exited session shows up.
 func (z *Zellij) panes(ctx context.Context, session string) ([]zellijPane, bool, error) {
-	res, err := z.action(ctx, session, "list-panes", "--all", "--json")
-	if err != nil {
-		if ok, checkErr := z.HasSession(ctx, session); checkErr == nil && !ok {
-			return nil, false, nil
+	for attempt := 0; ; attempt++ {
+		res, err := z.action(ctx, session, "list-panes", "--all", "--json")
+		if err != nil {
+			if ok, checkErr := z.HasSession(ctx, session); checkErr == nil && !ok {
+				return nil, false, nil
+			}
+			return nil, true, err
 		}
-		return nil, true, err
+		if strings.TrimSpace(res.Stdout) == "" {
+			if attempt == 3 {
+				return nil, true, fmt.Errorf("zellij list-panes returned no output for session %s after 4 attempts", session)
+			}
+			select {
+			case <-time.After(50 * time.Millisecond):
+			case <-ctx.Done():
+				return nil, true, ctx.Err()
+			}
+			continue
+		}
+		panes, err := parseZellijPanes(res.Stdout)
+		return panes, true, err
 	}
-	panes, err := parseZellijPanes(res.Stdout)
-	return panes, true, err
 }
 
 func parseZellijPanes(out string) ([]zellijPane, error) {
@@ -627,7 +640,7 @@ func parseZellijPanes(out string) ([]zellijPane, error) {
 func (z *Zellij) State(ctx context.Context, session string) (SessionState, error) {
 	panes, exists, err := z.panes(ctx, session)
 	if err != nil {
-		return SessionState{Name: session, Panes: map[string]PaneState{}}, err
+		return SessionState{Name: session, Exists: exists, Panes: map[string]PaneState{}}, err
 	}
 	return paneState(session, panes, exists), nil
 }

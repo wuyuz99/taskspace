@@ -20,6 +20,12 @@ upgrade.
 - **`attach` and `open` without a terminal** say so and point to `tspace
   status`, after the multiplexer's own error.
 
+### Fixed
+
+- **zellij: a live session no longer shows as unknown** when `list-panes`
+  answers with nothing. tspace retries a few times, then says zellij returned
+  no output instead of reporting a JSON parse error.
+
 ## v0.1.1 — 2026-10-19
 
 ### Added
