@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	tsgit "github.com/wuyuz99/taskspace/internal/git"
 	"github.com/wuyuz99/taskspace/internal/task"
+	"github.com/wuyuz99/taskspace/internal/workspace"
 )
 
 func (a *App) newRepoCmd() *cobra.Command {
@@ -781,11 +782,13 @@ func fetchNote(err error) string {
 }
 
 func (a *App) newRepoRmCmd() *cobra.Command {
-	return &cobra.Command{
+	var keep bool
+	cmd := &cobra.Command{
 		Use:   "rm TASK REPO",
 		Short: "Detach a repository from a task",
-		Long: "rm forgets the repository. It does not remove the worktree — run\n" +
-			"`tspace clean TASK` for that, so the safety checks apply.",
+		Long: "rm safely cleans the repository's worktree and closes its windows before\n" +
+			"forgetting it. --keep-worktree only forgets it, leaving its files and windows\n" +
+			"under your control; clean can no longer find them afterward.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := explicitTask(args[0]); err != nil {
@@ -800,8 +803,13 @@ func (a *App) newRepoRmCmd() *cobra.Command {
 			if !ok {
 				return fmt.Errorf("task %q has no repo named %q (has: %s)", t.Name, args[1], joinNames(t.RepoNames()))
 			}
-			if args[1] == t.AgentRepo && a.sessionRunning(cmd.Context(), t) {
+			if keep && args[1] == t.AgentRepo && a.sessionRunning(cmd.Context(), t) {
 				return fmt.Errorf("the task's agent runs in %s's window; stop the task first: tspace stop %s", args[1], t.Name)
+			}
+			if !keep {
+				if err := a.workspaceFor(cmd).Clean(cmd.Context(), t.Name, workspace.CleanOptions{Repos: []string{args[1]}}); err != nil {
+					return err
+				}
 			}
 			if args[1] == t.AgentRepo && len(t.Resume) > 0 {
 				a.warnf("note: the task's agent moves to the root window, at %s; a resume command that finds its conversation by directory will not find the one from %s\n", a.Store.TaskDir(t.Name), args[1])
@@ -820,4 +828,6 @@ func (a *App) newRepoRmCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&keep, "keep-worktree", false, "forget the repository without removing its worktree or windows")
+	return cmd
 }

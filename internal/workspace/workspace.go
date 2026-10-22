@@ -119,6 +119,7 @@ type BranchNotDeleted struct {
 // notes go next.
 type Cleaned struct {
 	Task     string
+	Repos    []string // set when only these repositories were cleaned
 	Removing bool
 }
 

@@ -337,8 +337,8 @@ func TestRepoRm(t *testing.T) {
 	if !strings.Contains(h.out.String(), "removed "+repo+" from PAY-7") {
 		t.Errorf("out = %q", h.out.String())
 	}
-	// rm forgets the repo but leaves the worktree for clean's safety checks.
-	if !strings.Contains(h.errb.String(), "the worktree at "+wt+" was left in place") {
+	// rm cleans the worktree before forgetting its record.
+	if strings.Contains(h.errb.String(), "was left in place") {
 		t.Errorf("err = %q", h.errb.String())
 	}
 	got, err := h.app.Store.Load("PAY-7")
@@ -348,8 +348,8 @@ func TestRepoRm(t *testing.T) {
 	if _, ok := got.Repo(repo); ok {
 		t.Fatal("repo still recorded")
 	}
-	if _, err := os.Stat(wt); err != nil {
-		t.Fatalf("worktree removed: %v", err)
+	if _, err := os.Stat(wt); !os.IsNotExist(err) {
+		t.Fatalf("worktree remains: %v", err)
 	}
 }
 
@@ -430,7 +430,7 @@ func TestRepoAddBackAfterRmDoesNotWarnStartWillRefuse(t *testing.T) {
 	h := newHarness(t)
 	tk := h.startedTask(t, "PAY-7")
 	repo := tk.RepoNames()[0]
-	if err := h.exec(t, h.app.newRepoCmd(), "rm", tk.Name, repo); err != nil {
+	if err := h.exec(t, h.app.newRepoCmd(), "rm", tk.Name, repo, "--keep-worktree"); err != nil {
 		t.Fatal(err)
 	}
 	h.errb.Reset()
