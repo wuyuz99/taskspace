@@ -105,6 +105,10 @@ enter attach · s start · r restart · x stop · t new tab · c clear signal ·
 the multiplexer it switches the client instead and the dashboard keeps running in its own
 window. Every key runs the command you would have typed.
 
+`S` and `X` start and stop only the selected window, as `tspace start TASK
+REPO` and `tspace stop TASK REPO` (or `--root`) do; `s` and `x` act on the
+whole task. Extra windows in a stopped window's worktree stay open.
+
 The mouse wheel moves the selection one row per step. dash takes mouse input
 to do that, so selecting text on its screen needs your terminal's modifier
 (usually Shift).

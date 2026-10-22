@@ -40,6 +40,9 @@ const AdapterPrefix = "tspace-mux-"
 //	ADAPTER rename SESSION OLD NEW   rename window OLD to NEW (optional: an
 //	                                 adapter without it fails, and only
 //	                                 renaming windows is unavailable)
+//	ADAPTER close SESSION NAME       close window NAME, letting its processes exit
+//	                                 cleanly (optional, as rename is: only
+//	                                 stopping a single window is unavailable)
 //
 // WIN is the arguments NAME DIR keep|close -- COMMAND...: COMMAND is never
 // empty (tspace resolves the user's shell), and keep says the window must stay

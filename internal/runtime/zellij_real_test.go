@@ -87,6 +87,15 @@ func TestRealZellijLifecycle(t *testing.T) {
 	if err := z.OpenWindow(ctx(), s, Window{Name: "_x", Dir: dir}); err == nil {
 		t.Fatal("tab added to a session with no client")
 	}
+	// Closing one window leaves the other, and the session, running.
+	if err := z.CloseWindow(ctx(), s, "api.v1"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor("window not closed", func(st SessionState) bool {
+		_, open := st.Panes[WindowName("api.v1")]
+		_, root := st.Panes["_root"]
+		return st.Exists && !open && root
+	})
 	if err := z.Stop(ctx(), s); err != nil {
 		t.Fatal(err)
 	}

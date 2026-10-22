@@ -33,6 +33,7 @@ func (a *App) newDashCmd() *cobra.Command {
 			"  s             start the task (tspace start)\n" +
 			"  r             restart a dead window (tspace restart)\n" +
 			"  x             stop the task, after confirming (tspace stop)\n" +
+			"  S / X         start / stop only the selected window (tspace start/stop TASK REPO)\n" +
 			"  t             open the task in a new terminal tab (tspace config terminal)\n" +
 			"  c             clear the row's signal\n" +
 			"  q             quit\n\n" +
@@ -330,6 +331,31 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return startedText(res), nil
 		})
+	case "S":
+		opts := workspace.StartOptions{Root: row.root()}
+		if !row.root() {
+			opts.Repos = []string{row.Window}
+		}
+		return m, m.act(func(ws *workspace.Service) (string, error) {
+			res, err := ws.Start(m.ctx, row.Task, opts)
+			if err != nil {
+				return "", err
+			}
+			return startedText(res), nil
+		})
+	case "X":
+		m.confirm = &dashConfirm{
+			prompt: fmt.Sprintf("stop only %s? (y/N)", row.label()),
+			run: m.act(func(ws *workspace.Service) (string, error) {
+				repo := row.Window
+				if row.root() {
+					repo = ""
+				}
+				err := ws.StopWindow(m.ctx, row.Task, repo, row.root())
+				return "stopped " + row.label(), err
+			}),
+		}
+		return m, nil
 	case "r":
 		if row.Runtime != status.RuntimeDead {
 			m.note = fmt.Sprintf("%s is %s; only a dead window can be restarted", row.label(), row.Runtime)
@@ -525,7 +551,7 @@ func (m dashModel) View() string {
 	default:
 		b.WriteString(m.note + "\n")
 	}
-	b.WriteString(dashFaint.Render("enter attach · s start · r restart · x stop · t new tab · c clear signal · q quit"))
+	b.WriteString(dashFaint.Render("enter attach · s/x task · S/X window · r restart · t tab · c clear · q quit"))
 
 	// Nothing may wrap: a wrapped line pushes the rest off the alt screen.
 	lines := strings.Split(b.String(), "\n")
