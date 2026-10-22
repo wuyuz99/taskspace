@@ -37,7 +37,7 @@ import (
 // config.json, projects and signals carry no version: they change only by
 // adding optional fields, which older and newer tspace alike ignore or leave
 // empty. They will get one when a change cannot be made that way.
-const CurrentVersion = 2
+const CurrentVersion = 3
 
 // ErrUnsupportedVersion is returned for a record from a newer tspace.
 var ErrUnsupportedVersion = errors.New("record written by a newer tspace")
@@ -49,6 +49,10 @@ var migrations = []func(s *Store, t *Task) error{
 	// 1 -> 2: nothing to move. Version 2 records may hold saved windows,
 	// which a tspace that knows only version 1 would drop when it saved the
 	// record; it refuses a version 2 record instead.
+	func(*Store, *Task) error { return nil },
+	// 2 -> 3: nothing to move. Version 3 records may mark a repository's
+	// base as assumed, which a tspace that knows only version 2 would drop,
+	// and with it the refusal to rebase from a guessed base.
 	func(*Store, *Task) error { return nil },
 }
 
@@ -63,9 +67,14 @@ func init() {
 func (t *Task) Outdated() bool { return t.Version < t.formatVersion() }
 
 // formatVersion is the oldest format that holds everything in t. Version 2
-// adds only saved windows, so a task without any stays readable by a tspace
-// that knows version 1.
+// adds only saved windows and version 3 only assumed bases, so a task
+// without them stays readable by an older tspace.
 func (t *Task) formatVersion() int {
+	for _, r := range t.Repos {
+		if r.BaseAssumed {
+			return 3
+		}
+	}
 	if len(t.Windows) > 0 {
 		return 2
 	}

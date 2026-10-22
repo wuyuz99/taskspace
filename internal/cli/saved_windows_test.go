@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/wuyuz99/taskspace/internal/runtime"
-	"github.com/wuyuz99/taskspace/internal/task"
 )
 
 // liveRuntime is a session that exists once started, holding the windows it
@@ -84,7 +83,8 @@ func TestSavedWindows(t *testing.T) {
 	if got := h.load(t, "PAY-1").Windows; len(got) != 2 || got[0].Repo != "backend" || !slices.Equal(got[0].Command, []string{"lazygit"}) || got[1].Repo != "" {
 		t.Fatalf("saved %+v", got)
 	}
-	if v := h.load(t, "PAY-1").Version; v != task.CurrentVersion {
+	// Saved windows alone need version 2, not the current version.
+	if v := h.load(t, "PAY-1").Version; v != 2 {
 		t.Fatalf("record version %d", v)
 	}
 

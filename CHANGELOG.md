@@ -9,6 +9,12 @@ upgrade.
 
 - **`task create --brief TEXT`** (and `task update --brief`) sets the brief
   inline, without writing a file for `--brief-file`.
+- **An existing branch gets the base it most likely came from.** Without
+  `:BASE`, `repo add` picks the branch it forked from most recently instead of
+  the default, and says the base was guessed, as do `task show` and its JSON
+  (`base_assumed`). `repo update --rebase` refuses a guessed base until `repo
+  update --base` confirms it. Such records use format version 3; see
+  [Branching](docs/BRANCHING.md).
 
 ### Changed
 

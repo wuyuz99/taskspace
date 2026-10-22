@@ -258,14 +258,15 @@ type taskWindowJSON struct {
 }
 
 type taskRepoJSON struct {
-	Name       string   `json:"name"`
-	Path       string   `json:"path"`
-	Branch     string   `json:"branch"`
-	Base       string   `json:"base,omitempty"`
-	Worktree   string   `json:"worktree"`
-	Agent      []string `json:"agent"`
-	Resume     []string `json:"resume"`
-	PostCreate string   `json:"post_create,omitempty"`
+	Name        string   `json:"name"`
+	Path        string   `json:"path"`
+	Branch      string   `json:"branch"`
+	Base        string   `json:"base,omitempty"`
+	BaseAssumed bool     `json:"base_assumed,omitempty"`
+	Worktree    string   `json:"worktree"`
+	Agent       []string `json:"agent"`
+	Resume      []string `json:"resume"`
+	PostCreate  string   `json:"post_create,omitempty"`
 }
 
 // describeTask renders a task's record and notes. An empty agent is the shell.
@@ -298,7 +299,8 @@ func (a *App) describeTask(t *task.Task) taskJSON {
 		r := t.Repos[name]
 		out.Repos = append(out.Repos, taskRepoJSON{
 			Name: name, Path: r.Path, Branch: r.Branch, Base: r.Base, Worktree: r.Worktree,
-			Agent: append([]string{}, t.RepoAgent(name)...), Resume: append([]string{}, t.ResumeFor(name)...), PostCreate: r.PostCreate,
+			BaseAssumed: r.BaseAssumed,
+			Agent:       append([]string{}, t.RepoAgent(name)...), Resume: append([]string{}, t.ResumeFor(name)...), PostCreate: r.PostCreate,
 		})
 	}
 	for _, w := range t.Windows {
@@ -417,6 +419,9 @@ func (a *App) newTaskShowCmd() *cobra.Command {
 				a.printf("  branch:    %s\n", r.Branch)
 				if r.Base != "" {
 					a.printf("  base:      %s\n", r.Base)
+					if r.BaseAssumed {
+						a.printf("             guessed; confirm with: tspace repo update %s %s --base BASE\n", t.Name, name)
+					}
 				}
 				a.printf("  worktree:  %s\n", r.Worktree)
 				a.printf("  agent:     %s\n", agentDisplay(task.Repo{Agent: t.RepoAgent(name)}))

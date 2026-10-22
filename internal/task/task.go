@@ -72,6 +72,9 @@ type Repo struct {
 	// Base is the ref the branch was created from, recorded at creation time so
 	// that later safety checks compare against the same ref.
 	Base string `json:"base,omitempty"`
+	// BaseAssumed marks a guess for an existing branch, which must be
+	// confirmed before it can be used to rewrite history.
+	BaseAssumed bool `json:"base_assumed,omitempty"`
 	// Worktree is the absolute path of this repo's worktree for the task.
 	Worktree string `json:"worktree"`
 	// PostCreate is an optional shell command run once in a freshly created
