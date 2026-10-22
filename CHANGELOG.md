@@ -13,6 +13,11 @@ upgrade.
   `TSPACE_TASK`. `editor`, `attach`, `task show` and `exec -- COMMAND` can
   leave TASK out there. `stop`, `clean`, `task rm` and `repo rm` still need
   the name.
+- **Start and stop one window.** `tspace stop TASK REPO` (or `--root`)
+  interrupts and closes just that window, clearing its signal, and `tspace
+  start TASK --root` starts only the root window. In dash, `S` and `X` do the
+  same for the selected row. Adapters gain an optional `close` operation; see
+  [Multiplexers](docs/MULTIPLEXERS.md).
 - **`task create --brief TEXT`** (and `task update --brief`) sets the brief
   inline, without writing a file for `--brief-file`.
 - **An existing branch gets the base it most likely came from.** Without

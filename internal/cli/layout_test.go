@@ -23,6 +23,16 @@ type layoutRuntime struct {
 }
 
 func (r *layoutRuntime) HasSession(context.Context, string) (bool, error) { return r.running, nil }
+func (r *layoutRuntime) CloseWindow(_ context.Context, _ string, name string) error {
+	var kept []runtime.Window
+	for _, w := range r.started {
+		if w.Name != name {
+			kept = append(kept, w)
+		}
+	}
+	r.started = kept
+	return nil
+}
 func (r *layoutRuntime) State(ctx context.Context, s string) (runtime.SessionState, error) {
 	st, err := r.stubRuntime.State(ctx, s)
 	st.Exists = st.Exists || r.running

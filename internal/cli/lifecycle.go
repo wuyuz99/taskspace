@@ -18,7 +18,7 @@ func (a *App) newOpenCmd() *cobra.Command {
 
 // Start and open share preparation so worktree and hook behavior stay identical.
 func (a *App) newLaunchCmd(open bool) *cobra.Command {
-	var noRuntime bool
+	var noRuntime, root bool
 
 	cmd := &cobra.Command{
 		Use:   "start TASK [REPO...]",
@@ -42,7 +42,7 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := a.workspaceFor(cmd).Start(ctx, name, workspace.StartOptions{Repos: args[1:], NoRuntime: noRuntime})
+			res, err := a.workspaceFor(cmd).Start(ctx, name, workspace.StartOptions{Root: root, Repos: args[1:], NoRuntime: noRuntime})
 			if err != nil || noRuntime {
 				return err
 			}
@@ -68,6 +68,7 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 			"script, use `tspace start TASK` and read `tspace status TASK` instead."
 		cmd.Args = cobra.ExactArgs(1)
 	} else {
+		cmd.Flags().BoolVar(&root, "root", false, "start only the task-root window")
 		cmd.Flags().BoolVar(&noRuntime, "no-runtime", false,
 			"create worktrees but do not start the session")
 	}
@@ -75,15 +76,28 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 }
 
 func (a *App) newStopCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "stop TASK",
+	var root bool
+	cmd := &cobra.Command{
+		Use:   "stop TASK [REPO | --root]",
 		Short: "Stop the task's agents, leaving worktrees untouched",
 		Long: "stop interrupts the agents, gives them a moment, then ends the session.\n" +
-			"Worktrees and branches are not touched. TASK must be explicit.",
-		Args: cobra.ExactArgs(1),
+			"Worktrees and branches are not touched. Name REPO or --root to stop only\n" +
+			"that primary window; extra windows stay open. TASK must be explicit.",
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := explicitTask(args[0]); err != nil {
 				return err
+			}
+			if root || len(args) == 2 {
+				repo, label := "", "the root window"
+				if len(args) == 2 {
+					repo, label = args[1], args[1]
+				}
+				if err := a.workspaceFor(cmd).StopWindow(cmd.Context(), args[0], repo, root); err != nil {
+					return err
+				}
+				a.printf("stopped %s of %s; the rest of the task keeps running\n", label, args[0])
+				return nil
 			}
 			running, err := a.workspaceFor(cmd).Stop(cmd.Context(), args[0])
 			if err != nil {
@@ -93,6 +107,8 @@ func (a *App) newStopCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&root, "root", false, "stop only the task-root window")
+	return cmd
 }
 
 func (a *App) newRestartCmd() *cobra.Command {
