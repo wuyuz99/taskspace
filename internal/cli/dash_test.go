@@ -67,6 +67,27 @@ func TestDashNavigation(t *testing.T) {
 	}
 }
 
+func TestDashWheelMovesOneRow(t *testing.T) {
+	_, m := loadedDash(t)
+	for i := 0; i < len(m.data.Rows)+2; i++ {
+		m = drive(t, m, tea.MouseMsg{Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress})
+		if m.cursor != min(i+1, len(m.data.Rows)-1) {
+			t.Fatalf("step %d cursor %d", i, m.cursor)
+		}
+	}
+	for i := len(m.data.Rows) - 2; i >= -1; i-- {
+		m = drive(t, m, tea.MouseMsg{Button: tea.MouseButtonWheelUp, Action: tea.MouseActionPress})
+		if m.cursor != max(i, 0) {
+			t.Fatalf("step %d cursor %d", i, m.cursor)
+		}
+	}
+	m.confirm = &dashConfirm{prompt: "confirm"}
+	m = drive(t, m, tea.MouseMsg{Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress})
+	if m.cursor != 0 || m.confirm == nil {
+		t.Fatal("wheel changed a pending confirmation")
+	}
+}
+
 func TestDashCursorFollowsItsRow(t *testing.T) {
 	h, m := loadedDash(t)
 	m = drive(t, m, key("G"))
