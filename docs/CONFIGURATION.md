@@ -132,9 +132,10 @@ back to an older tspace after a format change locks it out of the records
 written since rather than letting it damage them. A tspace from before versions
 reads today's records as it always did, since their fields are unchanged.
 
-A record is written in the oldest format that holds it: version 2 only while
-the task has saved windows, so every other task stays readable by a tspace
-that knows version 1.
+A record is written in the oldest format that holds it: version 3 while a
+repository has an assumed base, otherwise version 2 while the task has saved
+windows, and version 1 otherwise. Older versions refuse the newer metadata
+instead of silently dropping the rebase protection.
 
 `config.json`, project recipes and signals have no version: they only gain
 optional fields, which older and newer tspace alike ignore or leave empty.

@@ -237,7 +237,7 @@ func TestRecordsCarryTheVersionTheyNeed(t *testing.T) {
 	if err := s.Save(tk); err != nil {
 		t.Fatal(err)
 	}
-	if v := version(); v != CurrentVersion {
+	if v := version(); v != 2 {
 		t.Fatalf("record with windows has version %d", v)
 	}
 	back, err := s.Load("t")
