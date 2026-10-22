@@ -77,7 +77,8 @@ window running a shell: opened straight away if the session is running, else
 by the next `start`. Removing repositories again never takes that window away.
 `tspace task show` says which window runs the agent. That repository's agent is
 the task's, so `tspace repo update TASK REPO --agent/--shell` changes the task's
-agent, and `tspace repo rm` of it waits until the task is stopped. A repository
+agent. `tspace repo rm` closes that window and safely cleans its worktree before
+forgetting it; `--keep-worktree` still requires stopping a running agent first. A repository
 added with an `--agent` of its own keeps the root layout, so the task's agent
 still has a window.
 

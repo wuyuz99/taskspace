@@ -177,7 +177,9 @@ func TestSavedWindows(t *testing.T) {
 		t.Fatalf("PAY-2 windows %+v", got)
 	}
 
-	// Removing a repository forgets the windows that opened in it.
+	// Removing a repository forgets the windows that opened in it. PAY-2
+	// was never started; the fake runtime would show it PAY-1's windows.
+	h.app.Runtime = &liveRuntime{}
 	if err := h.exec(t, h.app.newRepoCmd(), "rm", "PAY-2", "frontend"); err != nil {
 		t.Fatal(err)
 	}

@@ -6,6 +6,13 @@
 
 The rule is: **refusing beats losing code.**
 
+`clean TASK REPO...` applies the same checks to only those repositories and
+closes their primary and saved windows. Unsaved extra windows have no recorded
+repository, so stop the task first if any are present. `--rm` is only available
+for whole-task cleanup. `repo rm TASK REPO` cleans first and then drops the
+repository record; `--keep-worktree` explicitly leaves its worktree/windows
+behind, where later clean cannot reach them.
+
 `tspace clean` refuses outright if any worktree has uncommitted changes, untracked
 files, a stash on its branch, or a lock. It tells you which files, in which
 repo, and how to proceed.

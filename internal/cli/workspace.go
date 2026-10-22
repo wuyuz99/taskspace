@@ -91,7 +91,9 @@ func (a *App) render(e workspace.Event) {
 	case workspace.BranchDeleted:
 		a.printf("%-12s deleted branch %s (%s)\n", e.Repo, e.Branch, e.Reason)
 	case workspace.Cleaned:
-		if e.Removing {
+		if len(e.Repos) > 0 {
+			a.printf("\ncleaned %s in %s\n", joinNames(e.Repos), e.Task)
+		} else if e.Removing {
 			a.printf("\ncleaned %s\n", e.Task)
 		} else {
 			a.printf("\ncleaned %s; the task record is still there (tspace task rm %s to remove it)\n", e.Task, e.Task)

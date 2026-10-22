@@ -33,7 +33,7 @@ task names.
 | `tspace task handoff NAME [TEXT / --file F / --edit / --clear]` | Show or replace the task's handoff |
 | `tspace task rm NAME [--force]` | Delete the record; refuses while worktrees exist unless `--force` |
 | `tspace repo add TASK REPO [--name --branch --base --agent --post-create]` | Attach a repository, by registered name or path |
-| `tspace repo rm TASK REPO` | Detach a repository (leaves the worktree) |
+| `tspace repo rm TASK REPO [--keep-worktree]` | Clean the repository's worktree and windows safely, then detach it; `--keep-worktree` only forgets it |
 | `tspace repo update TASK REPO [--agent CMD / --shell] [--post-create SH] [--branch NAME] [--base REF [--rebase]]` | Update a repository's agent, setup, branch or base |
 | `tspace start TASK [REPO... / --root] [--no-runtime]` | Create worktrees, launch the session; naming REPOs or `--root` starts only those windows; `--no-runtime` stops after the worktrees |
 | `tspace open TASK` | Prepare worktrees, show brief/handoff, and attach |
@@ -49,7 +49,7 @@ task names.
 | `tspace dash` | Live full-screen view of every task; attach, start, restart, stop, open in a new tab |
 | `tspace signal STATE [MESSAGE] [--task --repo / --root] [--quiet] [--clear]` | Report an agent as `working`, `blocked`, `done` or `failed` |
 | `tspace config hooks claude [--remove]` | Install the Claude Code hooks that call `tspace signal` |
-| `tspace clean TASK [--delete-branch] [--force] [--rm]` | Remove worktrees, safely; `--rm` deletes the task record too |
+| `tspace clean TASK [REPO...] [--delete-branch] [--force] [--rm]` | Remove worktrees, safely, of every repository or only those named; `--rm` deletes the task record too |
 | `tspace import PATH [--task NAME] [--name REPO]` | Move a worktree made with `git worktree add` into a task |
 | `tspace editor [TASK] [--print]` | Write the task's `.code-workspace` and open it in your editor |
 | `tspace completion SHELL` | Generate a shell completion script |
