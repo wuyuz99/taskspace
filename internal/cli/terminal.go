@@ -32,7 +32,9 @@ func (a *App) openInNewTab(ctx context.Context, taskName string) error {
 	if err != nil {
 		return err
 	}
-	command := []string{self}
+	// Carry the root in the command too: single-instance terminals launch
+	// tabs from their existing server, which may have a different environment.
+	command := []string{"env", task.EnvRoot + "=" + a.Store.Root(), self}
 	if a.noTitle {
 		command = append(command, "--no-title")
 	}

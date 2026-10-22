@@ -22,6 +22,10 @@ upgrade.
 
 ### Fixed
 
+- **dash `t` keeps the root with single-instance terminals.** The new tab's
+  command now carries `env TSPACE_ROOT=ROOT`, so a terminal that hands the
+  tab to its running instance, such as Ghostty, no longer drops a non-default
+  root. Windows Terminal needs `wsl.exe --exec` before the command.
 - **zellij: a live session no longer shows as unknown** when `list-panes`
   answers with nothing. tspace retries a few times, then says zellij returned
   no output instead of reporting a JSON parse error.
