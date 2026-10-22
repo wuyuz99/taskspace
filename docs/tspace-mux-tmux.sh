@@ -60,6 +60,15 @@ new-session | new-window | respawn)
 	fi
 	;;
 
+close)
+	w=$(wtarget "$1" "$2")
+	for pane in $(tmux list-panes -t "$w" -F '#{pane_id} #{pane_dead}' | awk '$2 == 0 { print $1 }'); do
+		tmux send-keys -t "$pane" C-c || :
+	done
+	sleep 2
+	tmux kill-window -t "$w" 2>/dev/null || :
+	;;
+
 stop)
 	for pane in $(tmux list-panes -s -t "$(target "$1")" -F '#{pane_id} #{pane_dead}' | awk '$2 == 0 { print $1 }'); do
 		tmux send-keys -t "$pane" C-c || :

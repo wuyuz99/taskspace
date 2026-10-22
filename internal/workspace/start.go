@@ -15,6 +15,8 @@ import (
 
 // StartOptions shape Start.
 type StartOptions struct {
+	// Root starts only the primary root window.
+	Root bool
 	// Repos limits Start to these repositories, without the root window.
 	Repos []string
 	// NoRuntime creates the worktrees and stops there.
@@ -40,11 +42,17 @@ func (s *Service) Start(ctx context.Context, name string, opts StartOptions) (*S
 		return nil, err
 	}
 	defer unlock()
+	if opts.Root && (len(opts.Repos) > 0 || !t.HasRootWindow()) {
+		return nil, fmt.Errorf("--root requires a task with a root window and no repository arguments")
+	}
 	names, err := selectRepos(t, opts.Repos)
 	if err != nil {
 		return nil, err
 	}
-	if len(names) == 0 {
+	if opts.Root {
+		names = nil
+	}
+	if len(names) == 0 && !opts.Root {
 		return nil, fmt.Errorf("task %q has no repositories; add one with: tspace repo add %s REPO", t.Name, t.Name)
 	}
 
@@ -116,10 +124,12 @@ func (s *Service) Start(ctx context.Context, name string, opts StartOptions) (*S
 		windows = append(windows, RepoWindow(s.Store, t, name))
 	}
 	// Saved windows go with what is started: those at the root with the whole
-	// task, the rest with their repositories.
+	// task, the rest with their repositories. The root window alone has none.
 	atRoot := withRoot
 	for _, w := range t.Windows {
 		switch {
+		case opts.Root:
+			continue
 		case w.Repo == "" && len(opts.Repos) == 0:
 			atRoot = true
 		case w.Repo == "" || !slices.Contains(names, w.Repo):
