@@ -107,7 +107,7 @@ func TestCleanRmOfEmptiedTask(t *testing.T) {
 	h := newHarness(t)
 	tk := h.startedTask(t, "PAY-1")
 	repo := tk.RepoNames()[0]
-	if err := h.exec(t, h.app.newRepoCmd(), "rm", "PAY-1", repo); err != nil {
+	if err := h.exec(t, h.app.newRepoCmd(), "rm", "PAY-1", repo, "--keep-worktree"); err != nil {
 		t.Fatal(err)
 	}
 	rt := &layoutRuntime{running: true}

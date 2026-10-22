@@ -362,7 +362,7 @@ func TestRepoRmRefusesToOrphanARunningAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.app.Runtime = &layoutRuntime{running: true}
-	if err := h.exec(t, h.app.newRepoCmd(), "rm", "PAY-1", "backend"); err == nil || !strings.Contains(err.Error(), "tspace stop PAY-1") {
+	if err := h.exec(t, h.app.newRepoCmd(), "rm", "PAY-1", "backend", "--keep-worktree"); err == nil || !strings.Contains(err.Error(), "tspace stop PAY-1") {
 		t.Fatalf("rm = %v", err)
 	}
 	if _, ok := h.load(t, "PAY-1").Repo("backend"); !ok {

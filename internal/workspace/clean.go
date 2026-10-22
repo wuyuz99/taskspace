@@ -12,6 +12,8 @@ import (
 
 // CleanOptions shape Clean.
 type CleanOptions struct {
+	// Repos limits cleanup to these repositories and their saved windows.
+	Repos []string
 	// DeleteBranch also deletes task branches whose work is merged or pushed.
 	DeleteBranch bool
 	// Force discards uncommitted work and unmerged branches.
@@ -30,6 +32,22 @@ func (s *Service) Clean(ctx context.Context, name string, opts CleanOptions) err
 		return err
 	}
 	defer unlock()
+	selected := t
+	if len(opts.Repos) > 0 {
+		if opts.Remove {
+			return fmt.Errorf("--rm cannot be combined with individual repositories")
+		}
+		only := *t
+		only.Repos = map[string]task.Repo{}
+		for _, name := range opts.Repos {
+			r, ok := t.Repo(name)
+			if !ok {
+				return fmt.Errorf("task %q has no repo named %q (has: %s)", t.Name, name, strings.Join(t.RepoNames(), ", "))
+			}
+			only.Repos[name] = r
+		}
+		selected = &only
+	}
 	if len(t.Repos) == 0 {
 		s.report(NoRepositories{Task: t.Name})
 		if !opts.Remove {
@@ -43,7 +61,7 @@ func (s *Service) Clean(ctx context.Context, name string, opts CleanOptions) err
 
 	// The whole plan is made under the lock it is carried out under, so
 	// nothing changes in between.
-	plans, err := s.inspectForClean(ctx, t, opts.DeleteBranch)
+	plans, err := s.inspectForClean(ctx, selected, opts.DeleteBranch)
 	if err != nil {
 		return err
 	}
@@ -55,7 +73,11 @@ func (s *Service) Clean(ctx context.Context, name string, opts CleanOptions) err
 
 	// Stop the runtime only once the safety checks have passed, so a refused
 	// clean does not disrupt running agents as a side effect.
-	if err := s.stopForClean(ctx, t); err != nil {
+	if len(opts.Repos) > 0 {
+		if err := s.stopSelectedForClean(ctx, t, selected); err != nil {
+			return err
+		}
+	} else if err := s.stopForClean(ctx, t); err != nil {
 		return err
 	}
 
@@ -84,6 +106,21 @@ func (s *Service) Clean(ctx context.Context, name string, opts CleanOptions) err
 			continue
 		}
 		s.report(BranchDeleted{Repo: p.Name, Branch: p.Repo.Branch, Reason: p.Discard.Reason()})
+	}
+
+	// The rest of the task keeps running, so only the cleaned windows'
+	// signals go.
+	if len(opts.Repos) > 0 {
+		for _, name := range selected.RepoNames() {
+			_ = s.Store.ClearSignal(t.Name, name)
+		}
+		for _, w := range t.Windows {
+			if _, ok := selected.Repos[w.Repo]; ok {
+				_ = s.Store.ClearSignal(t.Name, w.SessionName())
+			}
+		}
+		s.report(Cleaned{Task: t.Name, Repos: selected.RepoNames()})
+		return nil
 	}
 
 	// The editor workspace lists the worktrees just removed, and is written

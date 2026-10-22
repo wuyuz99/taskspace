@@ -18,6 +18,10 @@ upgrade.
   start TASK --root` starts only the root window. In dash, `S` and `X` do the
   same for the selected row. Adapters gain an optional `close` operation; see
   [Multiplexers](docs/MULTIPLEXERS.md).
+- **`clean TASK REPO...`** cleans only the named repositories, with the same
+  refusals, closing their windows instead of stopping the task. It refuses
+  while an extra window that was never saved with a repository is open,
+  since which worktree it uses is unknown.
 - **`task create --brief TEXT`** (and `task update --brief`) sets the brief
   inline, without writing a file for `--brief-file`.
 - **An existing branch gets the base it most likely came from.** Without
@@ -29,6 +33,10 @@ upgrade.
 
 ### Changed
 
+- **`repo rm` removes what it forgets.** It cleans the repository first,
+  with clean's refusals, closing its window and saved windows, then drops it
+  from the record; before, the worktree and window were left where `clean`
+  could no longer find them. `--keep-worktree` keeps the old behaviour.
 - **Errors name what exists.** A missing `--project` lists the saved projects,
   and `repo rm` and `repo update` list the task's repositories.
 - **`task create` reports its repositories only once the task exists**, so a
