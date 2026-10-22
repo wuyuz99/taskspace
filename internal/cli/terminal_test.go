@@ -23,6 +23,18 @@ func TestTerminalArgv(t *testing.T) {
 	}
 }
 
+func TestTerminalRootInBothCommandForms(t *testing.T) {
+	command := []string{"env", "TSPACE_ROOT=/tmp/state with spaces", "/bin/tspace", "attach", "PAY-1"}
+	got := terminalArgvFor("linux", []string{"terminal", "--"}, command)
+	if !slices.Equal(got[2:], command) {
+		t.Fatalf("appended root lost: %q", got)
+	}
+	got = terminalArgvFor("linux", []string{"terminal", "{command}"}, command)
+	if got[1] != "env 'TSPACE_ROOT=/tmp/state with spaces' /bin/tspace attach PAY-1" {
+		t.Fatalf("placed root lost: %q", got)
+	}
+}
+
 // The configured terminal is run with tspace open TASK; without one, the
 // error says how to set it.
 func TestOpenInNewTab(t *testing.T) {
@@ -44,6 +56,9 @@ func TestOpenInNewTab(t *testing.T) {
 	}
 	if !strings.HasSuffix(env["ARGS"], " attach PAY-1") {
 		t.Errorf("the terminal ran %q", env["ARGS"])
+	}
+	if !strings.Contains(env["ARGS"], "env TSPACE_ROOT="+h.app.Store.Root()) {
+		t.Errorf("the command lost its root: %q", env["ARGS"])
 	}
 	// A --unset after the command would be saved as part of it.
 	if err := h.exec(t, h.app.newConfigCmd(), "terminal", "kitty", "--unset"); err == nil {

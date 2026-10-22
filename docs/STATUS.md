@@ -112,15 +112,16 @@ open tabs their own way, so tell tspace yours once; it adds its command at the
 end, or puts it where an argument says `{command}`:
 
 ```bash
-tspace config terminal wt.exe -w 0 new-tab --        # Windows Terminal
+tspace config terminal wt.exe -w 0 new-tab -- wsl.exe --exec  # Windows Terminal into WSL
 tspace config terminal wezterm cli spawn --
 tspace config terminal kitty @ launch --type=tab
 tspace config terminal gnome-terminal --tab --
 ```
 
-The new tab gets `TSPACE_ROOT` when the terminal passes tspace's environment
-on; one that starts tabs from its own environment uses whatever your shell
-there sets.
+The command includes `env TSPACE_ROOT=ROOT`, so the selected root survives a
+terminal delegating the new tab to its existing process. The launcher also
+receives the environment. The command must execute in the same Unix/WSL
+environment as tspace; a Windows Terminal configuration needs the WSL bridge.
 
 ## Troubleshooting
 
