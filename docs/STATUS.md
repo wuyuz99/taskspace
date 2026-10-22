@@ -98,12 +98,23 @@ checkout-redesign/frontend  agent/checkout-redesign
   signal   blocked, 3m ago: totals endpoint: round per line or per order?
   handoff  API done, tests pass.
 
-enter attach · s start · r restart · x stop · t new tab · c clear signal · q quit
+enter attach · space expand · s/x task · S/X window · r restart · D clean · t tab · c clear · q quit
 ```
 
 `enter` attaches to the selected window and detaching brings you back; inside
 the multiplexer it switches the client instead and the dashboard keeps running in its own
 window. Every key runs the command you would have typed.
+
+A task whose windows are all quiet takes one row, `(N windows)`, with the
+worst runtime, the most urgent signal and every git state among them; space
+or right expands it and left collapses it again. A task with a dead window,
+or a blocked or failed signal, always shows every window. `enter`, `S` and
+`X` on a collapsed task act on its root window. Each task's title follows its
+name, using only the width the other columns leave.
+
+`D` cleans the selected task, after confirming: `tspace clean TASK` without
+`--force`, so it keeps the record and branches, and when work could be lost
+it shows clean's refusal and changes nothing.
 
 `S` and `X` start and stop only the selected window, as `tspace start TASK
 REPO` and `tspace stop TASK REPO` (or `--root`) do; `s` and `x` act on the
