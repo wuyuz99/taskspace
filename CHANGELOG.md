@@ -22,6 +22,11 @@ upgrade.
   refusals, closing their windows instead of stopping the task. It refuses
   while an extra window that was never saved with a repository is open,
   since which worktree it uses is unknown.
+- **dash shows more in less room.** A task whose windows are all quiet
+  collapses to one row (space or right expands it); a dead window or a
+  blocked or failed signal keeps it open. Task titles follow their names in
+  the space left over. `D` cleans the selected task after confirming, as
+  `tspace clean TASK` without `--force`.
 - **`task create --brief TEXT`** (and `task update --brief`) sets the brief
   inline, without writing a file for `--brief-file`.
 - **An existing branch gets the base it most likely came from.** Without
