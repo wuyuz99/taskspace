@@ -120,6 +120,9 @@ it shows clean's refusal and changes nothing.
 REPO` and `tspace stop TASK REPO` (or `--root`) do; `s` and `x` act on the
 whole task. Extra windows in a stopped window's worktree stay open.
 
+For moving between a task's windows once inside it, see
+[Task window navigation](TMUX_NAVIGATION.md).
+
 The mouse wheel moves the selection one row per step. dash takes mouse input
 to do that, so selecting text on its screen needs your terminal's modifier
 (usually Shift).

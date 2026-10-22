@@ -27,6 +27,9 @@ upgrade.
   blocked or failed signal keeps it open. Task titles follow their names in
   the space left over. `D` cleans the selected task after confirming, as
   `tspace clean TASK` without `--force`.
+- **[Task window navigation](docs/TMUX_NAVIGATION.md)**: an opt-in tmux
+  binding for a window picker limited to the current task, and the default
+  one for switching tasks, with a script that checks both.
 - **`task create --brief TEXT`** (and `task update --brief`) sets the brief
   inline, without writing a file for `--brief-file`.
 - **An existing branch gets the base it most likely came from.** Without
