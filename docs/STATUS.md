@@ -105,6 +105,10 @@ enter attach · s start · r restart · x stop · t new tab · c clear signal ·
 the multiplexer it switches the client instead and the dashboard keeps running in its own
 window. Every key runs the command you would have typed.
 
+The mouse wheel moves the selection one row per step. dash takes mouse input
+to do that, so selecting text on its screen needs your terminal's modifier
+(usually Shift).
+
 `t` opens the selected window in a new tab of your terminal, running
 `tspace attach TASK` there, so the dashboard stays where it is; like `enter`,
 it needs the task to be running. Terminals each

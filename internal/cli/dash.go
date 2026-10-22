@@ -28,7 +28,7 @@ func (a *App) newDashCmd() *cobra.Command {
 			"git state. Below the table it shows the selected row's directory, signal\n" +
 			"message and handoff. It is `tspace status` for a person supervising several\n" +
 			"agents; everything it does is also a command.\n\n" +
-			"  up/down, j/k  select a row\n" +
+			"  up/down, j/k  select a row (mouse wheel moves one row)\n" +
 			"  enter         attach to that window; detaching returns here\n" +
 			"  s             start the task (tspace start)\n" +
 			"  r             restart a dead window (tspace restart)\n" +
@@ -51,7 +51,7 @@ func (a *App) newDashCmd() *cobra.Command {
 			m := newDashModel(ctx, a, interval)
 			for {
 				setTitle(a.Out, "tspace dash", a.noTitle)
-				final, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithContext(ctx)).Run()
+				final, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithContext(ctx)).Run()
 				if ctx.Err() != nil {
 					return nil
 				}
@@ -267,6 +267,17 @@ func (m dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		return m.key(msg)
+	case tea.MouseMsg:
+		if m.confirm != nil || msg.Action != tea.MouseActionPress {
+			return m, nil
+		}
+		switch msg.Button {
+		case tea.MouseButtonWheelUp:
+			m.cursor = max(m.cursor-1, 0)
+		case tea.MouseButtonWheelDown:
+			m.cursor = max(min(m.cursor+1, len(m.data.Rows)-1), 0)
+		}
+		return m, nil
 	}
 	return m, nil
 }
