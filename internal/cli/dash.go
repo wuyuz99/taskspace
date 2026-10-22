@@ -29,11 +29,13 @@ func (a *App) newDashCmd() *cobra.Command {
 			"message and handoff. It is `tspace status` for a person supervising several\n" +
 			"agents; everything it does is also a command.\n\n" +
 			"  up/down, j/k  select a row (mouse wheel moves one row)\n" +
+			"  space         expand/collapse a quiet task; failures stay expanded\n" +
 			"  enter         attach to that window; detaching returns here\n" +
 			"  s             start the task (tspace start)\n" +
 			"  r             restart a dead window (tspace restart)\n" +
 			"  x             stop the task, after confirming (tspace stop)\n" +
 			"  S / X         start / stop only the selected window (tspace start/stop TASK REPO)\n" +
+			"  D             clean the task, after confirming (tspace clean)\n" +
 			"  t             open the task in a new terminal tab (tspace config terminal)\n" +
 			"  c             clear the row's signal\n" +
 			"  q             quit\n\n" +
@@ -87,6 +89,7 @@ func (a *App) newDashCmd() *cobra.Command {
 
 // dashRow is one window: a task's root, or one of its repositories.
 type dashRow struct {
+	Summary int // number of windows represented by a collapsed task
 	Task    string
 	Window  string // a repository name, or task.RootWindowName
 	Branch  string
@@ -187,6 +190,8 @@ type dashConfirm struct {
 }
 
 type dashModel struct {
+	rawRows  []dashRow
+	expanded map[string]bool
 	ctx      context.Context
 	app      *App
 	interval time.Duration
@@ -244,7 +249,15 @@ func (m dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The cursor follows its row, not its position: tasks come and go.
 		prev, had := m.selected()
 		m.data, m.loaded, m.loading = dashData(msg), true, false
+		m.rawRows = append([]dashRow(nil), m.data.Rows...)
+		m.data.Rows = collapseDashRows(m.rawRows, m.expanded)
 		if had {
+			for i, r := range m.data.Rows {
+				if r.Task == prev.Task {
+					m.cursor = i
+					break
+				}
+			}
 			for i, r := range m.data.Rows {
 				if r.Task == prev.Task && r.Window == prev.Window {
 					m.cursor = i
@@ -314,8 +327,37 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
+	// Summary state describes the whole task, but attach/start/stop target
+	// its chosen primary window. A missing sibling must not block attachment.
+	if row.Summary > 1 {
+		for _, original := range m.rawRows {
+			if original.Task == row.Task && original.Window == row.Window {
+				row.Runtime = original.Runtime
+				break
+			}
+		}
+	}
 	m.noteErr = false
 	switch msg.String() {
+	case " ", "right", "left":
+		if m.expanded == nil {
+			m.expanded = map[string]bool{}
+		}
+		m.expanded[row.Task] = !m.expanded[row.Task]
+		if msg.String() == "right" {
+			m.expanded[row.Task] = true
+		}
+		if msg.String() == "left" {
+			m.expanded[row.Task] = false
+		}
+		m.data.Rows = collapseDashRows(m.rawRows, m.expanded)
+		for i, r := range m.data.Rows {
+			if r.Task == row.Task {
+				m.cursor = i
+				break
+			}
+		}
+		return m, nil
 	case "enter":
 		if row.Runtime != status.RuntimeRunning && row.Runtime != status.RuntimeDead {
 			m.note = fmt.Sprintf("%s has no window to attach to (%s); press s to start the task", row.label(), row.Runtime)
@@ -400,7 +442,20 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}),
 		}
 		return m, nil
+	case "D":
+		m.confirm = &dashConfirm{
+			prompt: fmt.Sprintf("clean %s and remove its worktrees? record and branches are kept (y/N)", row.Task),
+			run: m.act(func(ws *workspace.Service) (string, error) {
+				err := ws.Clean(m.ctx, row.Task, workspace.CleanOptions{})
+				return "cleaned " + row.Task, err
+			}),
+		}
+		return m, nil
 	case "c":
+		if row.Summary > 1 {
+			m.note = "expand the task with space to clear a window's signal"
+			return m, nil
+		}
 		if row.Signal == nil {
 			m.note = row.label() + " has no signal"
 			return m, nil
@@ -551,7 +606,7 @@ func (m dashModel) View() string {
 	default:
 		b.WriteString(m.note + "\n")
 	}
-	b.WriteString(dashFaint.Render("enter attach · s/x task · S/X window · r restart · t tab · c clear · q quit"))
+	b.WriteString(dashFaint.Render("enter attach · space expand · s/x task · S/X window · r restart · D clean · t tab · c clear · q quit"))
 
 	// Nothing may wrap: a wrapped line pushes the rest off the alt screen.
 	lines := strings.Split(b.String(), "\n")
@@ -573,6 +628,9 @@ func (m dashModel) table(b *strings.Builder, now time.Time) {
 		if r.root() {
 			repo = "(root)"
 		}
+		if r.Summary > 1 {
+			repo = fmt.Sprintf("(%d windows)", r.Summary)
+		}
 		cells = append(cells, []string{name, repo, r.Agent, string(r.Runtime), signalSummary(r.Signal, now), r.Git})
 	}
 	widths := make([]int, len(cells[0]))
@@ -580,6 +638,25 @@ func (m dashModel) table(b *strings.Builder, now time.Time) {
 		for i, c := range row {
 			widths[i] = max(widths[i], lipgloss.Width(c))
 		}
+	}
+	// Titles use only spare width, leaving the runtime/signal/git columns
+	// as visible as they were without a title.
+	used := 2
+	for _, w := range widths {
+		used += w + 2
+	}
+	spare := max(m.width-used+2, 0)
+	for _, row := range cells[1:] {
+		if row[0] == "" {
+			continue
+		}
+		title := oneLine(m.data.Tasks[row[0]].Title)
+		if title != "" && spare > 3 {
+			row[0] += "  " + ansi.Truncate(title, spare-2, "…")
+		}
+	}
+	for _, row := range cells {
+		widths[0] = max(widths[0], lipgloss.Width(row[0]))
 	}
 	pad := func(i int, s string) string { return s + strings.Repeat(" ", widths[i]-lipgloss.Width(s)+2) }
 
