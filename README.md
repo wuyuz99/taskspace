@@ -129,6 +129,7 @@ application resources; see [service isolation](docs/WORKFLOWS.md#application-and
 | Reusable projects, repository settings and state files | [Configuration](docs/CONFIGURATION.md) |
 | Briefs, handoffs and ticket metadata | [Task context](docs/TASK_CONTEXT.md) |
 | tmux, zellij and custom adapters | [Multiplexers](docs/MULTIPLEXERS.md) |
+| Moving between a task's tmux windows | [Task window navigation](docs/TMUX_NAVIGATION.md) |
 | Status, signals, dashboard and troubleshooting | [Status guide](docs/STATUS.md) |
 | Cleanup protections | [Safety](docs/SAFETY.md) |
 | Full command surface | [Command reference](docs/COMMANDS.md) |
