@@ -357,7 +357,7 @@ func (a *App) newTaskListCmd() *cobra.Command {
 func (a *App) newTaskShowCmd() *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
-		Use:   "show NAME",
+		Use:   "show [NAME]",
 		Short: "Show a task's repositories in detail",
 		Long: "show prints everything recorded about a task: its session name, its\n" +
 			"directory and .context directory, its root agent, title, ticket, brief\n" +
@@ -365,9 +365,9 @@ func (a *App) newTaskShowCmd() *cobra.Command {
 			"worktree path, agent and setup hook.\n\n" +
 			"It reads only the record, so the paths are shown whether or not the\n" +
 			"worktrees exist yet; `tspace status NAME` reports what is on disk and running.",
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			t, err := a.loadTask(args[0])
+			t, err := a.loadTask(taskArg(args))
 			if err != nil {
 				return err
 			}
@@ -450,6 +450,9 @@ func (a *App) newTaskRmCmd() *cobra.Command {
 			"tool ends up deleting something you only wanted to tidy.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := explicitTask(args[0]); err != nil {
+				return err
+			}
 			t, unlock, err := a.lockTask(cmd, args[0], true)
 			if err != nil {
 				return err

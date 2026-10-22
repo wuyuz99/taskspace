@@ -20,7 +20,7 @@ const notesFolder = ".context"
 func (a *App) newEditorCmd() *cobra.Command {
 	var printOnly bool
 	cmd := &cobra.Command{
-		Use:   "editor TASK",
+		Use:   "editor [TASK]",
 		Short: "Open a task's worktrees together in your editor",
 		Long: "editor writes the task's worktrees, and its notes, into one .code-workspace\n" +
 			"file, which VS Code and the editors built on it open as a multi-root\n" +
@@ -38,11 +38,11 @@ func (a *App) newEditorCmd() *cobra.Command {
 			"are its own. --print writes the file and prints its path without opening\n" +
 			"it. Run tspace where the editor runs: an editor in WSL, or one reaching a\n" +
 			"remote machine, opens the file the paths in it are valid on.",
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// The file is written under the task's lock, as notes are, and the
 			// editor opened after it is released.
-			t, unlock, err := a.lockTask(cmd, args[0], false)
+			t, unlock, err := a.lockTask(cmd, taskArg(args), false)
 			if err != nil {
 				return err
 			}

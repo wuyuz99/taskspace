@@ -38,7 +38,11 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			res, err := a.workspaceFor(cmd).Start(ctx, args[0], workspace.StartOptions{Repos: args[1:], NoRuntime: noRuntime})
+			name, err := a.resolveTask(args[0])
+			if err != nil {
+				return err
+			}
+			res, err := a.workspaceFor(cmd).Start(ctx, name, workspace.StartOptions{Repos: args[1:], NoRuntime: noRuntime})
 			if err != nil || noRuntime {
 				return err
 			}
@@ -75,9 +79,12 @@ func (a *App) newStopCmd() *cobra.Command {
 		Use:   "stop TASK",
 		Short: "Stop the task's agents, leaving worktrees untouched",
 		Long: "stop interrupts the agents, gives them a moment, then ends the session.\n" +
-			"Worktrees and branches are not touched.",
+			"Worktrees and branches are not touched. TASK must be explicit.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := explicitTask(args[0]); err != nil {
+				return err
+			}
 			running, err := a.workspaceFor(cmd).Stop(cmd.Context(), args[0])
 			if err != nil {
 				return err
@@ -114,11 +121,15 @@ func (a *App) newRestartCmd() *cobra.Command {
 			if !root {
 				opts.Repo = args[1]
 			}
-			label, err := a.workspaceFor(cmd).Restart(cmd.Context(), args[0], opts)
+			name, err := a.resolveTask(args[0])
 			if err != nil {
 				return err
 			}
-			a.printf("%s\n", restartedText(label, args[0]))
+			label, err := a.workspaceFor(cmd).Restart(cmd.Context(), name, opts)
+			if err != nil {
+				return err
+			}
+			a.printf("%s\n", restartedText(label, name))
 			return nil
 		}}
 	cmd.Flags().BoolVar(&root, "root", false, "restart the task-root window")
@@ -128,7 +139,7 @@ func (a *App) newRestartCmd() *cobra.Command {
 
 func (a *App) newAttachCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "attach TASK",
+		Use:   "attach [TASK]",
 		Short: "Attach to the task's session",
 		Long: "attach prints the task's brief and handoff, then hands the terminal to the\n" +
 			"task's session; inside the same multiplexer it switches the current\n" +
@@ -136,9 +147,9 @@ func (a *App) newAttachCmd() *cobra.Command {
 			"prefix, then d; zellij: Ctrl-o, then d), which leaves everything running.\n\n" +
 			"The session must already be up (`tspace start TASK`), and attach needs a TTY.\n" +
 			"To look at a task without one, use `tspace status TASK`.",
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			t, err := a.loadTask(args[0])
+			t, err := a.loadTask(taskArg(args))
 			if err != nil {
 				return err
 			}
