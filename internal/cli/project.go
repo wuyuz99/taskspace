@@ -39,7 +39,7 @@ func (a *App) newProjectCmd() *cobra.Command {
 				}
 				return err
 			}
-			a.printf("saved project %s from %s; existing tasks are unchanged\n", args[0], from)
+			a.printf("saved project %s from %s; existing tasks are unchanged\n", args[0], t.Name)
 			return nil
 		}}
 	save.Flags().StringVar(&from, "from", "", "task whose repositories form the recipe")

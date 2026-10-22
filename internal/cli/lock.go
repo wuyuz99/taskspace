@@ -9,6 +9,10 @@ import (
 // saves was read under the lock; see workspace.Service.Lock. The lock rides
 // in cmd's context, so commands cmd runs in-process take it again for free.
 func (a *App) lockTask(cmd *cobra.Command, name string, lifecycle bool) (*task.Task, func(), error) {
+	name, err := a.resolveTask(name)
+	if err != nil {
+		return nil, nil, err
+	}
 	t, ctx, unlock, err := a.workspace().Lock(cmd.Context(), name, cmd.CommandPath(), lifecycle)
 	if err != nil {
 		return nil, nil, err
