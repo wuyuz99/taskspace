@@ -138,7 +138,7 @@ func (a *App) newExecCmd() *cobra.Command {
 	var keepGoing bool
 
 	cmd := &cobra.Command{
-		Use:   "exec TASK -- COMMAND [ARGS...]",
+		Use:   "exec [TASK] -- COMMAND [ARGS...]",
 		Short: "Run a command in every worktree of a task",
 		Long: "exec runs the same command in each of the task's worktrees, in repo-name\n" +
 			"order. Useful for the things you would otherwise do in each tab by hand:\n\n" +
@@ -148,11 +148,17 @@ func (a *App) newExecCmd() *cobra.Command {
 		// rather than cobra's "requires at least 2 arg(s)".
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			t, err := a.loadTask(args[0])
+			name, argv := args[0], args[1:]
+			if cmd.ArgsLenAtDash() == 0 {
+				name, argv = "", args
+			}
+			if cmd.ArgsLenAtDash() > 1 {
+				return fmt.Errorf("expected at most one TASK before --")
+			}
+			t, err := a.loadTask(name)
 			if err != nil {
 				return err
 			}
-			argv := args[1:]
 			if len(argv) == 0 {
 				return fmt.Errorf("no command given; use: tspace exec %s -- COMMAND", t.Name)
 			}

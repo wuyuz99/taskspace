@@ -788,6 +788,9 @@ func (a *App) newRepoRmCmd() *cobra.Command {
 			"`tspace clean TASK` for that, so the safety checks apply.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := explicitTask(args[0]); err != nil {
+				return err
+			}
 			t, unlock, err := a.lockTask(cmd, args[0], true)
 			if err != nil {
 				return err

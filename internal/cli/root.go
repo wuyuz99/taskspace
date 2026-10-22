@@ -237,7 +237,49 @@ func unknownSubcommand(cmd *cobra.Command, arg string) error {
 }
 
 // loadTask is the common "resolve the task argument" step.
-func (a *App) loadTask(name string) (*task.Task, error) { return a.Store.Load(name) }
+func (a *App) loadTask(name string) (*task.Task, error) {
+	name, err := a.resolveTask(name)
+	if err != nil {
+		return nil, err
+	}
+	return a.Store.Load(name)
+}
+
+// resolveTask deliberately uses the directory, never inherited TSPACE_TASK.
+func (a *App) resolveTask(name string) (string, error) {
+	if name != "." && name != "" {
+		return name, nil
+	}
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	located, _, ok := a.locate(dir)
+	switch {
+	case !ok && name == "":
+		return "", fmt.Errorf("not inside a task: %s is not inside %s/TASK; name a task, or run this inside one", dir, a.Store.WorktreesDir())
+	case !ok:
+		return "", fmt.Errorf("%q means the task this directory is in, but %s is not inside %s/TASK; name a task, or run this inside one", name, dir, a.Store.WorktreesDir())
+	}
+	return located, nil
+}
+
+// taskArg is the optional TASK of a command that may leave it out.
+func taskArg(args []string) string {
+	if len(args) == 0 {
+		return ""
+	}
+	return args[0]
+}
+
+// explicitTask refuses "." for commands that remove or end things, where
+// typing the name is the confirmation.
+func explicitTask(name string) error {
+	if name == "." {
+		return fmt.Errorf("name the task explicitly for this command; '.' is not accepted")
+	}
+	return nil
+}
 
 // listed unwraps a listing error: entries the store had to skip are reported as
 // warnings and the remaining rows are still shown, because one unreadable file
@@ -297,7 +339,10 @@ func Execute(ctx context.Context) int {
 			"failure. status, task list and task show take --json. An agent working\n" +
 			"in a worktree finds its instructions in ../.context/TASK.md, records\n" +
 			"progress with `tspace task handoff TASK --file FILE`, and says when it is\n" +
-			"blocked or done with `tspace signal`.",
+			"blocked or done with `tspace signal`.\n\n" +
+			"Use '.' as TASK inside its directory or a worktree. editor, attach,\n" +
+			"task show and exec -- COMMAND can omit TASK there. status without a\n" +
+			"task still lists all tasks; clean, stop and rm require an explicit name.",
 		Version:       buildVersion(),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -340,12 +385,40 @@ func Execute(ctx context.Context) int {
 	// covered too.
 	root.InitDefaultCompletionCmd()
 	requireSubcommand(root)
+	addTaskArgumentHelp(root)
 
 	if err := root.ExecuteContext(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "tspace: %v\n", err)
 		return 1
 	}
 	return 0
+}
+
+// addTaskArgumentHelp adds the "." and omitted-TASK lines to the help of
+// every command that resolves its TASK with resolveTask.
+func addTaskArgumentHelp(root *cobra.Command) {
+	allowed := map[string]bool{"start": true, "open": true, "restart": true, "attach": true, "shell": true, "path": true, "exec": true, "window": true, "editor": true, "status": true, "task show": true, "task update": true, "task handoff": true, "task brief": true, "repo add": true, "repo update": true}
+	omit := map[string]bool{"editor": true, "attach": true, "task show": true, "exec": true}
+	var walk func(*cobra.Command)
+	walk = func(c *cobra.Command) {
+		path := strings.TrimPrefix(c.CommandPath(), root.Name()+" ")
+		if allowed[path] {
+			c.Long += "\n\nTASK may be '.' to use the task containing the current directory."
+		}
+		if omit[path] {
+			c.Long += "\nOmit TASK inside a task to use it."
+		}
+		if path == "exec" {
+			c.Long += " Without TASK, put -- before COMMAND."
+		}
+		if path == "project save" {
+			c.Long += "\n\n--from . uses the task containing the current directory."
+		}
+		for _, child := range c.Commands() {
+			walk(child)
+		}
+	}
+	walk(root)
 }
 
 func (a *App) newInitCmd() *cobra.Command {

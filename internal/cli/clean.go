@@ -17,9 +17,13 @@ func (a *App) newCleanCmd() *cobra.Command {
 			"are left alone unless --delete-branch, and even then only when their\n" +
 			"work is merged into the base branch or pushed to an upstream.\n\n" +
 			"The task record survives; use `tspace task rm` to remove that, or --rm to\n" +
-			"remove it here once the worktrees are gone, finishing the task in one step.",
+			"remove it here once the worktrees are gone, finishing the task in one step.\n\n" +
+			"TASK must be explicit.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := explicitTask(args[0]); err != nil {
+				return err
+			}
 			return a.workspaceFor(cmd).Clean(cmd.Context(), args[0], workspace.CleanOptions{DeleteBranch: deleteBranch, Force: force, Remove: rm})
 		},
 	}

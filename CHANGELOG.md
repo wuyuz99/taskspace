@@ -7,6 +7,12 @@ upgrade.
 
 ### Added
 
+- **`.` names the task you are in.** Inside a task's directory or one of its
+  worktrees, `tspace task handoff . "API done"`, `tspace restart . backend`
+  and the other per-task commands use that task; the directory decides, not
+  `TSPACE_TASK`. `editor`, `attach`, `task show` and `exec -- COMMAND` can
+  leave TASK out there. `stop`, `clean`, `task rm` and `repo rm` still need
+  the name.
 - **`task create --brief TEXT`** (and `task update --brief`) sets the brief
   inline, without writing a file for `--brief-file`.
 - **An existing branch gets the base it most likely came from.** Without
