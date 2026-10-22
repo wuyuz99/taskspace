@@ -22,6 +22,9 @@ upgrade.
 
 ### Fixed
 
+- **dash: the mouse wheel moves one row per step.** Terminals turned each
+  wheel step into several arrow keys, skipping rows; dash now reads the wheel
+  itself and ignores it while a confirmation is open.
 - **dash `t` keeps the root with single-instance terminals.** The new tab's
   command now carries `env TSPACE_ROOT=ROOT`, so a terminal that hands the
   tab to its running instance, such as Ghostty, no longer drops a non-default
