@@ -24,6 +24,15 @@ fetches first when you named a branch or base the clone has not seen.
 between is still found; if the fetch fails you get a warning and a worktree
 made from the refs you already have.
 
+For an existing branch added without an explicit base, tspace guesses from
+local and remote branches: fewest commits since the merge-base, preferring
+the default branch on ties. Git does not record the intended parent, so the
+record and `task show` mark the base as guessed. Confirm the **old** base with
+`tspace repo update TASK REPO --base OLD_BASE` before running a separate
+`--base NEW_BASE --rebase`. A guessed base cannot rewrite history. Branches
+tspace creates have a known base and do not need this confirmation. Old
+records predate this marker; check their base before rebasing.
+
 New branches start **with no upstream**. git would otherwise make
 `origin/main` the upstream of a branch forked from it, and then `git push`
 refuses — or, with `push.default=upstream`, pushes the task's work to main.

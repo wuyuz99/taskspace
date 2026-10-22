@@ -164,6 +164,9 @@ func (a *App) newRepoUpdateCmd() *cobra.Command {
 // repository after each change git makes, so a failure part way leaves the
 // record matching git, and the error says how far it got.
 func (a *App) moveRepoBranch(ctx context.Context, t *task.Task, name string, r task.Repo, branch, base string, rebase bool, record func(task.Repo) error) (task.Repo, []string, error) {
+	if rebase && r.BaseAssumed {
+		return r, nil, fmt.Errorf("the base of %s was guessed; confirm its old base first with tspace repo update %s %s --base OLD_BASE (without --rebase)", name, t.Name, name)
+	}
 	renaming := branch != "" && branch != r.Branch
 	present := isDir(r.Worktree)
 	var st tsgit.Status
@@ -331,6 +334,7 @@ func (a *App) moveRepoBranch(ctx context.Context, t *task.Task, name string, r t
 	}
 	if newBase != "" && !rebase {
 		r.Base = newBase
+		r.BaseAssumed = false
 		if present {
 			notes = append(notes, fmt.Sprintf("base: %s (%s is unchanged; status and clean now compare it with %s; --rebase moves its commits onto it)", newBase, r.Branch, newBase))
 		} else {
@@ -707,6 +711,17 @@ func (a *App) addRepo(ctx context.Context, t *task.Task, c *task.Config, path st
 			return err
 		}
 	}
+	assumed := opts.Base == "" && (local || remote != "")
+	if assumed {
+		target := remote
+		if local {
+			target = "refs/heads/" + branch
+		}
+		base, err = a.Git.InferBase(ctx, canonical, branch, target, base)
+		if err != nil {
+			return err
+		}
+	}
 	var branchNote string
 	switch {
 	case local:
@@ -734,13 +749,14 @@ func (a *App) addRepo(ctx context.Context, t *task.Task, c *task.Config, path st
 	}
 
 	t.SetRepo(name, task.Repo{
-		Path:       canonical,
-		Branch:     branch,
-		Base:       base,
-		Worktree:   worktree,
-		Agent:      opts.Agent,
-		Resume:     opts.Resume,
-		PostCreate: opts.PostCreate,
+		Path:        canonical,
+		Branch:      branch,
+		Base:        base,
+		BaseAssumed: assumed,
+		Worktree:    worktree,
+		Agent:       opts.Agent,
+		Resume:      opts.Resume,
+		PostCreate:  opts.PostCreate,
 	})
 
 	a.printf("added %s to %s\n", name, t.Name)
@@ -748,6 +764,9 @@ func (a *App) addRepo(ctx context.Context, t *task.Task, c *task.Config, path st
 	a.printf("  branch:   %s (%s)\n", branch, branchNote)
 	if local || remote != "" {
 		a.printf("  base:     %s\n", base)
+		if assumed {
+			a.printf("  base was guessed; confirm with: tspace repo update %s %s --base BASE\n", t.Name, name)
+		}
 	}
 	a.printf("  worktree: %s\n", worktree)
 	return nil
