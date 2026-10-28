@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	osexec "os/exec"
@@ -200,6 +201,9 @@ func (s *Service) Start(ctx context.Context, name string, opts StartOptions) (*S
 	if err := s.Runtime.Start(ctx, result.Session, windows); err != nil {
 		return nil, err
 	}
+	if err := s.Store.ClearStopped(t.Name); err != nil {
+		s.warnf("tspace: %v", err)
+	}
 	for _, w := range windows {
 		if _, ok := fresh[w.Name]; ok {
 			s.report(Resumed{Task: t.Name, Window: w.Name, Command: w.Command})
@@ -214,6 +218,27 @@ func (s *Service) Start(ctx context.Context, name string, opts StartOptions) (*S
 		return nil, err
 	}
 	return result, nil
+}
+
+// Interrupted lists the tasks whose session something other than stop or
+// clean ended, such as a computer restart, by name. A task whose session is
+// up, or could not be checked, is not among them.
+func (s *Service) Interrupted(ctx context.Context) ([]string, error) {
+	tasks, err := s.Store.List()
+	var skipped *task.SkippedError
+	if err != nil && !errors.As(err, &skipped) {
+		return nil, err
+	}
+	var names []string
+	for _, t := range tasks {
+		if !s.Store.Interrupted(t.Name) {
+			continue
+		}
+		if running, err := s.Runtime.HasSession(ctx, s.Runtime.SessionName(t.Name)); err == nil && !running {
+			names = append(names, t.Name)
+		}
+	}
+	return names, nil
 }
 
 // checkLaunched reports what Start launched that is already gone. Starting

@@ -46,6 +46,8 @@ func (a *App) newDashCmd() *cobra.Command {
 			"  t             open the task in a new terminal tab (tspace config terminal)\n" +
 			"  c             clear the row's signal\n" +
 			"  n             create a task, in a form below the table (tspace task create)\n" +
+			"  I             start every interrupted task (tspace start --interrupted);\n" +
+			"                dash offers it on launch when there are any\n" +
 			"  w             open another window at the row's place, in a form: a shell,\n" +
 			"                the task's agent or a command (tspace window -d)\n" +
 			"  q             quit\n\n" +
@@ -242,6 +244,8 @@ type dashModel struct {
 	gone, made, madeWindow string
 	// form is open while its fields are typed in.
 	form *dashForm
+	// offered says the first refresh has offered to start interrupted tasks.
+	offered bool
 	// attach is set when the program quits in order to attach.
 	attach *dashRow
 }
@@ -332,6 +336,13 @@ func (m dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.cursor = max(min(m.cursor, len(m.data.Rows)-1), 0)
+		// Once, on launch: after a computer restart this is the question.
+		if !m.offered {
+			m.offered = true
+			if n := m.interrupted(); n > 0 && m.confirm == nil && m.form == nil {
+				m.confirm = m.startInterrupted(n)
+			}
+		}
 		return m, nil
 
 	case dashDoneMsg:
@@ -415,8 +426,16 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	if msg.String() == "n" {
+	switch msg.String() {
+	case "n":
 		m.form = m.createForm()
+		return m, nil
+	case "I":
+		if n := m.interrupted(); n > 0 {
+			m.confirm = m.startInterrupted(n)
+		} else {
+			m.note = "no task was interrupted"
+		}
 		return m, nil
 	}
 	row, ok := m.selected()
@@ -603,6 +622,51 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// interrupted counts the tasks shown as interrupted.
+func (m dashModel) interrupted() int {
+	seen := map[string]bool{}
+	for _, r := range m.rawRows {
+		if r.Runtime == status.RuntimeInterrupted {
+			seen[r.Task] = true
+		}
+	}
+	return len(seen)
+}
+
+// startInterrupted asks to start the n interrupted tasks, as `tspace start
+// --interrupted` does: one after another, carrying on past a failure.
+func (m dashModel) startInterrupted(n int) *dashConfirm {
+	prompt := fmt.Sprintf("%d tasks were interrupted; start them? (y/N)", n)
+	if n == 1 {
+		prompt = "1 task was interrupted; start it? (y/N)"
+	}
+	return &dashConfirm{
+		prompt: prompt,
+		run: m.act(func(ws *workspace.Service) (string, error) {
+			names, err := ws.Interrupted(m.ctx)
+			if err != nil {
+				return "", err
+			}
+			var started, failed []string
+			for _, name := range names {
+				if _, err := ws.Start(m.ctx, name, workspace.StartOptions{}); err != nil {
+					failed = append(failed, name+": "+err.Error())
+					continue
+				}
+				started = append(started, name)
+			}
+			text := "started " + joinNames(started)
+			if len(started) == 0 {
+				text = "started nothing"
+			}
+			if len(failed) > 0 {
+				return "", fmt.Errorf("%s; did not start %s", text, strings.Join(failed, "; "))
+			}
+			return text, nil
+		}),
+	}
+}
+
 // clean asks prompt, then cleans name as `tspace clean` does with opts. A
 // dash running in name's own session would end with it, halfway through, so
 // it refuses there. A task deleted is remembered, for the cursor to move on.
@@ -691,7 +755,7 @@ func runtimeStyle(s status.RuntimeState) lipgloss.Style {
 		return dashGreen
 	case status.RuntimeDead:
 		return dashRed
-	case status.RuntimeUnknown:
+	case status.RuntimeUnknown, status.RuntimeInterrupted:
 		return dashYellow
 	}
 	return dashFaint
@@ -776,7 +840,7 @@ func (m dashModel) View() string {
 		b.WriteString(m.note + "\n")
 	}
 	if m.form == nil {
-		b.WriteString(dashFaint.Render("enter attach · space expand · s/x task · S/X window · r restart · D clean · R delete · - remove repo · t tab · c clear · n new · w window · q quit"))
+		b.WriteString(dashFaint.Render("enter attach · space expand · s/x task · S/X window · r restart · D clean · R delete · - remove repo · t tab · c clear · n new · w window · I interrupted · q quit"))
 	}
 
 	// Nothing may wrap: a wrapped line pushes the rest off the alt screen.

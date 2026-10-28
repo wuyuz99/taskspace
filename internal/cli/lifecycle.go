@@ -18,10 +18,10 @@ func (a *App) newOpenCmd() *cobra.Command {
 
 // Start and open share preparation so worktree and hook behavior stay identical.
 func (a *App) newLaunchCmd(open bool) *cobra.Command {
-	var noRuntime, root, fresh bool
+	var noRuntime, root, fresh, interrupted bool
 
 	cmd := &cobra.Command{
-		Use:   "start TASK [REPO...]",
+		Use:   "start TASK [REPO...] | --interrupted",
 		Short: "Create the task's worktrees and launch its agents",
 		Long: "start creates any missing worktrees and brings up the task's session.\n" +
 			"It is safe to re-run: existing worktrees are reused and running agents\n" +
@@ -39,10 +39,25 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 			"conversation. A resume command that exits at once is followed by the\n" +
 			"window's own command. --fresh always runs the own command.\n\n" +
 			"Without the multiplexer, start still creates the worktrees and then fails;\n" +
-			"--no-runtime creates them and stops there, successfully.",
-		Args: cobra.MinimumNArgs(1),
+			"--no-runtime creates them and stops there, successfully.\n\n" +
+			"--interrupted starts every task whose session ended without `tspace\n" +
+			"stop` or clean ending it, as after a computer restart; status shows them\n" +
+			"as interrupted. They start one after another, and one that fails does\n" +
+			"not stop the rest.",
+		Args: func(cmd *cobra.Command, args []string) error {
+			if interrupted {
+				if len(args) > 0 || root || noRuntime {
+					return fmt.Errorf("--interrupted takes no TASK, --root or --no-runtime")
+				}
+				return nil
+			}
+			return cobra.MinimumNArgs(1)(cmd, args)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
+			if interrupted {
+				return a.startInterrupted(cmd, fresh)
+			}
 			name, err := a.resolveTask(args[0])
 			if err != nil {
 				return err
@@ -78,6 +93,8 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 		cmd.Flags().BoolVar(&root, "root", false, "start only the task-root window")
 		cmd.Flags().BoolVar(&noRuntime, "no-runtime", false,
 			"create worktrees but do not start the session")
+		cmd.Flags().BoolVar(&interrupted, "interrupted", false,
+			"start every task a computer restart, or anything but stop, interrupted")
 	}
 	return cmd
 }
@@ -119,6 +136,39 @@ func (a *App) newStopCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&root, "root", false, "stop only the task-root window")
 	return cmd
+}
+
+// startInterrupted starts every interrupted task in turn, carrying on past
+// one that fails.
+func (a *App) startInterrupted(cmd *cobra.Command, fresh bool) error {
+	ws := a.workspaceFor(cmd)
+	names, err := ws.Interrupted(cmd.Context())
+	if err != nil {
+		return err
+	}
+	if len(names) == 0 {
+		a.printf("no task was interrupted\n")
+		return nil
+	}
+	var failed []string
+	for i, name := range names {
+		if i > 0 {
+			a.printf("\n")
+		}
+		a.printf("== %s\n", name)
+		res, err := ws.Start(cmd.Context(), name, workspace.StartOptions{Fresh: fresh})
+		if err != nil {
+			a.warnf("%s: %v\n", name, err)
+			failed = append(failed, name)
+			continue
+		}
+		a.printf("%s\n", startedText(res))
+	}
+	if len(failed) > 0 {
+		return fmt.Errorf("started %d of %d interrupted tasks; %s did not start", len(names)-len(failed), len(names), joinNames(failed))
+	}
+	a.printf("\nstarted %d interrupted task%s\n", len(names), plural(len(names)))
+	return nil
 }
 
 func (a *App) newRestartCmd() *cobra.Command {

@@ -48,3 +48,45 @@ func (s *Store) ForgetLaunched(taskName, window string) error {
 	}
 	return nil
 }
+
+func (s *Store) stoppedPath(taskName string) string {
+	return filepath.Join(s.RunDir(taskName), "stopped")
+}
+
+// MarkStopped records that the task's session was ended on purpose, by
+// stop or clean, rather than by the machine going down.
+func (s *Store) MarkStopped(taskName string) error {
+	if err := os.MkdirAll(s.RunDir(taskName), 0o755); err != nil {
+		return fmt.Errorf("record stop: %w", err)
+	}
+	if err := os.WriteFile(s.stoppedPath(taskName), nil, 0o644); err != nil {
+		return fmt.Errorf("record stop: %w", err)
+	}
+	return nil
+}
+
+// ClearStopped records that the task runs again.
+func (s *Store) ClearStopped(taskName string) error {
+	if err := os.Remove(s.stoppedPath(taskName)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("clear stop: %w", err)
+	}
+	return nil
+}
+
+// Interrupted reports whether a task without a session lost it to something
+// other than stop or clean, such as a computer restart: it has run, and was
+// not stopped on purpose. The caller knows there is no session.
+//
+// A task last run by a tspace that recorded no launches still counts if its
+// agents left signals behind, since stop clears them and a crash does not.
+func (s *Store) Interrupted(taskName string) bool {
+	if _, err := os.Stat(s.stoppedPath(taskName)); err == nil {
+		return false
+	}
+	for _, dir := range []string{filepath.Join(s.RunDir(taskName), "launched"), s.SignalsDir(taskName)} {
+		if entries, err := os.ReadDir(dir); err == nil && len(entries) > 0 {
+			return true
+		}
+	}
+	return false
+}

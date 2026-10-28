@@ -24,7 +24,13 @@ Extra windows, opened with `tspace window`, follow as `_NAME` rows, marked
 as `no-window`. `--json` lists them in each task's `windows` array, with
 `name`, `saved`, `runtime` and, for a saved one, its `repo` and `command`.
 
-- **RUNTIME** — `running`, `dead`, `no-window`, `no-session`, `unknown`
+- **RUNTIME** — `running`, `dead`, `no-window`, `no-session`, `interrupted`,
+  `unknown`. `interrupted` is a task with no session that was not stopped on
+  purpose: one that has run, and that neither `tspace stop`, dash `x`, clean
+  nor closing its last window ended, such as after a computer restart.
+  `tspace start --interrupted` starts all of them, one after another, and
+  carries on past one that fails; dash offers to on launch, and `I` does it
+  any time. `--json` carries it as each task's `interrupted`.
 - **GIT** — `clean`, `dirty (N files)`, `missing`, `error`, plus stash and
   ahead/behind counts against the upstream, or for a branch not yet pushed,
   the commits that are not on its base (`2 commits not pushed`)
@@ -104,7 +110,7 @@ checkout-redesign/frontend  agent/checkout-redesign
   signal   blocked, 3m ago: totals endpoint: round per line or per order?
   handoff  API done, tests pass.
 
-enter attach · space expand · s/x task · S/X window · r restart · D clean · R delete · - remove repo · t tab · c clear · n new · w window · q quit
+enter attach · space expand · s/x task · S/X window · r restart · D clean · R delete · - remove repo · t tab · c clear · n new · w window · I interrupted · q quit
 ```
 
 `enter` attaches to the selected window and detaching brings you back; inside

@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"context"
+	"os"
 	"slices"
 	"testing"
 
@@ -169,5 +170,48 @@ func TestResumeNeedsAnAgentThatRan(t *testing.T) {
 	}
 	if got := commands(f.rt.started); !slices.Equal(got["a"], []string{"a-agent"}) {
 		t.Fatalf("recreated worktree resumed: %v", got)
+	}
+}
+
+// Stop and clean end a session on purpose; losing it otherwise interrupts
+// the task, and start makes it run again.
+func TestInterruptedOnlyWhenNotStopped(t *testing.T) {
+	f := newFixture(t)
+	resumeTask(t, f)
+	ctx := context.Background()
+	if f.svc.Store.Interrupted("T") {
+		t.Fatal("interrupted before it ever ran")
+	}
+	if _, err := f.svc.Start(ctx, "T", StartOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	f.rt.exists, f.rt.panes = false, nil // the machine restarts
+	if names, err := f.svc.Interrupted(ctx); err != nil || !slices.Equal(names, []string{"T"}) {
+		t.Fatalf("interrupted = %v, %v", names, err)
+	}
+	if _, err := f.svc.Stop(ctx, "T"); err != nil {
+		t.Fatal(err)
+	}
+	if f.svc.Store.Interrupted("T") {
+		t.Fatal("interrupted after stop")
+	}
+	if _, err := f.svc.Start(ctx, "T", StartOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	f.rt.exists, f.rt.panes = false, nil
+	if !f.svc.Store.Interrupted("T") {
+		t.Fatal("start did not clear the stop")
+	}
+	if err := f.svc.Clean(ctx, "T", CleanOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if f.svc.Store.Interrupted("T") {
+		t.Fatal("interrupted after clean")
+	}
+	if err := f.svc.Clean(ctx, "T", CleanOptions{Remove: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(f.svc.Store.RunDir("T")); !os.IsNotExist(err) {
+		t.Fatalf("run directory outlived the task: %v", err)
 	}
 }

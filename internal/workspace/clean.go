@@ -145,6 +145,7 @@ func (s *Service) Clean(ctx context.Context, name string, opts CleanOptions) err
 
 // stopForClean ends the task's session if it is running.
 func (s *Service) stopForClean(ctx context.Context, t *task.Task) error {
+	s.markStopped(t.Name)
 	session := s.Runtime.SessionName(t.Name)
 	if running, err := s.Runtime.HasSession(ctx, session); err == nil && running {
 		if err := s.Runtime.Stop(ctx, session); err != nil {

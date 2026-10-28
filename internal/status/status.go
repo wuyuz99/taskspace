@@ -28,6 +28,9 @@ const (
 	RuntimeNoWindow RuntimeState = "no-window"
 	// RuntimeNoSession means nothing is running for this task.
 	RuntimeNoSession RuntimeState = "no-session"
+	// RuntimeInterrupted means nothing is running for this task, and it was
+	// not stopped on purpose: a computer restart, say, took its session.
+	RuntimeInterrupted RuntimeState = "interrupted"
 	// RuntimeUnknown means the runtime could not be queried.
 	RuntimeUnknown RuntimeState = "unknown"
 )
@@ -73,6 +76,9 @@ type TaskStatus struct {
 	Task    string
 	Session string
 	Running bool
+	// Interrupted says the session is gone without stop or clean ending it;
+	// its windows' runtime is then RuntimeInterrupted.
+	Interrupted bool
 	// Root is the task-root window, which has a process but no worktree. It
 	// is nil for a single-repo task, whose agent runs in the repository.
 	Root  *RootStatus
@@ -111,12 +117,19 @@ type SignalReader interface {
 	ReadSignals(taskName string) (map[string]task.Signal, error)
 }
 
+// RunReader says whether a task without a session was interrupted.
+type RunReader interface {
+	Interrupted(taskName string) bool
+}
+
 // Aggregator collects status across git and the runtime.
 type Aggregator struct {
 	Git     *tsgit.Git
 	Runtime runtime.Runtime
 	// Signals is optional; without it no row carries a signal.
 	Signals SignalReader
+	// Run is optional; without it no task is interrupted, only no-session.
+	Run RunReader
 }
 
 // New returns an Aggregator.
@@ -189,6 +202,18 @@ func (a *Aggregator) Task(ctx context.Context, t *task.Task) TaskStatus {
 
 	out.Repos = rows
 	out.Extra = a.extraWindows(t, sess, runtimeUnknown)
+	if !runtimeUnknown && !sess.Exists && a.Run != nil && a.Run.Interrupted(t.Name) {
+		out.Interrupted = true
+		if out.Root != nil {
+			out.Root.Runtime = RuntimeInterrupted
+		}
+		for i := range out.Repos {
+			out.Repos[i].Runtime = RuntimeInterrupted
+		}
+		for i := range out.Extra {
+			out.Extra[i].Runtime = RuntimeInterrupted
+		}
+	}
 	return out
 }
 

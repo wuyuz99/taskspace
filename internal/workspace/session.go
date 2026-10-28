@@ -11,7 +11,8 @@ import (
 )
 
 // Stop ends the task's session, interrupting its agents first, and leaves
-// worktrees and branches alone. It reports whether there was a session.
+// worktrees and branches alone. It reports whether there was a session. The
+// task is then stopped on purpose, not interrupted, until it starts again.
 func (s *Service) Stop(ctx context.Context, name string) (running bool, err error) {
 	t, ctx, unlock, err := s.Lock(ctx, name, s.command("tspace stop"), true)
 	if err != nil {
@@ -19,6 +20,7 @@ func (s *Service) Stop(ctx context.Context, name string) (running bool, err erro
 	}
 	defer unlock()
 	session := s.Runtime.SessionName(t.Name)
+	s.markStopped(t.Name)
 
 	running, err = s.Runtime.HasSession(ctx, session)
 	if err != nil {
@@ -35,6 +37,14 @@ func (s *Service) Stop(ctx context.Context, name string) (running bool, err erro
 		s.warnf("tspace: %v", err)
 	}
 	return true, nil
+}
+
+// markStopped records the task was stopped on purpose; failing is a warning,
+// since the cost is only that it may later be offered as interrupted.
+func (s *Service) markStopped(name string) {
+	if err := s.Store.MarkStopped(name); err != nil {
+		s.warnf("tspace: %v", err)
+	}
 }
 
 // RestartOptions choose the window Restart relaunches, and how.

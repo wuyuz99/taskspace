@@ -18,6 +18,7 @@ type statusJSON struct {
 	Task         string           `json:"task"`
 	Session      string           `json:"session"`
 	Running      bool             `json:"running"`
+	Interrupted  bool             `json:"interrupted"`
 	RuntimeError string           `json:"runtime_error,omitempty"`
 	Root         *statusRootJSON  `json:"root"`
 	Repos        []statusRepoJSON `json:"repos"`
@@ -68,11 +69,12 @@ func (a *App) printStatusJSON(tasks []*task.Task, results []status.TaskStatus) e
 	out := make([]statusJSON, 0, len(results))
 	for _, ts := range results {
 		row := statusJSON{
-			Task:    ts.Task,
-			Session: ts.Session,
-			Running: ts.Running,
-			Repos:   make([]statusRepoJSON, 0, len(ts.Repos)),
-			Windows: make([]statusWindowJSON, 0, len(ts.Extra)),
+			Task:        ts.Task,
+			Session:     ts.Session,
+			Running:     ts.Running,
+			Interrupted: ts.Interrupted,
+			Repos:       make([]statusRepoJSON, 0, len(ts.Repos)),
+			Windows:     make([]statusWindowJSON, 0, len(ts.Extra)),
 		}
 		for _, e := range ts.Extra {
 			row.Windows = append(row.Windows, statusWindowJSON{Name: e.Name, Saved: e.Saved, Repo: e.Repo, Command: e.Command, Runtime: string(e.Runtime)})
@@ -118,6 +120,7 @@ func (a *App) printStatusJSON(tasks []*task.Task, results []status.TaskStatus) e
 func (a *App) aggregator() *status.Aggregator {
 	agg := status.New(a.Git, a.Runtime)
 	agg.Signals = a.Store
+	agg.Run = a.Store
 	return agg
 }
 
@@ -156,6 +159,8 @@ func (a *App) newStatusCmd() *cobra.Command {
 			"  dead        the window is there but its command has exited; see tspace restart\n" +
 			"  no-window   the session is up without a window for this row\n" +
 			"  no-session  nothing is running for the task; see tspace start\n" +
+			"  interrupted nothing is running, but stop did not end it: a computer\n" +
+			"              restart, say; tspace start --interrupted brings them back\n" +
 			"  unknown     the multiplexer could not be queried; the reason is printed below\n\n" +
 			"GIT is missing (no worktree yet; see tspace start), error, clean or dirty,\n" +
 			"followed by stashes, commits ahead of and behind the upstream, and commits\n" +
