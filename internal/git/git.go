@@ -137,7 +137,9 @@ func (g *Git) InProgress(ctx context.Context, repo string) (string, error) {
 
 // ResolveBase determines the ref new task branches should fork from.
 //
-// Order: origin/HEAD, then a conventional local default branch, then HEAD.
+// Order: origin/HEAD, then a conventional local default branch, then the
+// branch HEAD is on, or its commit when detached: never HEAD itself, which
+// means something else in each worktree.
 // This exists because branching from whatever HEAD happens to be silently
 // inherits an unrelated feature branch — a correctness bug, not a UX wrinkle.
 // Callers are expected to report the chosen ref to the user.
@@ -170,7 +172,16 @@ func (g *Git) ResolveBase(ctx context.Context, repo string) (string, error) {
 	if !hasHead {
 		return "", fmt.Errorf("%s: repository has no commits to branch from", repo)
 	}
-	return "HEAD", nil
+	if res, err := g.git(ctx, repo, "symbolic-ref", "--quiet", "--short", "HEAD"); err == nil {
+		return res.Out(), nil
+	} else if !tsexec.IsExit(err) {
+		return "", err
+	}
+	res, err = g.git(ctx, repo, "rev-parse", "--verify", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	return res.Out(), nil
 }
 
 // RefExists reports whether a ref resolves.

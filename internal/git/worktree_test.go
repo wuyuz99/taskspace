@@ -322,6 +322,27 @@ func TestRemoveWorktreeRefusesDirtyWithoutForce(t *testing.T) {
 	}
 }
 
+// Forced, a locked worktree goes too: clean --force does not stop halfway.
+func TestRemoveWorktreeForcedRemovesALockedOne(t *testing.T) {
+	g := testGit(t)
+	repo := initRepo(t)
+	wt := filepath.Join(t.TempDir(), "task", "backend")
+
+	if _, err := g.EnsureWorktree(ctx(), repo, wt, "agent/test", ""); err != nil {
+		t.Fatalf("EnsureWorktree: %v", err)
+	}
+	runGit(t, repo, "worktree", "lock", wt)
+	if err := g.RemoveWorktree(ctx(), repo, wt, false); err == nil {
+		t.Fatal("RemoveWorktree of a locked worktree, unforced = nil, want error")
+	}
+	if err := g.RemoveWorktree(ctx(), repo, wt, true); err != nil {
+		t.Fatalf("RemoveWorktree forced: %v", err)
+	}
+	if _, err := os.Stat(wt); !os.IsNotExist(err) {
+		t.Errorf("worktree still there: %v", err)
+	}
+}
+
 func TestFindWorktreeForBranch(t *testing.T) {
 	g := testGit(t)
 	repo := initRepo(t)

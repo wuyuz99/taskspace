@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/wuyuz99/taskspace/internal/runtime"
 	"github.com/wuyuz99/taskspace/internal/task"
@@ -145,7 +146,7 @@ func (s *Service) Restart(ctx context.Context, name string, opts RestartOptions)
 	// Resumed unasked, a window whose resume command finds nothing to resume
 	// and exits is started fresh, as Start's are.
 	if auto {
-		relaunched, err := s.checkLaunched(ctx, t, session, runtime.SessionState{}, []runtime.Window{w}, []string{w.Name}, map[string]runtime.Window{w.Name: fresh})
+		relaunched, err := s.checkLaunched(ctx, t, session, runtime.SessionState{}, []runtime.Window{w}, []string{w.Name}, map[string]runtime.Window{w.Name: fresh}, time.Now())
 		if err != nil {
 			return "", false, err
 		}

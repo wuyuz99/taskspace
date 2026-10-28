@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 
 	"github.com/spf13/cobra"
 )
@@ -164,11 +165,11 @@ func updateClaudeHooks(path string, install bool) (bool, error) {
 				return false, fmt.Errorf("%s: hooks.%s is not a list: %w", path, h.event, err)
 			}
 		}
-		kept, removed, err := withoutSignalHooks(groups)
+		kept, at, err := withoutSignalHooks(groups)
 		if err != nil {
 			return false, fmt.Errorf("%s: hooks.%s: %w", path, h.event, err)
 		}
-		if !install && !removed {
+		if !install && at < 0 {
 			continue // nothing of ours here: leave the event exactly as it was
 		}
 		if install {
@@ -176,7 +177,11 @@ func updateClaudeHooks(path string, install bool) (bool, error) {
 			if err != nil {
 				return false, err
 			}
-			kept = append(kept, group)
+			// Where it was, so installing again changes nothing.
+			if at < 0 {
+				at = len(kept)
+			}
+			kept = slices.Insert(kept, at, group)
 		}
 		changed = true
 		if len(kept) == 0 {
@@ -210,20 +215,21 @@ func updateClaudeHooks(path string, install bool) (bool, error) {
 }
 
 // withoutSignalHooks drops tspace signal hooks from a list of hook groups,
-// and groups left with no hooks, and reports whether it dropped any. Groups
-// and hooks it keeps are kept byte for byte, fields in their order.
-func withoutSignalHooks(groups []json.RawMessage) ([]json.RawMessage, bool, error) {
+// and groups left with no hooks, and reports where in what is left the first
+// one was, or -1 when it dropped none. Groups and hooks it keeps are kept
+// byte for byte, fields in their order.
+func withoutSignalHooks(groups []json.RawMessage) ([]json.RawMessage, int, error) {
 	var out []json.RawMessage
-	removed := false
+	at := -1
 	for _, raw := range groups {
 		g, err := parseObject(raw)
 		if err != nil {
-			return nil, false, fmt.Errorf("a hook group is not an object: %w", err)
+			return nil, -1, fmt.Errorf("a hook group is not an object: %w", err)
 		}
 		var list []json.RawMessage
 		if h, ok := g.get("hooks"); ok {
 			if err := json.Unmarshal(h, &list); err != nil {
-				return nil, false, fmt.Errorf("a group's hooks are not a list: %w", err)
+				return nil, -1, fmt.Errorf("a group's hooks are not a list: %w", err)
 			}
 		}
 		var kept []json.RawMessage
@@ -240,18 +246,22 @@ func withoutSignalHooks(groups []json.RawMessage) ([]json.RawMessage, bool, erro
 		case len(kept) == len(list):
 			out = append(out, raw)
 		case len(kept) > 0:
-			removed = true
 			l, err := marshalList(kept)
 			if err != nil {
-				return nil, false, err
+				return nil, -1, err
 			}
 			g.set("hooks", l)
 			out = append(out, g.marshal())
+			if at < 0 {
+				at = len(out)
+			}
 		default:
-			removed = true
+			if at < 0 {
+				at = len(out)
+			}
 		}
 	}
-	return out, removed, nil
+	return out, at, nil
 }
 
 // marshalPlain is json.Marshal without HTML escaping: a hook command such as

@@ -1,11 +1,14 @@
 package task
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 )
 
 // What tspace remembers about a task's session between runs, beside the
@@ -53,15 +56,55 @@ func (s *Store) runningPath(taskName string) string {
 	return filepath.Join(s.RunDir(taskName), "running")
 }
 
-// MarkRunning records that the task's session is up, as start left it.
-func (s *Store) MarkRunning(taskName string) error {
+// Running is what start left running in a task's session, for bringing
+// back just that once something else ends it.
+type Running struct {
+	// Whole is the whole task, as start without arguments starts it.
+	Whole bool `json:"whole,omitempty"`
+	// Root is the root window, and Repos these repositories' windows.
+	Root  bool     `json:"root,omitempty"`
+	Repos []string `json:"repos,omitempty"`
+}
+
+// With is what runs once r and o both do.
+func (r Running) With(o Running) Running {
+	out := Running{Whole: r.Whole || o.Whole, Root: r.Root || o.Root}
+	for _, name := range append(slices.Clone(r.Repos), o.Repos...) {
+		if !slices.Contains(out.Repos, name) {
+			out.Repos = append(out.Repos, name)
+		}
+	}
+	return out
+}
+
+// MarkRunning records that the task's session is up, running r.
+func (s *Store) MarkRunning(taskName string, r Running) error {
+	b, err := json.Marshal(r)
+	if err != nil {
+		return fmt.Errorf("record start: %w", err)
+	}
 	if err := os.MkdirAll(s.RunDir(taskName), 0o755); err != nil {
 		return fmt.Errorf("record start: %w", err)
 	}
-	if err := os.WriteFile(s.runningPath(taskName), nil, 0o644); err != nil {
+	if err := os.WriteFile(s.runningPath(taskName), b, 0o644); err != nil {
 		return fmt.Errorf("record start: %w", err)
 	}
 	return nil
+}
+
+// Running reports what MarkRunning last recorded the task's session runs,
+// and whether it recorded anything since the session last ended on purpose.
+// A record from a tspace that kept none is the whole task.
+func (s *Store) Running(taskName string) (Running, bool) {
+	b, err := os.ReadFile(s.runningPath(taskName))
+	if err != nil {
+		return Running{}, false
+	}
+	var r Running
+	if len(bytes.TrimSpace(b)) == 0 || json.Unmarshal(b, &r) != nil {
+		return Running{Whole: true}, true
+	}
+	return r, true
 }
 
 // ClearRunning records that the task's session was ended on purpose: by

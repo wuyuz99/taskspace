@@ -100,6 +100,25 @@ func TestResolveBaseFallsBackToMaster(t *testing.T) {
 	}
 }
 
+// Without a default branch the base is the branch HEAD is on, or its commit
+// when detached, never HEAD itself, which means something else in each
+// worktree.
+func TestResolveBaseFallsBackToHeadsBranch(t *testing.T) {
+	g := testGit(t)
+	repo := initRepo(t)
+	runGit(t, repo, "branch", "-m", "main", "trunk")
+
+	got, err := g.ResolveBase(ctx(), repo)
+	if err != nil || got != "trunk" {
+		t.Fatalf("ResolveBase = %q, %v; want trunk", got, err)
+	}
+	commit := strings.TrimSpace(runGit(t, repo, "rev-parse", "HEAD"))
+	runGit(t, repo, "checkout", "-q", "--detach")
+	if got, err = g.ResolveBase(ctx(), repo); err != nil || got != commit {
+		t.Fatalf("detached ResolveBase = %q, %v; want %s", got, err, commit)
+	}
+}
+
 func TestResolveBaseFailsOnEmptyRepository(t *testing.T) {
 	g := testGit(t)
 	dir := t.TempDir()

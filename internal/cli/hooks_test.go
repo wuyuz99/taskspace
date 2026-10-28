@@ -268,3 +268,36 @@ func TestConfigHooksClaudeRemoveKeepsASharedGroup(t *testing.T) {
 		t.Fatalf("Stop = %v, want only the user's hook", c)
 	}
 }
+
+// Installing again keeps the tspace hooks where they were among the user's,
+// so a file with groups after them is left as it is.
+func TestConfigHooksClaudeAgainKeepsTheirPlace(t *testing.T) {
+	h := newHarness(t)
+	path := filepath.Join(t.TempDir(), "settings.json")
+	if err := h.exec(t, h.app.newConfigCmd(), "hooks", "claude", "--settings", path); err != nil {
+		t.Fatal(err)
+	}
+	s := readSettings(t, path)
+	stop := s["hooks"].(map[string]any)["Stop"].([]any)
+	s["hooks"].(map[string]any)["Stop"] = append(stop, map[string]any{"hooks": []any{map[string]any{"type": "command", "command": "make lint"}}})
+	b, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(b, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.out.Reset()
+	if err := h.exec(t, h.app.newConfigCmd(), "hooks", "claude", "--settings", path); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.out.String(), "already in") {
+		t.Fatalf("installed again:\n%s", h.out.String())
+	}
+	if after, _ := os.ReadFile(path); string(after) != string(append(b, '\n')) {
+		t.Fatalf("file changed:\n%s", after)
+	}
+	if c := commands(readSettings(t, path), "Stop"); len(c) != 2 || c[1] != "make lint" {
+		t.Fatalf("Stop = %v", c)
+	}
+}

@@ -143,14 +143,22 @@ func (s *Service) Clean(ctx context.Context, name string, opts CleanOptions) err
 	return nil
 }
 
-// stopForClean ends the task's session if it is running.
+// stopForClean ends the task's session if it is running. A session it cannot
+// check might be running, and its worktrees must not go from under it, so
+// that refuses; with no runtime at all there is none to run.
 func (s *Service) stopForClean(ctx context.Context, t *task.Task) error {
 	session := s.Runtime.SessionName(t.Name)
-	if running, err := s.Runtime.HasSession(ctx, session); err == nil && running {
-		if err := s.Runtime.Stop(ctx, session); err != nil {
-			return err
+	if s.Runtime.Available(ctx) == nil {
+		running, err := s.Runtime.HasSession(ctx, session)
+		if err != nil {
+			return fmt.Errorf("could not check whether %s is running, so its worktrees are left alone: %w", session, err)
 		}
-		s.report(SessionStopped{Session: session})
+		if running {
+			if err := s.Runtime.Stop(ctx, session); err != nil {
+				return err
+			}
+			s.report(SessionStopped{Session: session})
+		}
 	}
 	s.markStopped(t.Name)
 	return nil
