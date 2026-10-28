@@ -32,9 +32,11 @@
 
 tspace is the layer underneath coding agents: the task that spans several
 repositories, and the worktrees, branches and sessions that go with it.
-Agents are getting their own subagents, parallel runs and worktrees; what none
-of them model is one feature across several repositories. That is where tspace
-stays, neutral about which agent and which multiplexer you use.
+Agents now ship their own parallel worktrees, subagents and command centers,
+and many tools manage agents in parallel worktrees of one repository. What few
+model is one feature across several repositories, in the terminal, for any
+agent. That is where tspace stays, neutral about which agent and which
+multiplexer you use.
 
 **dash is how people use tspace; the CLI is how everything else does.** dash is
 where you see which agent is blocked, which finished and where to go next, and
@@ -82,15 +84,33 @@ dash, not only in the CLI.
   restarts, interrupted setup, a computer restart, and cleanup that has to
   refuse because of valuable local changes.
 
-### Next: from task to merged
+### Next
 
-A task today goes from create to clean. A feature that spans two repositories
-ends as two pull requests, and nothing yet follows it there:
+**Which agent needs you, for every agent**
+([#94](https://github.com/wuyuz99/taskspace/issues/94)). Every agent now runs
+in parallel worktrees by itself; telling at a glance which one is blocked is
+what a dashboard over all of them is for. Status comes from every source an
+agent already offers, most trusted first, and dash shows where it came from:
+
+- Hooks, for more agents: `config hooks codex` and `config hooks gemini` next
+  to the Claude one, all on `tspace signal`
+- Status an agent publishes itself, such as Claude Code's `claude agents
+  --json`, as an opt-in integration
+- What the multiplexer knows of any agent: a dead pane, the bell, time since
+  the last output
+- A silence guess, last, and labelled as one
+
+dash shows what needs you first: blocked and finished agents ahead of the
+rest. tspace does not read agents' screens for their wording.
+
+**From task to merged.** A task today goes from create to clean. A feature
+that spans two repositories ends as two pull requests, and nothing yet
+follows it there:
 
 - The task's pull requests and CI status as columns in dash, and in
   `status`, one row per repository
-- Merge readiness for the task as a whole: every repository pushed, reviewed
-  and green
+- The pull requests linked to each other, and merge readiness for the task as
+  a whole: every repository pushed, reviewed and green
 - A review workspace: open someone else's cross-repository change as a task,
   in one step
 
@@ -98,12 +118,20 @@ These come as an opt-in integration named after its forge, such as GitHub, on
 top of a neutral interface, the way `config hooks claude` sits on top of
 `tspace signal`.
 
+**Reference repositories**
+([#95](https://github.com/wuyuz99/taskspace/issues/95)): a repository the task
+needs only to read, checked out on its base with no task branch and made
+read-only, so an agent can see it and cannot change it.
+
 ### Later
 
-- Agent status that is observed rather than reported: adapters that can tell
-  an agent is waiting without it running `tspace signal`
-- dash shows what needs you first: blocked and finished agents ahead of the
-  rest. Desktop notifications, if that turns out not to be enough
+- Agent instructions at the task root: an `AGENTS.md` written from the brief,
+  which agents from many vendors read, so the task's context reaches them
+  without `{context_dir}` in their command
+- Desktop notifications, if dash showing what needs you first turns out not
+  to be enough
+- A neutral status protocol, such as the draft OSC 7501 states, once agents
+  and multiplexers settle on one; it would replace most per-agent hooks
 - One dash across several machines, if real use calls for it: it reads
   `tspace status --json` over SSH from each host and attaches with
   `ssh -t HOST tspace attach TASK`. tspace itself keeps running where the code
