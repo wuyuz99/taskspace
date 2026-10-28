@@ -32,6 +32,9 @@ upgrade.
   --json` gains a `windows` array. `tspace stop TASK _NAME`, or `X` on its
   row, closes just that window; a saved one stays saved. `tspace restart TASK
   _NAME`, or `r`, relaunches a dead saved window with its saved command.
+- **dash: `R` deletes a task**, after a y/N naming what goes: `tspace clean
+  TASK --rm` without `--force`, removing worktrees, record and notes and
+  keeping branches. Its refusals show on the note line.
 - **[Task window navigation](docs/TMUX_NAVIGATION.md)**: an opt-in tmux
   binding for a window picker limited to the current task, and the default
   one for switching tasks, with a script that checks both.
