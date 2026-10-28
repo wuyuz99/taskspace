@@ -35,9 +35,9 @@ task names.
 | `tspace repo add TASK REPO [--name --branch --base --agent --post-create]` | Attach a repository, by registered name or path |
 | `tspace repo rm TASK REPO [--keep-worktree]` | Clean the repository's worktree and windows safely, then detach it; `--keep-worktree` only forgets it |
 | `tspace repo update TASK REPO [--agent CMD / --shell] [--post-create SH] [--branch NAME] [--base REF [--rebase]]` | Update a repository's agent, setup, branch or base |
-| `tspace start TASK [REPO... / --root] [--no-runtime]` | Create worktrees, launch the session; naming REPOs or `--root` starts only those windows; `--no-runtime` stops after the worktrees |
-| `tspace open TASK` | Prepare worktrees, show brief/handoff, and attach |
-| `tspace restart TASK REPO` / `tspace restart TASK --root` [`--resume`] | Relaunch a dead repository or root window (or saved `_WINDOW`), optionally resuming its conversation |
+| `tspace start TASK [REPO... / --root] [--no-runtime] [--fresh]` | Create worktrees, launch the session, resuming agents' conversations where they ran before; naming REPOs or `--root` starts only those windows; `--no-runtime` stops after the worktrees |
+| `tspace open TASK [--fresh]` | Prepare worktrees, show brief/handoff, and attach |
+| `tspace restart TASK REPO` / `tspace restart TASK --root` [`--resume` / `--fresh`] | Relaunch a dead repository or root window (or saved `_WINDOW`), resuming its conversation when it has a resume command |
 | `tspace stop TASK [REPO / _WINDOW / --root]` | Interrupt agents, end the session (or only that window), keep worktrees |
 | `tspace attach [TASK]` | Attach (or switch the client when already inside the multiplexer) |
 | `tspace window TASK [REPO / --root] [--agent / -- CMD] [--name N [--save]] [-d]` | Open another window in the running session, and with `--save` on every start |

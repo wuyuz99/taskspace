@@ -71,6 +71,10 @@ func (a *App) render(e workspace.Event) {
 		if t.AgentRepo != "" && slices.Contains(e.Repos, t.AgentRepo) {
 			a.printf("%-12s runs the task's agent: %s\n", t.AgentRepo, agentDisplay(task.Repo{Agent: t.RepoAgent(t.AgentRepo)}))
 		}
+	case workspace.Resumed:
+		a.printf("%-12s resumed: %s\n", windowCell(e.Window), shellJoin(e.Command))
+	case workspace.ResumeFailed:
+		a.warnf("%-12s its resume command exited at once; started it fresh\n", windowCell(e.Window))
 	case workspace.WindowExited:
 		if e.Window == task.RootWindowName {
 			a.warnf("the root window has exited; inspect its output, then run: tspace restart %s --root\n", e.Task)
@@ -109,13 +113,24 @@ func (a *App) render(e workspace.Event) {
 	}
 }
 
+// windowCell names a window in the first column of start's output.
+func windowCell(window string) string {
+	if window == task.RootWindowName {
+		return "(root)"
+	}
+	return window
+}
+
 // The last line each lifecycle command prints, which dash shows too.
 
 func startedText(res *workspace.StartResult) string {
 	return fmt.Sprintf("session %s is up; attach with: tspace attach %s", res.Session, res.Task.Name)
 }
 
-func restartedText(label, taskName string) string {
+func restartedText(label, taskName string, resumed bool) string {
+	if resumed {
+		return fmt.Sprintf("resumed %s; use tspace status %s to check its state", label, taskName)
+	}
 	return fmt.Sprintf("relaunched %s; use tspace status %s to check its state", label, taskName)
 }
 

@@ -21,6 +21,9 @@ type StartOptions struct {
 	Repos []string
 	// NoRuntime creates the worktrees and stops there.
 	NoRuntime bool
+	// Fresh launches every window with its command, never its resume
+	// command; see Start.
+	Fresh bool
 }
 
 // StartResult is what Start brought up.
@@ -33,7 +36,13 @@ type StartResult struct {
 
 // Start creates the task's missing worktrees, running each new one's
 // post_create hook, and brings up its session with the windows that are not
-// there yet, saved extra windows included. It is safe to repeat: existing
+// there yet, saved extra windows included.
+//
+// A window it brings back resumes its agent's conversation, with the
+// window's resume command, when it has one and its agent has run in that
+// directory before: a worktree just created, or one only --no-runtime made,
+// holds no conversation. One whose resume command exits at once is
+// relaunched fresh. opts.Fresh never resumes. It is safe to repeat: existing
 // worktrees and windows, dead ones included, are left alone. It releases the task's lock before it returns,
 // so a caller may attach to the session, unless ctx came holding it already.
 func (s *Service) Start(ctx context.Context, name string, opts StartOptions) (*StartResult, error) {
@@ -56,6 +65,7 @@ func (s *Service) Start(ctx context.Context, name string, opts StartOptions) (*S
 		return nil, fmt.Errorf("task %q has no repositories; add one with: tspace repo add %s REPO", t.Name, t.Name)
 	}
 
+	created := map[string]bool{}
 	bases := map[string]string{}
 	hooked := false
 	for _, name := range names {
@@ -76,6 +86,11 @@ func (s *Service) Start(ctx context.Context, name string, opts StartOptions) (*S
 		s.report(WorktreeReady{Repo: name, Branch: r.Branch, Result: res})
 
 		if res.Created {
+			created[name] = true
+			// Whatever ran in an earlier worktree here went with it.
+			if err := s.Store.ForgetLaunched(t.Name, name); err != nil {
+				s.warnf("tspace: %v", err)
+			}
 			hooked = hooked || r.PostCreate != ""
 			if err := s.RunPostCreate(ctx, t, name, r); err != nil {
 				// A half-provisioned worktree the user can inspect beats
@@ -116,12 +131,21 @@ func (s *Service) Start(ctx context.Context, name string, opts StartOptions) (*S
 	// can see every repository. Naming repositories starts only those. A
 	// single-repo task has none: its agent runs in the repository.
 	var windows []runtime.Window
+	// fresh holds what a resumed window would run instead.
+	fresh := map[string]runtime.Window{}
+	resume := func(w runtime.Window) runtime.Window {
+		if argv := t.ResumeFor(w.Name); len(argv) > 0 && !created[w.Name] && s.Store.Launched(t.Name, w.Name) && !opts.Fresh {
+			fresh[w.Name] = w
+			w.Command = ExpandArgv(s.Store, t, argv)
+		}
+		return w
+	}
 	withRoot := len(opts.Repos) == 0 && t.HasRootWindow()
 	if withRoot {
-		windows = append(windows, RootWindow(s.Store, t))
+		windows = append(windows, resume(RootWindow(s.Store, t)))
 	}
 	for _, name := range names {
-		windows = append(windows, RepoWindow(s.Store, t, name))
+		windows = append(windows, resume(RepoWindow(s.Store, t, name)))
 	}
 	// Saved windows go with what is started: those at the root with the whole
 	// task, the rest with their repositories. The root window alone has none.
@@ -166,10 +190,27 @@ func (s *Service) Start(ctx context.Context, name string, opts StartOptions) (*S
 	if err := s.ensureContextDir(t); err != nil {
 		return nil, err
 	}
+	// Only a window not already there is launched, resumed or not. Without
+	// the session's state that is unknown, so nothing is taken as resumed.
+	for name := range fresh {
+		if _, open := before.Pane(s.Runtime.WindowName(name)); err != nil || (open && before.Exists) {
+			delete(fresh, name)
+		}
+	}
 	if err := s.Runtime.Start(ctx, result.Session, windows); err != nil {
 		return nil, err
 	}
-	if err := s.checkLaunched(ctx, t, result.Session, before, windows, names); err != nil {
+	for _, w := range windows {
+		if _, ok := fresh[w.Name]; ok {
+			s.report(Resumed{Task: t.Name, Window: w.Name, Command: w.Command})
+		}
+		if !task.IsExtraWindow(w.Name) {
+			if err := s.Store.MarkLaunched(t.Name, w.Name); err != nil {
+				s.warnf("tspace: %v", err)
+			}
+		}
+	}
+	if _, err := s.checkLaunched(ctx, t, result.Session, before, windows, append([]string{task.RootWindowName}, names...), fresh); err != nil {
 		return nil, err
 	}
 	return result, nil
@@ -177,8 +218,11 @@ func (s *Service) Start(ctx context.Context, name string, opts StartOptions) (*S
 
 // checkLaunched reports what Start launched that is already gone. Starting
 // returns once the windows exist, which says nothing about whether their
-// commands survive the first second, and a session can go with them.
-func (s *Service) checkLaunched(ctx context.Context, t *task.Task, session string, before runtime.SessionState, windows []runtime.Window, names []string) error {
+// commands survive the first second, and a session can go with them; names
+// are the windows to look at, task.RootWindowName among them. A
+// resumed window that is gone is relaunched once with fresh, its command:
+// an agent asked to resume where it has no conversation may just exit.
+func (s *Service) checkLaunched(ctx context.Context, t *task.Task, session string, before runtime.SessionState, windows []runtime.Window, names []string, fresh map[string]runtime.Window) (relaunched []string, err error) {
 	launched := !before.Exists
 	for _, w := range windows {
 		if _, ok := before.Pane(s.Runtime.WindowName(w.Name)); !ok {
@@ -189,26 +233,60 @@ func (s *Service) checkLaunched(ctx context.Context, t *task.Task, session strin
 		select {
 		case <-time.After(s.Settle):
 		case <-ctx.Done():
-			return ctx.Err()
+			return nil, ctx.Err()
 		}
 	}
 	st, err := s.Runtime.State(ctx, session)
 	if err != nil {
 		s.warnf("could not inspect agent state: %v", err)
-		return nil
+		return nil, nil
 	}
 	if !st.Exists {
-		return fmt.Errorf("session %s exited right after it started; check the agent commands with `tspace task show %s`, then run start again", session, t.Name)
+		return nil, fmt.Errorf("session %s exited right after it started; check the agent commands with `tspace task show %s`, then run start again", session, t.Name)
 	}
-	if pane, ok := st.Pane(s.Runtime.WindowName(task.RootWindowName)); ok && pane.Dead {
-		s.report(WindowExited{Task: t.Name, Window: task.RootWindowName})
-	}
+	var again []runtime.Window
 	for _, name := range names {
-		if pane, ok := st.Pane(s.Runtime.WindowName(name)); ok && pane.Dead {
+		pane, ok := st.Pane(s.Runtime.WindowName(name))
+		w, resumed := fresh[name]
+		switch {
+		case !ok && resumed:
+			// A multiplexer that drops a window once its command exits.
+			if err := s.Runtime.OpenWindow(ctx, session, w); err != nil {
+				s.warnf("%s: its resume command exited at once, and starting it fresh failed: %v", windowLabel(name), err)
+				continue
+			}
+			s.report(ResumeFailed{Task: t.Name, Window: name})
+			again = append(again, w)
+			relaunched = append(relaunched, name)
+			continue
+		case !ok || !pane.Dead:
+			continue
+		case !resumed:
 			s.report(WindowExited{Task: t.Name, Window: name})
+			continue
 		}
+		if err := s.Runtime.Restart(ctx, session, w); err != nil {
+			s.warnf("%s: its resume command exited at once, and starting it fresh failed: %v", windowLabel(name), err)
+			continue
+		}
+		s.report(ResumeFailed{Task: t.Name, Window: name})
+		again = append(again, w)
+		relaunched = append(relaunched, name)
 	}
-	return nil
+	if len(again) == 0 {
+		return relaunched, nil
+	}
+	// Looked at as just launched, so it gets its second to fail in too.
+	_, err = s.checkLaunched(ctx, t, session, runtime.SessionState{}, again, relaunched, nil)
+	return relaunched, err
+}
+
+// windowLabel names a window in a sentence.
+func windowLabel(name string) string {
+	if name == task.RootWindowName {
+		return "the root window"
+	}
+	return name
 }
 
 // RunPostCreate runs the repo's provisioning hook in its new worktree.
