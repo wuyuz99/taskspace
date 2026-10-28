@@ -105,3 +105,52 @@ func TestDashTitleUsesSpareWidth(t *testing.T) {
 		}
 	}
 }
+
+// R deletes the task, record and notes, after confirming; refusals change
+// nothing, and the cursor moves to the next task.
+func TestDashDeleteTask(t *testing.T) {
+	h, m := loadedDash(t)
+	tk := h.load(t, m.data.Rows[0].Task)
+	next := ""
+	for _, r := range m.data.Rows {
+		if r.Task != tk.Name {
+			next = r.Task
+			break
+		}
+	}
+	wt := tk.Repos[tk.RepoNames()[0]].Worktree
+	if err := os.WriteFile(filepath.Join(wt, "dirty"), []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	m = drive(t, m, key("R"))
+	if m.confirm == nil || !strings.Contains(m.confirm.prompt, "delete "+tk.Name) || !strings.Contains(m.confirm.prompt, "notes") {
+		t.Fatalf("confirm = %+v", m.confirm)
+	}
+	m = drive(t, m, key("n"))
+	if m.note != "cancelled" || !h.app.Store.Exists(tk.Name) {
+		t.Fatalf("n did not cancel: %q", m.note)
+	}
+	m = drive(t, m, key("R"))
+	m = drive(t, m, key("y"))
+	if !m.noteErr || !strings.Contains(m.note, "refusing to clean") || !h.app.Store.Exists(tk.Name) {
+		t.Fatalf("dirty delete: %q", m.note)
+	}
+	if err := os.Remove(filepath.Join(wt, "dirty")); err != nil {
+		t.Fatal(err)
+	}
+	m = drive(t, m, key("R"))
+	m = drive(t, m, key("y"))
+	if m.noteErr || !strings.Contains(m.note, "deleted "+tk.Name) {
+		t.Fatal(m.note)
+	}
+	if h.app.Store.Exists(tk.Name) {
+		t.Fatal("record kept")
+	}
+	if _, err := os.Stat(wt); !os.IsNotExist(err) {
+		t.Fatal("worktree kept")
+	}
+	m = drive(t, m, dashDataMsg(h.app.dashLoad(t.Context())))
+	if r, ok := m.selected(); !ok || r.Task != next {
+		t.Fatalf("cursor on %+v, want %s", r, next)
+	}
+}

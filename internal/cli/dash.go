@@ -38,6 +38,7 @@ func (a *App) newDashCmd() *cobra.Command {
 			"  x             stop the task, after confirming (tspace stop)\n" +
 			"  S / X         start / stop only the selected window (tspace start/stop TASK REPO)\n" +
 			"  D             clean the task, after confirming (tspace clean)\n" +
+			"  R             delete the task, after confirming (tspace clean --rm)\n" +
 			"  t             open the task in a new terminal tab (tspace config terminal)\n" +
 			"  c             clear the row's signal\n" +
 			"  q             quit\n\n" +
@@ -270,9 +271,11 @@ func (m dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.rawRows = append([]dashRow(nil), m.data.Rows...)
 		m.data.Rows = collapseDashRows(m.rawRows, m.expanded)
 		if had {
+			// A task that is gone leaves the cursor on the one after it, or
+			// the last: rows are sorted by task name.
 			for i, r := range m.data.Rows {
-				if r.Task == prev.Task {
-					m.cursor = i
+				m.cursor = i
+				if r.Task >= prev.Task {
 					break
 				}
 			}
@@ -473,6 +476,16 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}),
 		}
 		return m, nil
+	case "R":
+		// Its own key, not a choice under D: D can be undone with s, R cannot.
+		m.confirm = &dashConfirm{
+			prompt: fmt.Sprintf("delete %s: remove worktrees, record and notes? branches are kept (y/N)", row.Task),
+			run: m.act(func(ws *workspace.Service) (string, error) {
+				err := ws.Clean(m.ctx, row.Task, workspace.CleanOptions{Remove: true})
+				return "deleted " + row.Task + "; its branches are kept", err
+			}),
+		}
+		return m, nil
 	case "c":
 		if row.Summary > 1 {
 			m.note = "expand the task with space to clear a window's signal"
@@ -628,7 +641,7 @@ func (m dashModel) View() string {
 	default:
 		b.WriteString(m.note + "\n")
 	}
-	b.WriteString(dashFaint.Render("enter attach · space expand · s/x task · S/X window · r restart · D clean · t tab · c clear · q quit"))
+	b.WriteString(dashFaint.Render("enter attach · space expand · s/x task · S/X window · r restart · D clean · R delete · t tab · c clear · q quit"))
 
 	// Nothing may wrap: a wrapped line pushes the rest off the alt screen.
 	lines := strings.Split(b.String(), "\n")
