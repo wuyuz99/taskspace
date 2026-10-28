@@ -39,6 +39,9 @@ upgrade.
   repo rm TASK REPO` does: its worktree is cleaned, with clean's refusals,
   its windows closed and its branch kept. Every warning an action gives now
   follows its result on the note line, not only the last.
+- **dash: `n` creates a task**, from a form below the table: name (checked
+  as it is typed), repositories, an optional project, and whether to start
+  it. It runs `tspace task create`, and the cursor goes to the new task.
 - **[Task window navigation](docs/TMUX_NAVIGATION.md)**: an opt-in tmux
   binding for a window picker limited to the current task, and the default
   one for switching tasks, with a script that checks both.

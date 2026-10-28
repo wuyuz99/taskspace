@@ -45,6 +45,7 @@ func (a *App) newDashCmd() *cobra.Command {
 			"                confirming (tspace repo rm)\n" +
 			"  t             open the task in a new terminal tab (tspace config terminal)\n" +
 			"  c             clear the row's signal\n" +
+			"  n             create a task, in a form below the table (tspace task create)\n" +
 			"  q             quit\n\n" +
 			"Inside the multiplexer, enter switches the client to the window and\n" +
 			"dash keeps running in its own.\n\n" +
@@ -203,8 +204,9 @@ type (
 	dashDoneMsg struct {
 		text string
 		err  error
-		// gone is a task the action deleted.
-		gone string
+		// gone is a task the action deleted; made, one it made, and window
+		// the window it opened there, for the cursor to go to.
+		gone, made, window string
 	}
 )
 
@@ -231,8 +233,11 @@ type dashModel struct {
 	note    string
 	noteErr bool
 	confirm *dashConfirm
-	// gone is the task an action just deleted, until the next refresh.
-	gone string
+	// gone is the task an action just deleted, until the next refresh;
+	// made and madeWindow are where an action wants the cursor next.
+	gone, made, madeWindow string
+	// form is open while its fields are typed in.
+	form *dashForm
 	// attach is set when the program quits in order to attach.
 	attach *dashRow
 }
@@ -298,6 +303,15 @@ func (m dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.gone != "" && !present(m.gone) {
 			m.gone = ""
 		}
+		if m.made != "" && present(m.made) {
+			first := true
+			for i, r := range m.data.Rows {
+				if r.Task == m.made && (first || r.Window == m.madeWindow) {
+					m.cursor, first = i, false
+				}
+			}
+			m.made, m.madeWindow, had = "", "", false
+		}
 		if had {
 			for i, r := range m.data.Rows {
 				if r.Task == prev.Task {
@@ -315,6 +329,9 @@ func (m dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case dashDoneMsg:
+		if msg.made != "" {
+			m.made, m.madeWindow = msg.made, msg.window
+		}
 		if msg.gone != "" {
 			m.gone = msg.gone
 			delete(m.expanded, msg.gone)
@@ -333,7 +350,7 @@ func (m dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		return m.key(msg)
 	case tea.MouseMsg:
-		if m.confirm != nil || msg.Action != tea.MouseActionPress {
+		if m.confirm != nil || m.form != nil || msg.Action != tea.MouseActionPress {
 			return m, nil
 		}
 		switch msg.Button {
@@ -348,6 +365,17 @@ func (m dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if f := m.form; f != nil {
+		run, done := f.key(msg)
+		if done {
+			m.form = nil
+			m.note, m.noteErr = "cancelled", false
+			if run != nil {
+				m.note = f.busy
+			}
+		}
+		return m, run
+	}
 	if c := m.confirm; c != nil {
 		m.confirm = nil
 		if msg.String() == "y" {
@@ -374,6 +402,10 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	if msg.String() == "n" {
+		m.form = m.createForm()
+		return m, nil
+	}
 	row, ok := m.selected()
 	if !ok {
 		return m, nil
@@ -696,16 +728,21 @@ func (m dashModel) View() string {
 		dashFaint.Render(m.data.At.Format("15:04:05")))
 
 	if len(m.data.Rows) == 0 {
-		b.WriteString("no tasks yet; create one with: tspace task create NAME\n")
+		b.WriteString("no tasks yet; press n to create one (tspace task create NAME)\n")
 	} else {
 		m.table(&b, now)
-		m.detail(&b, now)
+		// The form takes the detail pane's room.
+		if m.form == nil {
+			m.detail(&b, now)
+		}
 	}
 
 	for _, w := range m.data.Warn {
 		b.WriteString(dashYellow.Render(oneLine(w)) + "\n")
 	}
 	switch {
+	case m.form != nil:
+		b.WriteString(m.form.view())
 	case m.confirm != nil:
 		b.WriteString(dashBold.Render(m.confirm.prompt) + "\n")
 	case m.noteErr:
@@ -713,7 +750,9 @@ func (m dashModel) View() string {
 	default:
 		b.WriteString(m.note + "\n")
 	}
-	b.WriteString(dashFaint.Render("enter attach · space expand · s/x task · S/X window · r restart · D clean · R delete · - remove repo · t tab · c clear · q quit"))
+	if m.form == nil {
+		b.WriteString(dashFaint.Render("enter attach · space expand · s/x task · S/X window · r restart · D clean · R delete · - remove repo · t tab · c clear · n new · q quit"))
+	}
 
 	// Nothing may wrap: a wrapped line pushes the rest off the alt screen.
 	lines := strings.Split(b.String(), "\n")
