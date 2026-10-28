@@ -66,4 +66,22 @@ and changing an agent forgets its resume command, so a resume never runs a
 different program than the agent it belongs to. Agents that key a conversation
 to its directory find it again because the window resumes where it ran.
 
+### Bringing windows back resumes them
+
+Once a window has a resume command, every way of bringing it back uses it:
+`tspace start`, `tspace open` and dash's `s`/`S` for a window that is not
+there (after a computer restart, or `X`), and `tspace restart` and dash's
+`r` for a dead one. Start resumes a window only when its worktree was
+already there, or for the root window the task directory: one just created
+holds no conversation. Each says which happened (`backend  resumed: claude
+--continue`, `resumed PAY-142/backend`), on the command line and dash's note
+line.
+
+What a resume command does where there is nothing to resume is up to the
+agent. If it exits within a second, tspace starts the window again with
+its own command and says so (`its resume command exited at once; started
+it fresh`). `--fresh`, on `start`, `open` and `restart`, never resumes;
+`restart --resume` still resumes or refuses. Windows without a resume
+command, shells included, start as they always have.
+
 See [signals and hooks](STATUS.md#signals) to report agent progress.

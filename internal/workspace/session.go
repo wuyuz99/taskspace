@@ -43,53 +43,59 @@ type RestartOptions struct {
 	Root bool
 	Repo string
 	// Resume runs the window's resume command, which brings the agent back
-	// with its conversation, instead of its command.
-	Resume bool
+	// with its conversation, instead of its command, and refuses a window
+	// without one. Fresh runs its command. With neither, a window with a
+	// resume command is resumed, and relaunched fresh if that exits at once,
+	// as Start does.
+	Resume, Fresh bool
 }
 
 // Restart relaunches a dead window. It returns the window's label, such as
-// "PAY-1/backend".
-func (s *Service) Restart(ctx context.Context, name string, opts RestartOptions) (label string, err error) {
+// "PAY-1/backend", and whether its agent was resumed.
+func (s *Service) Restart(ctx context.Context, name string, opts RestartOptions) (label string, resumed bool, err error) {
 	t, ctx, unlock, err := s.Lock(ctx, name, s.command("tspace restart"), true)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	defer unlock()
+	if opts.Resume && opts.Fresh {
+		return "", false, fmt.Errorf("choose either --resume or --fresh")
+	}
 	var w runtime.Window
 	label = t.Name
 	if opts.Root {
 		if !t.HasRootWindow() {
-			return "", fmt.Errorf("task %s has no root window; its agent runs in %s: tspace restart %s %s", t.Name, t.AgentRepo, t.Name, t.AgentRepo)
+			return "", false, fmt.Errorf("task %s has no root window; its agent runs in %s: tspace restart %s %s", t.Name, t.AgentRepo, t.Name, t.AgentRepo)
 		}
 		w = RootWindow(s.Store, t)
 		if info, err := os.Stat(w.Dir); err != nil || !info.IsDir() {
-			return "", fmt.Errorf("task directory %s is missing; run: tspace start %s", w.Dir, t.Name)
+			return "", false, fmt.Errorf("task directory %s is missing; run: tspace start %s", w.Dir, t.Name)
 		}
 		label += " root window"
 	} else if opts.Repo == task.RootWindowName {
-		return "", fmt.Errorf("%s is the root window; restart it with: tspace restart %s --root", opts.Repo, t.Name)
+		return "", false, fmt.Errorf("%s is the root window; restart it with: tspace restart %s --root", opts.Repo, t.Name)
 	} else if strings.HasPrefix(opts.Repo, task.ExtraWindowPrefix) {
 		// Only a saved window's command is known; an unsaved one's was typed
 		// once and never recorded.
 		i, ok := t.SavedWindow(opts.Repo)
 		if !ok {
-			return "", fmt.Errorf("%s is not saved, so tspace does not know what it ran; close it with: tspace stop %s %s", opts.Repo, t.Name, opts.Repo)
+			return "", false, fmt.Errorf("%s is not saved, so tspace does not know what it ran; close it with: tspace stop %s %s", opts.Repo, t.Name, opts.Repo)
 		}
 		if opts.Resume {
-			return "", fmt.Errorf("%s is an extra window; there is no agent to resume", opts.Repo)
+			return "", false, fmt.Errorf("%s is an extra window; there is no agent to resume", opts.Repo)
 		}
 		w = ExtraWindow(s.Store, t, t.Windows[i])
 		if info, err := os.Stat(w.Dir); err != nil || !info.IsDir() {
-			return "", fmt.Errorf("%s is missing; run: tspace start %s", w.Dir, t.Name)
+			return "", false, fmt.Errorf("%s is missing; run: tspace start %s", w.Dir, t.Name)
 		}
 		label += "/" + w.Name
 	} else {
 		if opts.Repo == "" {
-			return "", fmt.Errorf("name a repository of %s to restart, or its root window", t.Name)
+			return "", false, fmt.Errorf("name a repository of %s to restart, or its root window", t.Name)
 		}
 		_, repo, err := WorktreeDir(t, opts.Repo)
 		if err != nil {
-			return "", err
+			return "", false, err
 		}
 		w = RepoWindow(s.Store, t, repo)
 		label += "/" + repo
@@ -99,23 +105,40 @@ func (s *Service) Restart(ctx context.Context, name string, opts RestartOptions)
 		switch {
 		case len(argv) > 0:
 		case len(t.WindowAgent(w.Name)) == 0:
-			return "", fmt.Errorf("%s runs a shell; there is no agent to resume", label)
+			return "", false, fmt.Errorf("%s runs a shell; there is no agent to resume", label)
 		default:
-			return "", fmt.Errorf("%s has no resume command; set one with the agent's own, e.g. %s", label, ResumeHint(t, w.Name))
+			return "", false, fmt.Errorf("%s has no resume command; set one with the agent's own, e.g. %s", label, ResumeHint(t, w.Name))
 		}
 		w.Command = ExpandArgv(s.Store, t, argv)
+		resumed = true
+	}
+	fresh := w
+	auto := false
+	if argv := t.ResumeFor(w.Name); len(argv) > 0 && !opts.Resume && !opts.Fresh {
+		w.Command = ExpandArgv(s.Store, t, argv)
+		resumed, auto = true, true
 	}
 	if err := s.ensureContextDir(t); err != nil {
-		return "", err
+		return "", false, err
 	}
-	if err := s.Runtime.Restart(ctx, s.Runtime.SessionName(t.Name), w); err != nil {
-		return "", err
+	session := s.Runtime.SessionName(t.Name)
+	if err := s.Runtime.Restart(ctx, session, w); err != nil {
+		return "", false, err
 	}
 	// The relaunched agent has said nothing yet.
 	if err := s.Store.ClearSignal(t.Name, w.Name); err != nil {
 		s.warnf("tspace: %v", err)
 	}
-	return label, nil
+	// Resumed unasked, a window whose resume command finds nothing to resume
+	// and exits is started fresh, as Start's are.
+	if auto {
+		relaunched, err := s.checkLaunched(ctx, t, session, runtime.SessionState{}, []runtime.Window{w}, []string{w.Name}, map[string]runtime.Window{w.Name: fresh})
+		if err != nil {
+			return "", false, err
+		}
+		resumed = len(relaunched) == 0
+	}
+	return label, resumed, nil
 }
 
 // ResumeHint is the command that would set a window's resume command.

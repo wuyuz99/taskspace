@@ -508,11 +508,11 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			opts.Repo = ""
 		}
 		return m, m.act(func(ws *workspace.Service) (string, error) {
-			label, err := ws.Restart(m.ctx, row.Task, opts)
+			label, resumed, err := ws.Restart(m.ctx, row.Task, opts)
 			if err != nil {
 				return "", err
 			}
-			return restartedText(label, row.Task), nil
+			return restartedText(label, row.Task, resumed), nil
 		})
 	case "t":
 		// As enter does: to a window that is there, the one selected.
@@ -658,6 +658,11 @@ func (m dashModel) act(do func(*workspace.Service) (string, error)) tea.Cmd {
 		ws.Stdout, ws.Stderr = io.Discard, io.Discard
 		var notes []string
 		ws.Progress = func(e workspace.Event) {
+			// Said on the CLI's standard output, which dash drops, but worth
+			// the note line: the agent came back with its conversation.
+			if r, ok := e.(workspace.Resumed); ok {
+				notes = append(notes, "resumed "+dashRow{Task: r.Task, Window: r.Window}.label())
+			}
 			warning.Reset()
 			sub.render(e)
 			if w := oneLine(strings.TrimSpace(warning.String())); w != "" && !slices.Contains(notes, w) {

@@ -60,6 +60,15 @@ upgrade.
 
 ### Changed
 
+- **Bringing a window back resumes its agent's conversation.** When a window
+  has a resume command, `start`, `open`, dash `s`/`S`, `restart` and dash `r`
+  launch it with that, for a worktree (or task directory) that was already
+  there, instead of a fresh conversation. A resume command that exits at
+  once is followed by the agent's own command. `--fresh` on `start`, `open`
+  and `restart` keeps the old behaviour. If you have set `tspace config
+  resume`, your agents now come back resumed after a computer restart; see
+  [Coding agents](docs/CODING_AGENTS.md#bringing-windows-back-resumes-them).
+
 - **`repo rm` removes what it forgets.** It cleans the repository first,
   with clean's refusals, closing its window and saved windows, then drops it
   from the record; before, the worktree and window were left where `clean`

@@ -18,7 +18,7 @@ func (a *App) newOpenCmd() *cobra.Command {
 
 // Start and open share preparation so worktree and hook behavior stay identical.
 func (a *App) newLaunchCmd(open bool) *cobra.Command {
-	var noRuntime, root bool
+	var noRuntime, root, fresh bool
 
 	cmd := &cobra.Command{
 		Use:   "start TASK [REPO...]",
@@ -33,6 +33,11 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 			"still there, reporting any that exited on launch; it does not wait for the\n" +
 			"agents beyond that and needs no terminal. Naming REPOs starts only those, without the\n" +
 			"root window.\n\n" +
+			"A window brought back whose agent has a resume command (see restart\n" +
+			"--help) is resumed with its conversation, if its worktree, or for the root\n" +
+			"window the task directory, was there before: one just created holds no\n" +
+			"conversation. A resume command that exits at once is followed by the\n" +
+			"window's own command. --fresh always runs the own command.\n\n" +
 			"Without the multiplexer, start still creates the worktrees and then fails;\n" +
 			"--no-runtime creates them and stops there, successfully.",
 		Args: cobra.MinimumNArgs(1),
@@ -42,7 +47,7 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := a.workspaceFor(cmd).Start(ctx, name, workspace.StartOptions{Root: root, Repos: args[1:], NoRuntime: noRuntime})
+			res, err := a.workspaceFor(cmd).Start(ctx, name, workspace.StartOptions{Root: root, Repos: args[1:], NoRuntime: noRuntime, Fresh: fresh})
 			if err != nil || noRuntime {
 				return err
 			}
@@ -63,11 +68,14 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 		cmd.Long = "open creates missing worktrees and session windows, shows the task brief\n" +
 			"and handoff, then attaches: `tspace start` and `tspace attach` in one step.\n" +
 			"Existing windows are preserved, including dead agents; use restart\n" +
-			"explicitly to relaunch them.\n\n" +
+			"explicitly to relaunch them. Windows it brings back resume their agents'\n" +
+			"conversations as start's do, unless --fresh.\n\n" +
 			"open takes over the terminal until you detach, so it needs a TTY. From a\n" +
 			"script, use `tspace start TASK` and read `tspace status TASK` instead."
 		cmd.Args = cobra.ExactArgs(1)
+		cmd.Flags().BoolVar(&fresh, "fresh", false, "start every agent with a new conversation, never resuming one")
 	} else {
+		cmd.Flags().BoolVar(&fresh, "fresh", false, "start every agent with a new conversation, never resuming one")
 		cmd.Flags().BoolVar(&root, "root", false, "start only the task-root window")
 		cmd.Flags().BoolVar(&noRuntime, "no-runtime", false,
 			"create worktrees but do not start the session")
@@ -115,7 +123,7 @@ func (a *App) newStopCmd() *cobra.Command {
 }
 
 func (a *App) newRestartCmd() *cobra.Command {
-	var root, resume bool
+	var root, resume, fresh bool
 	cmd := &cobra.Command{Use: "restart TASK [REPO | _WINDOW | --root]", Short: "Relaunch a dead agent or shell",
 		Long: "restart relaunches a dead repository window, or with --root the task-root\n" +
 			"window, using its configured command. A window is dead when `tspace status`\n" +
@@ -129,7 +137,9 @@ func (a *App) newRestartCmd() *cobra.Command {
 			"  tspace config resume claude --continue          default for new tasks\n" +
 			"  tspace task update PAY-142 --resume codex --resume resume --resume=--last\n" +
 			"  tspace repo update PAY-142 backend --resume aider --resume=--restore-chat-history\n\n" +
-			"An agent resumed in the directory it ran in finds its conversation there.",
+			"An agent resumed in the directory it ran in finds its conversation there.\n" +
+			"Without --resume, a window with a resume command is resumed too, and\n" +
+			"started fresh if that exits at once; --fresh never resumes.",
 		Args: cobra.RangeArgs(1, 2), RunE: func(cmd *cobra.Command, args []string) error {
 			switch {
 			case root && len(args) == 2:
@@ -137,7 +147,7 @@ func (a *App) newRestartCmd() *cobra.Command {
 			case !root && len(args) == 1:
 				return fmt.Errorf("name a repository, or use --root for the task-root window")
 			}
-			opts := workspace.RestartOptions{Root: root, Resume: resume}
+			opts := workspace.RestartOptions{Root: root, Resume: resume, Fresh: fresh}
 			if !root {
 				opts.Repo = args[1]
 			}
@@ -145,15 +155,16 @@ func (a *App) newRestartCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			label, err := a.workspaceFor(cmd).Restart(cmd.Context(), name, opts)
+			label, resumed, err := a.workspaceFor(cmd).Restart(cmd.Context(), name, opts)
 			if err != nil {
 				return err
 			}
-			a.printf("%s\n", restartedText(label, name))
+			a.printf("%s\n", restartedText(label, name, resumed))
 			return nil
 		}}
 	cmd.Flags().BoolVar(&root, "root", false, "restart the task-root window")
 	cmd.Flags().BoolVar(&resume, "resume", false, "run the window's resume command, bringing the agent back with its conversation")
+	cmd.Flags().BoolVar(&fresh, "fresh", false, "run the window's own command, never its resume command")
 	return cmd
 }
 
