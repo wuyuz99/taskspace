@@ -47,6 +47,10 @@ func (s *Service) RemoveRepo(ctx context.Context, name, repo string, keepWorktre
 	if err := s.Store.Save(t); err != nil {
 		return "", err
 	}
+	// The same name added again starts over.
+	if err := s.Store.ForgetLaunched(t.Name, repo); err != nil {
+		s.warnf("tspace: %v", err)
+	}
 	// After clean there is no worktree left to speak of.
 	if _, err := os.Stat(r.Worktree); err == nil {
 		return r.Worktree, nil

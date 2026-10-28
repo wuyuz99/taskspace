@@ -51,6 +51,9 @@ func (f *fakeRuntime) Start(_ context.Context, _ string, ws []runtime.Window) er
 func (f *fakeRuntime) OpenWindow(context.Context, string, runtime.Window) error { return nil }
 func (f *fakeRuntime) Restart(_ context.Context, _ string, w runtime.Window) error {
 	f.restarted = append(f.restarted, w)
+	if f.panes != nil {
+		f.panes[w.Name] = runtime.PaneState{Window: w.Name}
+	}
 	return nil
 }
 func (f *fakeRuntime) Stop(context.Context, string) error {
@@ -282,7 +285,7 @@ func TestRestartAndResume(t *testing.T) {
 	if _, err := f.svc.Start(context.Background(), "T", StartOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	label, err := f.svc.Restart(context.Background(), "T", RestartOptions{Repo: "a", Resume: true})
+	label, _, err := f.svc.Restart(context.Background(), "T", RestartOptions{Repo: "a", Resume: true})
 	if err != nil || label != "T/a" {
 		t.Fatalf("restart = %q, %v", label, err)
 	}
@@ -290,7 +293,7 @@ func TestRestartAndResume(t *testing.T) {
 		t.Fatalf("resumed with %v", got)
 	}
 	// The root window's agent has no resume command.
-	_, err = f.svc.Restart(context.Background(), "T", RestartOptions{Root: true, Resume: true})
+	_, _, err = f.svc.Restart(context.Background(), "T", RestartOptions{Root: true, Resume: true})
 	if err == nil || !strings.Contains(err.Error(), "tspace task update "+tk.Name+" --resume") {
 		t.Fatalf("restart --resume without one = %v", err)
 	}
@@ -334,7 +337,7 @@ func TestRestartNeedsRootSaidOutright(t *testing.T) {
 	if _, err := f.svc.Start(context.Background(), "T", StartOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.svc.Restart(context.Background(), "T", RestartOptions{Repo: task.RootWindowName}); err == nil {
+	if _, _, err := f.svc.Restart(context.Background(), "T", RestartOptions{Repo: task.RootWindowName}); err == nil {
 		t.Fatal("restart of a repository named _root restarted something")
 	}
 	if len(f.rt.restarted) != 0 {

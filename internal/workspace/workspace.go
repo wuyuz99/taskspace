@@ -90,6 +90,17 @@ type Launching struct {
 // Window is task.RootWindowName for the root window.
 type WindowExited struct{ Task, Window string }
 
+// Resumed reports a window launched with its resume command, Command, to
+// bring its agent back with its conversation.
+type Resumed struct {
+	Task, Window string
+	Command      []string
+}
+
+// ResumeFailed reports a resumed window whose command exited at once, which
+// was relaunched with its own command, fresh.
+type ResumeFailed struct{ Task, Window string }
+
 // NoRepositories reports Clean found nothing to remove.
 type NoRepositories struct{ Task string }
 
@@ -136,6 +147,8 @@ func (HookStarted) event()      {}
 func (HookFailed) event()       {}
 func (Launching) event()        {}
 func (WindowExited) event()     {}
+func (Resumed) event()          {}
+func (ResumeFailed) event()     {}
 func (NoRepositories) event()   {}
 func (SessionStopped) event()   {}
 func (WorktreeRemoved) event()  {}
