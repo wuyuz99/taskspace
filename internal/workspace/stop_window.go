@@ -3,6 +3,7 @@ package workspace
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/wuyuz99/taskspace/internal/runtime"
@@ -63,6 +64,55 @@ func (s *Service) closeWindow(ctx context.Context, name, window string) error {
 	// purpose too.
 	if running, err := s.Runtime.HasSession(ctx, s.Runtime.SessionName(name)); err == nil && !running {
 		s.markStopped(name)
+	} else if !task.IsExtraWindow(window) {
+		s.forgetRunning(name, window)
 	}
 	return s.Store.ClearSignal(name, window)
+}
+
+// forgetRunning records that window, a primary one, was closed on purpose,
+// so an interruption does not bring it back. A failure is a warning, as for
+// markStopped.
+func (s *Service) forgetRunning(name, window string) {
+	r, ok := s.Store.Running(name)
+	if !ok {
+		return
+	}
+	if r.Whole {
+		t, err := s.Store.Load(name)
+		if err != nil {
+			s.warnf("tspace: %v", err)
+			return
+		}
+		r = task.Running{Root: t.HasRootWindow(), Repos: t.RepoNames()}
+	}
+	if window == task.RootWindowName {
+		r.Root = false
+	} else {
+		r.Repos = slices.DeleteFunc(r.Repos, func(repo string) bool { return repo == window })
+	}
+	// Only extra windows left: nothing an interruption would bring back.
+	if !r.Root && len(r.Repos) == 0 {
+		s.markStopped(name)
+		return
+	}
+	if err := s.Store.MarkRunning(name, r); err != nil {
+		s.warnf("tspace: %v", err)
+	}
+}
+
+// rememberRunning records that window, a primary one, runs again in a
+// session that is up, as restart may bring back one stop closed.
+func (s *Service) rememberRunning(name, window string) {
+	r, ok := s.Store.Running(name)
+	if !ok {
+		return
+	}
+	add := task.Running{Repos: []string{window}}
+	if window == task.RootWindowName {
+		add = task.Running{Root: true}
+	}
+	if err := s.Store.MarkRunning(name, r.With(add)); err != nil {
+		s.warnf("tspace: %v", err)
+	}
 }

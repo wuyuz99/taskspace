@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"maps"
 	"os"
 	osexec "os/exec"
 	"path/filepath"
@@ -21,6 +22,7 @@ import (
 // was given, each alive unless named in dead.
 type fakeRuntime struct {
 	unavailable error
+	hasErr      error
 	panes       map[string]runtime.PaneState
 	exists      bool
 	dead        map[string]bool
@@ -33,7 +35,7 @@ func (f *fakeRuntime) Available(context.Context) error { return f.unavailable }
 func (f *fakeRuntime) SessionName(t string) string     { return "tspace-" + t }
 func (f *fakeRuntime) WindowName(r string) string      { return r }
 func (f *fakeRuntime) HasSession(context.Context, string) (bool, error) {
-	return f.exists, nil
+	return f.exists, f.hasErr
 }
 func (f *fakeRuntime) Start(_ context.Context, _ string, ws []runtime.Window) error {
 	if f.panes == nil {
@@ -67,7 +69,8 @@ func (f *fakeRuntime) Focus(context.Context, string, string) (bool, error) {
 func (f *fakeRuntime) Select(context.Context, string, string) error               { return nil }
 func (f *fakeRuntime) RenameWindow(context.Context, string, string, string) error { return nil }
 func (f *fakeRuntime) State(context.Context, string) (runtime.SessionState, error) {
-	return runtime.SessionState{Exists: f.exists, Panes: f.panes}, nil
+	// A copy, as a real one's is: what starts later is not in it.
+	return runtime.SessionState{Exists: f.exists, Panes: maps.Clone(f.panes)}, nil
 }
 
 type fixture struct {

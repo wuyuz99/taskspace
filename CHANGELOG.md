@@ -51,6 +51,9 @@ upgrade.
   ending it shows as `interrupted` in `status` and dash (`"interrupted":
   true` per task in `status --json`). `tspace start --interrupted` starts all of them, resuming
   their agents' conversations; dash offers to on launch, and `I` does it.
+  Each comes back as it ran: only the windows that were started and not
+  closed since, a task with no repositories included, and all of them wait
+  out the launch check together.
 - **[Task window navigation](docs/TMUX_NAVIGATION.md)**: an opt-in tmux
   binding for a window picker limited to the current task, and the default
   one for switching tasks, with a script that checks both.
@@ -88,6 +91,17 @@ upgrade.
   status`, after the multiplexer's own error.
 
 ### Fixed
+
+- **`clean --force` removes a locked worktree** instead of failing partway,
+  after the session was stopped and earlier worktrees were gone.
+- **clean refuses when it cannot tell whether the session runs**, instead of
+  removing the worktrees from under agents that may still be there.
+- **A repository with no default branch** gets the branch it is on as the
+  base, or its commit when detached, not `HEAD`, which `status`, `clean
+  --delete-branch` and `repo update --rebase` read in the wrong place.
+- **`config hooks claude` run again changes nothing**, even with hooks of
+  yours after tspace's; it used to move tspace's to the end and rewrite the
+  file.
 
 - **dash: the mouse wheel moves one row per step.** Terminals turned each
   wheel step into several arrow keys, skipping rows; dash now reads the wheel

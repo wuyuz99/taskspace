@@ -42,8 +42,8 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 			"--no-runtime creates them and stops there, successfully.\n\n" +
 			"--interrupted starts every task whose session ended without `tspace\n" +
 			"stop` or clean ending it, as after a computer restart; status shows them\n" +
-			"as interrupted. They start one after another, and one that fails does\n" +
-			"not stop the rest.",
+			"as interrupted. Each starts what it was running, and one that fails\n" +
+			"does not stop the rest.",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if interrupted {
 				if len(args) > 0 || root || noRuntime {
