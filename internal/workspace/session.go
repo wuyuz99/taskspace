@@ -66,6 +66,8 @@ func (s *Service) Restart(ctx context.Context, name string, opts RestartOptions)
 			return "", fmt.Errorf("task directory %s is missing; run: tspace start %s", w.Dir, t.Name)
 		}
 		label += " root window"
+	} else if opts.Repo == task.RootWindowName {
+		return "", fmt.Errorf("%s is the root window; restart it with: tspace restart %s --root", opts.Repo, t.Name)
 	} else if strings.HasPrefix(opts.Repo, task.ExtraWindowPrefix) {
 		// Only a saved window's command is known; an unsaved one's was typed
 		// once and never recorded.

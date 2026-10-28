@@ -9,7 +9,6 @@ import (
 	"context"
 
 	"sort"
-	"strings"
 	"sync"
 
 	tsgit "github.com/wuyuz99/taskspace/internal/git"
@@ -102,7 +101,7 @@ type ExtraStatus struct {
 	Saved   bool
 	Repo    string
 	Command []string
-	// Running is the command the multiplexer sees in it, if open.
+	// Running is the command the multiplexer sees in an unsaved window.
 	Running string
 	Runtime RuntimeState
 }
@@ -194,27 +193,25 @@ func (a *Aggregator) Task(ctx context.Context, t *task.Task) TaskStatus {
 }
 
 // extraWindows lists t's saved windows in record order, then any other
-// extra window open in sess by name.
+// extra window open in sess, by name. Only a window whose name tspace could
+// have given it is listed, so every row can be closed by that name.
 func (a *Aggregator) extraWindows(t *task.Task, sess runtime.SessionState, runtimeUnknown bool) []ExtraStatus {
 	var out []ExtraStatus
-	known := map[string]bool{}
 	for _, w := range t.Windows {
-		e := ExtraStatus{Name: w.SessionName(), Saved: true, Repo: w.Repo, Command: w.Command,
-			Runtime: a.windowState(sess, w.SessionName(), runtimeUnknown)}
-		if a.Runtime != nil {
-			known[a.Runtime.WindowName(e.Name)] = true
-			e.Running = sess.Panes[a.Runtime.WindowName(e.Name)].Command
-		}
-		out = append(out, e)
+		out = append(out, ExtraStatus{Name: w.SessionName(), Saved: true, Repo: w.Repo, Command: w.Command,
+			Runtime: a.windowState(sess, w.SessionName(), runtimeUnknown)})
 	}
 	if a.Runtime == nil {
 		return out
 	}
-	known[a.Runtime.WindowName(task.RootWindowName)] = true
+	known := map[string]bool{a.Runtime.WindowName(task.RootWindowName): true}
+	for _, w := range t.Windows {
+		known[a.Runtime.WindowName(w.SessionName())] = true
+	}
 	var open []ExtraStatus
 	for id, pane := range sess.Panes {
 		name := runtime.DisplayName(id)
-		if known[id] || !strings.HasPrefix(name, task.ExtraWindowPrefix) {
+		if known[id] || !task.IsExtraWindow(name) || a.Runtime.WindowName(name) != id {
 			continue
 		}
 		state := RuntimeRunning

@@ -33,6 +33,9 @@ func (s *Service) StopWindow(ctx context.Context, name, repo string, root bool) 
 	case strings.HasPrefix(repo, task.ExtraWindowPrefix):
 		// Repository names start with a letter or digit, so this can only be
 		// an extra window, and it has to be open to be closed.
+		if !task.IsExtraWindow(repo) {
+			return fmt.Errorf("%q is not a window name tspace gives", repo)
+		}
 		st, err := s.Runtime.State(ctx, s.Runtime.SessionName(t.Name))
 		if err != nil {
 			return err

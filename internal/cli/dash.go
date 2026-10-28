@@ -107,9 +107,7 @@ type dashRow struct {
 func (r dashRow) root() bool { return r.Window == task.RootWindowName }
 
 // extra says the row is a window opened with `tspace window`.
-func (r dashRow) extra() bool {
-	return !r.root() && strings.HasPrefix(r.Window, task.ExtraWindowPrefix)
-}
+func (r dashRow) extra() bool { return task.IsExtraWindow(r.Window) }
 
 func (r dashRow) label() string {
 	if r.root() {
@@ -181,10 +179,8 @@ func (a *App) dashLoad(ctx context.Context) dashData {
 			// Only a saved window's place is known.
 			dir := ""
 			if e.Saved {
-				dir = a.Store.TaskDir(ts.Task)
-				if e.Repo != "" {
-					dir = byName[ts.Task].Repos[e.Repo].Worktree
-				}
+				w := task.Window{Name: strings.TrimPrefix(e.Name, task.ExtraWindowPrefix), Repo: e.Repo}
+				dir = workspace.ExtraWindow(a.Store, byName[ts.Task], w).Dir
 			}
 			d.Rows = append(d.Rows, dashRow{
 				Task: ts.Task, Window: e.Name, Agent: extraAgent(e), Runtime: e.Runtime, Git: "-", Dir: dir, Saved: e.Saved,

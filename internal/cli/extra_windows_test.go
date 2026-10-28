@@ -163,3 +163,44 @@ func TestDashExtraWindows(t *testing.T) {
 		t.Fatal("X left _mon open")
 	}
 }
+
+// A closed saved window or a dead extra one neither keeps a quiet task
+// expanded nor sets its summary's runtime.
+func TestDashCollapseIgnoresExtraWindowState(t *testing.T) {
+	rows := []dashRow{
+		{Task: "A", Window: task.RootWindowName, Runtime: status.RuntimeRunning},
+		{Task: "A", Window: "backend", Runtime: status.RuntimeRunning, Git: "clean"},
+		{Task: "A", Window: "_git", Runtime: status.RuntimeNoWindow, Saved: true},
+		{Task: "A", Window: "_test", Runtime: status.RuntimeDead},
+	}
+	got := collapseDashRows(rows, nil)
+	if len(got) != 1 || got[0].Summary != 4 || got[0].Runtime != status.RuntimeRunning {
+		t.Fatalf("rows %+v", got)
+	}
+}
+
+func TestExtraWindowNamesRefused(t *testing.T) {
+	h, _, _ := extraWindowTask(t)
+	if err := h.exec(t, h.app.newStopCmd(), "T", "_../x"); err == nil || !strings.Contains(err.Error(), "not a window name") {
+		t.Fatalf("stop of a path-like name: %v", err)
+	}
+	if err := h.exec(t, h.app.newStopCmd(), "T", task.RootWindowName); err == nil || !strings.Contains(err.Error(), "--root") {
+		t.Fatalf("stop _root: %v", err)
+	}
+	if err := h.exec(t, h.app.newRestartCmd(), "T", task.RootWindowName); err == nil || !strings.Contains(err.Error(), "restart T --root") {
+		t.Fatalf("restart _root: %v", err)
+	}
+}
+
+// A window renamed by hand to a name tspace would never give is not listed:
+// it could not be closed by the name shown.
+func TestStatusSkipsForeignWindowNames(t *testing.T) {
+	h, rt, _ := extraWindowTask(t)
+	rt.started = append(rt.started, runtime.Window{Name: "_v~41"}, runtime.Window{Name: "vim"})
+	ts := h.app.aggregator().Task(context.Background(), h.load(t, "T"))
+	for _, e := range ts.Extra {
+		if e.Name != "_git" && e.Name != "_mon" {
+			t.Fatalf("listed %q", e.Name)
+		}
+	}
+}

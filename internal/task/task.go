@@ -109,6 +109,13 @@ type Window struct {
 // repository's window name, and RootWindowName is already reserved.
 const ExtraWindowPrefix = "_"
 
+// IsExtraWindow says name is an extra window's, with its leading prefix:
+// never a repository's or the root window's.
+func IsExtraWindow(name string) bool {
+	rest, ok := strings.CutPrefix(name, ExtraWindowPrefix)
+	return ok && name != RootWindowName && ValidateName("window", rest) == nil
+}
+
 // SessionName is the window's name in the session.
 func (w Window) SessionName() string { return ExtraWindowPrefix + w.Name }
 
