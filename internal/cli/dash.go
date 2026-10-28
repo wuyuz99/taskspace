@@ -518,10 +518,19 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.note = row.Window + " isn't a repository; X closes it"
 			return m, nil
 		}
+		if os.Getenv(envTask) == row.Task {
+			m.note, m.noteErr = fmt.Sprintf("dash runs in %s's session, and this closes windows of it; run it from outside: tspace repo rm %s %s", row.Task, row.Task, row.Window), true
+			return m, nil
+		}
 		m.confirm = &dashConfirm{
 			prompt: fmt.Sprintf("remove %s from %s: clean its worktree and close its window? branch is kept (y/N)", row.Window, row.Task),
 			run: m.act(func(ws *workspace.Service) (string, error) {
-				return removedRepoText(row.Window, row.Task), ws.RemoveRepo(m.ctx, row.Task, row.Window, false)
+				left, err := ws.RemoveRepo(m.ctx, row.Task, row.Window, false)
+				text := removedRepoText(row.Window, row.Task)
+				if left != "" {
+					text += "; note: the worktree at " + left + " was left in place"
+				}
+				return text, err
 			}),
 		}
 		return m, nil
@@ -599,8 +608,8 @@ func (m dashModel) act(do func(*workspace.Service) (string, error)) tea.Cmd {
 		ws.Progress = func(e workspace.Event) {
 			warning.Reset()
 			sub.render(e)
-			if w := strings.TrimSpace(warning.String()); w != "" {
-				notes = append(notes, oneLine(w))
+			if w := oneLine(strings.TrimSpace(warning.String())); w != "" && !slices.Contains(notes, w) {
+				notes = append(notes, w)
 			}
 		}
 		text, err := do(ws)

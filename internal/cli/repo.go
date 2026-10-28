@@ -798,10 +798,14 @@ func (a *App) newRepoRmCmd() *cobra.Command {
 			if err := explicitTask(args[0]); err != nil {
 				return err
 			}
-			if err := a.workspaceFor(cmd).RemoveRepo(cmd.Context(), args[0], args[1], keep); err != nil {
+			left, err := a.workspaceFor(cmd).RemoveRepo(cmd.Context(), args[0], args[1], keep)
+			if err != nil {
 				return err
 			}
 			a.printf("%s\n", removedRepoText(args[1], args[0]))
+			if left != "" {
+				a.warnf("note: the worktree at %s was left in place\n", left)
+			}
 			return nil
 		},
 	}

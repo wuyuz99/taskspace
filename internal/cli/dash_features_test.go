@@ -264,3 +264,15 @@ func TestDashRemoveRepoOnCollapsedTask(t *testing.T) {
 		t.Fatalf("note %q", m.note)
 	}
 }
+
+func TestDashRemoveRepoRefusedInsideTask(t *testing.T) {
+	h := newHarness(t)
+	h.startedTask(t, "T")
+	m := newDashModel(t.Context(), h.app, time.Second)
+	m = drive(t, m, dashDataMsg(h.app.dashLoad(t.Context())))
+	t.Setenv(envTask, "T")
+	m = drive(t, m, key("-"))
+	if m.confirm != nil || !strings.Contains(m.note, "from outside") {
+		t.Fatalf("note %q", m.note)
+	}
+}
