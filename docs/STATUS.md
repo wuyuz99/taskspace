@@ -104,7 +104,7 @@ checkout-redesign/frontend  agent/checkout-redesign
   signal   blocked, 3m ago: totals endpoint: round per line or per order?
   handoff  API done, tests pass.
 
-enter attach · space expand · s/x task · S/X window · r restart · D clean · t tab · c clear · q quit
+enter attach · space expand · s/x task · S/X window · r restart · D clean · R delete · t tab · c clear · q quit
 ```
 
 `enter` attaches to the selected window and detaching brings you back; inside
@@ -121,6 +121,15 @@ name, using only the width the other columns leave.
 `D` cleans the selected task, after confirming: `tspace clean TASK` without
 `--force`, so it keeps the record and branches, and when work could be lost
 it shows clean's refusal and changes nothing.
+
+`R` deletes the selected task, after confirming: `tspace clean TASK --rm`,
+also without `--force`, so it removes the worktrees, the record and the
+notes (brief and handoff), and keeps the branches. It is a key of its own
+because `D` can be undone with `s` and `R` cannot. When work could be lost,
+clean's refusal shows on the note line and nothing is removed; once the task
+is gone the cursor moves to the next one. A dash running inside the task's
+own session refuses `D` and `R`, since ending the session would end it
+halfway through; run the command from outside.
 
 `S` and `X` start and stop only the selected window, as `tspace start TASK
 REPO` and `tspace stop TASK REPO` (or `--root`) do; `s` and `x` act on the
