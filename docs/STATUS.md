@@ -104,7 +104,7 @@ checkout-redesign/frontend  agent/checkout-redesign
   signal   blocked, 3m ago: totals endpoint: round per line or per order?
   handoff  API done, tests pass.
 
-enter attach · space expand · s/x task · S/X window · r restart · D clean · R delete · - remove repo · t tab · c clear · n new · q quit
+enter attach · space expand · s/x task · S/X window · r restart · D clean · R delete · - remove repo · t tab · c clear · n new · w window · q quit
 ```
 
 `enter` attaches to the selected window and detaching brings you back; inside
@@ -146,6 +146,17 @@ shown, an optional project, and whether to start it, ticked by default.
 create NAME REPO... [--project P] [--start]` and `esc` cancels without
 writing. The cursor then goes to the new task. Agents, briefs and tickets
 are set afterwards with `tspace task update` and `tspace task brief`.
+
+`w` opens another window in a running task, at the selected row's place: a
+repository row's worktree, a saved window's place, or otherwise the task
+root. Its form takes a command (empty for a shell, `agent` for the task's
+agent, otherwise a command line, split into words as a shell would without
+expanding anything), an optional name, shown with its leading `_`, and
+whether to save it, which needs a name. It runs `tspace window TASK [REPO |
+--root] -d ...`, so dash stays in front, and the cursor goes to the new
+window: `enter` then goes to it. A task that is not running says to press
+`s`. These are multiplexer windows (tmux windows, Zellij tabs); tspace does
+not split panes.
 
 `S` and `X` start and stop only the selected window, as `tspace start TASK
 REPO` and `tspace stop TASK REPO` (or `--root`) do; `s` and `x` act on the
