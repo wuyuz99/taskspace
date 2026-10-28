@@ -182,7 +182,7 @@ func (a *App) newWindowCmd() *cobra.Command {
 			} else {
 				label := "shell"
 				if len(argv) > 0 {
-					label = filepath.Base(argv[0])
+					label = windowLabel(filepath.Base(argv[0]))
 				}
 				base := extraWindowPrefix + place + "-" + label
 				window = base
@@ -232,6 +232,21 @@ func (a *App) newWindowCmd() *cobra.Command {
 	cmd.Flags().StringVar(&forget, "forget", "", "stop recreating the saved window NAME")
 	cmd.Flags().StringVar(&rename, "rename", "", "rename the extra window OLD, open or saved, to the name after TASK")
 	return cmd
+}
+
+// windowLabel makes a command's name fit in a window name, which status
+// and dash list only when it is one tspace could give: g++ becomes g--.
+func windowLabel(command string) string {
+	label := strings.Map(func(r rune) rune {
+		if r < 0x80 && (r == '.' || r == '_' || r == '-' || ('a' <= r && r <= 'z') || ('A' <= r && r <= 'Z') || ('0' <= r && r <= '9')) {
+			return r
+		}
+		return '-'
+	}, command)
+	if label == "" {
+		return "cmd"
+	}
+	return label
 }
 
 // forgetWindow drops a saved window from the task. A window of that name

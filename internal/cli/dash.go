@@ -46,6 +46,8 @@ func (a *App) newDashCmd() *cobra.Command {
 			"  t             open the task in a new terminal tab (tspace config terminal)\n" +
 			"  c             clear the row's signal\n" +
 			"  n             create a task, in a form below the table (tspace task create)\n" +
+			"  w             open another window at the row's place, in a form: a shell,\n" +
+			"                the task's agent or a command (tspace window -d)\n" +
 			"  q             quit\n\n" +
 			"Inside the multiplexer, enter switches the client to the window and\n" +
 			"dash keeps running in its own.\n\n" +
@@ -106,8 +108,10 @@ type dashRow struct {
 	Git     string
 	Signal  *task.Signal
 	Dir     string
-	// Saved marks an extra window the task's record keeps.
+	// Saved marks an extra window the task's record keeps; Repo is the
+	// repository it opens in, empty at the task root.
 	Saved bool
+	Repo  string
 }
 
 func (r dashRow) root() bool { return r.Window == task.RootWindowName }
@@ -189,7 +193,7 @@ func (a *App) dashLoad(ctx context.Context) dashData {
 				dir = workspace.ExtraWindow(a.Store, byName[ts.Task], w).Dir
 			}
 			d.Rows = append(d.Rows, dashRow{
-				Task: ts.Task, Window: e.Name, Agent: extraAgent(e), Runtime: e.Runtime, Git: "-", Dir: dir, Saved: e.Saved,
+				Task: ts.Task, Window: e.Name, Agent: extraAgent(e), Runtime: e.Runtime, Git: "-", Dir: dir, Saved: e.Saved, Repo: e.Repo,
 			})
 		}
 	}
@@ -303,7 +307,9 @@ func (m dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.gone != "" && !present(m.gone) {
 			m.gone = ""
 		}
-		if m.made != "" && present(m.made) {
+		// A window opened waits for a refresh that shows it.
+		if m.made != "" && present(m.made) && (m.madeWindow == "" ||
+			slices.ContainsFunc(m.data.Rows, func(r dashRow) bool { return r.Task == m.made && r.Window == m.madeWindow })) {
 			first := true
 			for i, r := range m.data.Rows {
 				if r.Task == m.made && (first || r.Window == m.madeWindow) {
@@ -331,6 +337,13 @@ func (m dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dashDoneMsg:
 		if msg.made != "" {
 			m.made, m.madeWindow = msg.made, msg.window
+			// A window opened is shown, not folded into its task.
+			if msg.window != "" {
+				if m.expanded == nil {
+					m.expanded = map[string]bool{}
+				}
+				m.expanded[msg.made] = true
+			}
 		}
 		if msg.gone != "" {
 			m.gone = msg.gone
@@ -566,6 +579,13 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}),
 		}
 		return m, nil
+	case "w":
+		if !m.sessionUp(row.Task) {
+			m.note = row.Task + " is not running; press s to start it"
+			return m, nil
+		}
+		m.form = m.windowForm(row)
+		return m, nil
 	case "c":
 		if row.Summary > 1 {
 			m.note = "expand the task with space to clear a window's signal"
@@ -751,7 +771,7 @@ func (m dashModel) View() string {
 		b.WriteString(m.note + "\n")
 	}
 	if m.form == nil {
-		b.WriteString(dashFaint.Render("enter attach · space expand · s/x task · S/X window · r restart · D clean · R delete · - remove repo · t tab · c clear · n new · q quit"))
+		b.WriteString(dashFaint.Render("enter attach · space expand · s/x task · S/X window · r restart · D clean · R delete · - remove repo · t tab · c clear · n new · w window · q quit"))
 	}
 
 	// Nothing may wrap: a wrapped line pushes the rest off the alt screen.
