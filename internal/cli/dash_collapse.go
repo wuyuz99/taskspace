@@ -34,7 +34,7 @@ func runtimeUrgency(s status.RuntimeState) int {
 		return 5
 	case status.RuntimeDead:
 		return 4
-	case status.RuntimeNoWindow:
+	case status.RuntimeNoWindow, status.RuntimeInterrupted:
 		return 3
 	case status.RuntimeRunning:
 		return 2

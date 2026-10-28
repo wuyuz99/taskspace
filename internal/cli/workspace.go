@@ -71,6 +71,12 @@ func (a *App) render(e workspace.Event) {
 		if t.AgentRepo != "" && slices.Contains(e.Repos, t.AgentRepo) {
 			a.printf("%-12s runs the task's agent: %s\n", t.AgentRepo, agentDisplay(task.Repo{Agent: t.RepoAgent(t.AgentRepo)}))
 		}
+	case workspace.StartingTask:
+		a.printf("== %s\n", e.Task)
+	case workspace.TaskStarted:
+		a.printf("%s\n\n", startedText(e.Result))
+	case workspace.TaskNotStarted:
+		a.warnf("%s: %v\n\n", e.Task, e.Err)
 	case workspace.Resumed:
 		a.printf("%-12s resumed: %s\n", windowCell(e.Window), shellJoin(e.Command))
 	case workspace.ResumeFailed:

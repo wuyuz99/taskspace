@@ -59,5 +59,10 @@ func (s *Service) closeWindow(ctx context.Context, name, window string) error {
 	if err := rt.CloseWindow(ctx, s.Runtime.SessionName(name), window); err != nil {
 		return err
 	}
+	// A multiplexer ends a session with its last window, and that was on
+	// purpose too.
+	if running, err := s.Runtime.HasSession(ctx, s.Runtime.SessionName(name)); err == nil && !running {
+		s.markStopped(name)
+	}
 	return s.Store.ClearSignal(name, window)
 }

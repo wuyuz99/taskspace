@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	osexec "os/exec"
@@ -213,7 +214,55 @@ func (s *Service) Start(ctx context.Context, name string, opts StartOptions) (*S
 	if _, err := s.checkLaunched(ctx, t, result.Session, before, windows, append([]string{task.RootWindowName}, names...), fresh); err != nil {
 		return nil, err
 	}
+	// Only a session that survived its launch counts as running, so one
+	// whose agents die at once is never offered as interrupted.
+	if err := s.Store.MarkRunning(t.Name); err != nil {
+		s.warnf("tspace: %v", err)
+	}
 	return result, nil
+}
+
+// StartInterrupted starts every interrupted task in turn, reporting
+// StartingTask before each and TaskStarted or TaskNotStarted after it; a
+// failure does not stop the rest. It returns the tasks that did not start.
+func (s *Service) StartInterrupted(ctx context.Context, opts StartOptions) (started, failed []string, err error) {
+	names, err := s.Interrupted(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, name := range names {
+		s.report(StartingTask{Task: name})
+		res, err := s.Start(ctx, name, opts)
+		if err != nil {
+			s.report(TaskNotStarted{Task: name, Err: err})
+			failed = append(failed, name)
+			continue
+		}
+		s.report(TaskStarted{Result: res})
+		started = append(started, name)
+	}
+	return started, failed, nil
+}
+
+// Interrupted lists the tasks whose session something other than stop or
+// clean ended, such as a computer restart, by name. A task whose session is
+// up, or could not be checked, is not among them.
+func (s *Service) Interrupted(ctx context.Context) ([]string, error) {
+	tasks, err := s.Store.List()
+	var skipped *task.SkippedError
+	if err != nil && !errors.As(err, &skipped) {
+		return nil, err
+	}
+	var names []string
+	for _, t := range tasks {
+		if !s.Store.Interrupted(t.Name) {
+			continue
+		}
+		if running, err := s.Runtime.HasSession(ctx, s.Runtime.SessionName(t.Name)); err == nil && !running {
+			names = append(names, t.Name)
+		}
+	}
+	return names, nil
 }
 
 // checkLaunched reports what Start launched that is already gone. Starting
