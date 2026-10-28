@@ -1,0 +1,50 @@
+package workspace
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"strings"
+)
+
+// RemoveRepo takes a repository out of a task. It cleans the repository
+// first, refusing as clean does when work could be lost, so its worktree and
+// windows go with it; then it forgets the repository and the saved windows
+// that open in it. keepWorktree only forgets it, leaving its files and
+// windows under the user's control.
+func (s *Service) RemoveRepo(ctx context.Context, name, repo string, keepWorktree bool) error {
+	t, ctx, unlock, err := s.Lock(ctx, name, s.command("tspace repo rm"), true)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	r, ok := t.Repo(repo)
+	if !ok {
+		return fmt.Errorf("task %q has no repo named %q (has: %s)", t.Name, repo, strings.Join(t.RepoNames(), ", "))
+	}
+	if keepWorktree && repo == t.AgentRepo && s.Runtime.Available(ctx) == nil {
+		if running, err := s.Runtime.HasSession(ctx, s.Runtime.SessionName(t.Name)); err == nil && running {
+			return fmt.Errorf("the task's agent runs in %s's window; stop the task first: tspace stop %s", repo, t.Name)
+		}
+	}
+	if !keepWorktree {
+		// Under the lock already held, so nothing changes in between.
+		if err := s.Clean(ctx, t.Name, CleanOptions{Repos: []string{repo}}); err != nil {
+			return err
+		}
+	}
+	if repo == t.AgentRepo && len(t.Resume) > 0 {
+		s.warnf("note: the task's agent moves to the root window, at %s; a resume command that finds its conversation by directory will not find the one from %s", s.Store.TaskDir(t.Name), repo)
+	}
+	for _, w := range t.RemoveRepo(repo) {
+		s.warnf("note: forgot saved window %s, which opened in %s", w.SessionName(), repo)
+	}
+	if err := s.Store.Save(t); err != nil {
+		return err
+	}
+	// After clean there is no worktree left to speak of.
+	if _, err := os.Stat(r.Worktree); err == nil {
+		s.warnf("note: the worktree at %s was left in place", r.Worktree)
+	}
+	return nil
+}

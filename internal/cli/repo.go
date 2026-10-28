@@ -12,7 +12,6 @@ import (
 	"github.com/spf13/cobra"
 	tsgit "github.com/wuyuz99/taskspace/internal/git"
 	"github.com/wuyuz99/taskspace/internal/task"
-	"github.com/wuyuz99/taskspace/internal/workspace"
 )
 
 func (a *App) newRepoCmd() *cobra.Command {
@@ -773,6 +772,11 @@ func (a *App) addRepo(ctx context.Context, t *task.Task, c *task.Config, path st
 	return nil
 }
 
+// removedRepoText is repo rm's last line, which dash shows too.
+func removedRepoText(repo, taskName string) string {
+	return fmt.Sprintf("removed %s from %s", repo, taskName)
+}
+
 // fetchNote says a lookup used stale refs because fetching failed.
 func fetchNote(err error) string {
 	if err == nil {
@@ -794,37 +798,10 @@ func (a *App) newRepoRmCmd() *cobra.Command {
 			if err := explicitTask(args[0]); err != nil {
 				return err
 			}
-			t, unlock, err := a.lockTask(cmd, args[0], true)
-			if err != nil {
+			if err := a.workspaceFor(cmd).RemoveRepo(cmd.Context(), args[0], args[1], keep); err != nil {
 				return err
 			}
-			defer unlock()
-			r, ok := t.Repo(args[1])
-			if !ok {
-				return fmt.Errorf("task %q has no repo named %q (has: %s)", t.Name, args[1], joinNames(t.RepoNames()))
-			}
-			if keep && args[1] == t.AgentRepo && a.sessionRunning(cmd.Context(), t) {
-				return fmt.Errorf("the task's agent runs in %s's window; stop the task first: tspace stop %s", args[1], t.Name)
-			}
-			if !keep {
-				if err := a.workspaceFor(cmd).Clean(cmd.Context(), t.Name, workspace.CleanOptions{Repos: []string{args[1]}}); err != nil {
-					return err
-				}
-			}
-			if args[1] == t.AgentRepo && len(t.Resume) > 0 {
-				a.warnf("note: the task's agent moves to the root window, at %s; a resume command that finds its conversation by directory will not find the one from %s\n", a.Store.TaskDir(t.Name), args[1])
-			}
-			for _, w := range t.RemoveRepo(args[1]) {
-				a.warnf("note: forgot saved window %s, which opened in %s\n", w.SessionName(), args[1])
-			}
-			if err := a.Store.Save(t); err != nil {
-				return err
-			}
-			a.printf("removed %s from %s\n", args[1], t.Name)
-			// After clean there is no worktree left to speak of.
-			if _, err := os.Stat(r.Worktree); err == nil {
-				a.warnf("note: the worktree at %s was left in place\n", r.Worktree)
-			}
+			a.printf("%s\n", removedRepoText(args[1], args[0]))
 			return nil
 		},
 	}

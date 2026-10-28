@@ -104,7 +104,7 @@ checkout-redesign/frontend  agent/checkout-redesign
   signal   blocked, 3m ago: totals endpoint: round per line or per order?
   handoff  API done, tests pass.
 
-enter attach · space expand · s/x task · S/X window · r restart · D clean · R delete · t tab · c clear · q quit
+enter attach · space expand · s/x task · S/X window · r restart · D clean · R delete · - remove repo · t tab · c clear · q quit
 ```
 
 `enter` attaches to the selected window and detaching brings you back; inside
@@ -130,6 +130,13 @@ clean's refusal shows on the note line and nothing is removed; once the task
 is gone the cursor moves to the next one. A dash running inside the task's
 own session refuses `D` and `R`, since ending the session would end it
 halfway through; run the command from outside.
+
+`-` removes the selected repository from its task, after confirming: `tspace
+repo rm TASK REPO`, which cleans its worktree, closes its window and saved
+windows, and keeps its branch. When work could be lost, clean's refusal
+shows on the note line and nothing changes; `repo rm`'s notes, such as a
+saved window it forgot, follow the result. It works only on a repository
+row: on a collapsed task, expand it first.
 
 `S` and `X` start and stop only the selected window, as `tspace start TASK
 REPO` and `tspace stop TASK REPO` (or `--root`) do; `s` and `x` act on the

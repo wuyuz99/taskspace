@@ -2,6 +2,7 @@ package cli
 
 import (
 	"os"
+	osexec "os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -191,5 +192,75 @@ func TestDashCleanRefusedInsideTask(t *testing.T) {
 	}
 	if !h.app.Store.Exists(name) {
 		t.Fatal("task removed")
+	}
+}
+
+// - removes the selected repository, as repo rm does: refused while its
+// work is uncommitted, then its worktree goes and its branch stays.
+func TestDashRemoveRepo(t *testing.T) {
+	h := newHarness(t)
+	tk := h.startedRootTask(t, "T")
+	repo := tk.RepoNames()[0]
+	wt := tk.Repos[repo].Worktree
+	m := newDashModel(t.Context(), h.app, time.Second)
+	m.expanded = map[string]bool{"T": true}
+	m = drive(t, m, dashDataMsg(h.app.dashLoad(t.Context())))
+	if len(m.data.Rows) != 2 || !m.data.Rows[0].root() {
+		t.Fatalf("rows %+v", m.data.Rows)
+	}
+	m = drive(t, m, key("-"))
+	if m.confirm != nil || !strings.Contains(m.note, "root window isn't a repository") {
+		t.Fatalf("- on the root row: %q", m.note)
+	}
+
+	m.cursor = 1
+	if err := os.WriteFile(filepath.Join(wt, "dirty"), []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	m = drive(t, m, key("-"))
+	if m.confirm == nil || !strings.Contains(m.confirm.prompt, "remove "+repo+" from T") {
+		t.Fatalf("confirm = %+v", m.confirm)
+	}
+	m = drive(t, m, key("y"))
+	if !m.noteErr || !strings.Contains(m.note, "refusing to clean") {
+		t.Fatalf("dirty: %q", m.note)
+	}
+	if _, ok := h.load(t, "T").Repo(repo); !ok {
+		t.Fatal("refused rm forgot the repository")
+	}
+
+	if err := os.Remove(filepath.Join(wt, "dirty")); err != nil {
+		t.Fatal(err)
+	}
+	saved := h.load(t, "T")
+	saved.Windows = []task.Window{{Name: "git", Repo: repo}}
+	if err := h.app.Store.Save(saved); err != nil {
+		t.Fatal(err)
+	}
+	m = drive(t, m, key("-"))
+	m = drive(t, m, key("y"))
+	if m.noteErr || !strings.Contains(m.note, "removed "+repo+" from T") || !strings.Contains(m.note, "forgot saved window _git") {
+		t.Fatal(m.note)
+	}
+	if _, ok := h.load(t, "T").Repo(repo); ok {
+		t.Fatal("repository kept")
+	}
+	if _, err := os.Stat(wt); !os.IsNotExist(err) {
+		t.Fatal("worktree kept")
+	}
+	if out, err := osexec.Command("git", "-C", h.repo, "branch", "--list", tk.Repos[repo].Branch).Output(); err != nil || len(strings.TrimSpace(string(out))) == 0 {
+		t.Fatalf("branch gone: %q %v", out, err)
+	}
+}
+
+func TestDashRemoveRepoOnCollapsedTask(t *testing.T) {
+	m := newDashModel(t.Context(), nil, time.Second)
+	m = drive(t, m, dashDataMsg(dashData{Rows: []dashRow{
+		{Task: "A", Window: task.RootWindowName, Runtime: status.RuntimeRunning},
+		{Task: "A", Window: "backend", Runtime: status.RuntimeRunning},
+	}}))
+	m = drive(t, m, key("-"))
+	if m.confirm != nil || !strings.Contains(m.note, "expand the task") {
+		t.Fatalf("note %q", m.note)
 	}
 }
