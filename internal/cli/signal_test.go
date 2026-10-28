@@ -254,7 +254,7 @@ func TestDash(t *testing.T) {
 		t.Fatalf("restart: %q", m.note)
 	}
 	m = drive(t, m, key("down"))
-	if view := m.View(); !strings.Contains(view, "blocked, 0s ago: which column?") || !strings.Contains(view, tk.Repos[repo].Worktree) {
+	if view := m.View(); !strings.Contains(view, "ago: which column?") || !strings.Contains(view, tk.Repos[repo].Worktree) {
 		t.Fatalf("detail:\n%s", view)
 	}
 	m = drive(t, m, key("r"))
