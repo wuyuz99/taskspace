@@ -104,7 +104,7 @@ checkout-redesign/frontend  agent/checkout-redesign
   signal   blocked, 3m ago: totals endpoint: round per line or per order?
   handoff  API done, tests pass.
 
-enter attach · space expand · s/x task · S/X window · r restart · D clean · R delete · - remove repo · t tab · c clear · q quit
+enter attach · space expand · s/x task · S/X window · r restart · D clean · R delete · - remove repo · t tab · c clear · n new · q quit
 ```
 
 `enter` attaches to the selected window and detaching brings you back; inside
@@ -137,6 +137,15 @@ windows, and keeps its branch. When work could be lost, clean's refusal
 shows on the note line and nothing changes; `repo rm`'s notes, such as a
 saved window it forgot, follow the result. It works only on a repository
 row: on a collapsed task, expand it first.
+
+`n` creates a task, through a form below the table: its name, checked as
+you type it (a bad or taken name is refused before anything is written),
+its repositories as `REPO[@BRANCH][:BASE]` words, with the registered names
+shown, an optional project, and whether to start it, ticked by default.
+`tab` moves between fields, space ticks the box, `enter` runs `tspace task
+create NAME REPO... [--project P] [--start]` and `esc` cancels without
+writing. The cursor then goes to the new task. Agents, briefs and tickets
+are set afterwards with `tspace task update` and `tspace task brief`.
 
 `S` and `X` start and stop only the selected window, as `tspace start TASK
 REPO` and `tspace stop TASK REPO` (or `--root`) do; `s` and `x` act on the
