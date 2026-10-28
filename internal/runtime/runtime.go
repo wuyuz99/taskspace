@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -154,6 +155,24 @@ func checkRestart(st SessionState, w Window) error {
 // outside this package (status, in particular) can look a repo's pane back up
 // without duplicating the sanitizing rules.
 func WindowName(repo string) string { return sanitize(repo) }
+
+// DisplayName undoes WindowName, for a window found in a session whose name
+// tspace did not choose itself, such as an extra window opened unsaved.
+// An identifier sanitize did not produce is returned as it is.
+func DisplayName(id string) string {
+	var b strings.Builder
+	for i := 0; i < len(id); i++ {
+		if id[i] == '~' && i+2 < len(id) {
+			if c, err := strconv.ParseUint(id[i+1:i+3], 16, 8); err == nil {
+				b.WriteByte(byte(c))
+				i += 2
+				continue
+			}
+		}
+		b.WriteByte(id[i])
+	}
+	return b.String()
+}
 
 // sanitize makes a string safe to use as a session or window identifier.
 //

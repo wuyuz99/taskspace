@@ -27,7 +27,9 @@ func (a *App) newDashCmd() *cobra.Command {
 			"its runtime state, what its agent last reported with `tspace signal`, and its\n" +
 			"git state. Below the table it shows the selected row's directory, signal\n" +
 			"message and handoff. It is `tspace status` for a person supervising several\n" +
-			"agents; everything it does is also a command.\n\n" +
+			"agents; everything it does is also a command. Extra windows, opened with\n" +
+			"`tspace window`, are _NAME rows under their task: enter, X and r work on\n" +
+			"them as on any window, r only on a saved one.\n\n" +
 			"  up/down, j/k  select a row (mouse wheel moves one row)\n" +
 			"  space         expand/collapse a quiet task; failures stay expanded\n" +
 			"  enter         attach to that window; detaching returns here\n" +
@@ -98,9 +100,14 @@ type dashRow struct {
 	Git     string
 	Signal  *task.Signal
 	Dir     string
+	// Saved marks an extra window the task's record keeps.
+	Saved bool
 }
 
 func (r dashRow) root() bool { return r.Window == task.RootWindowName }
+
+// extra says the row is a window opened with `tspace window`.
+func (r dashRow) extra() bool { return task.IsExtraWindow(r.Window) }
 
 func (r dashRow) label() string {
 	if r.root() {
@@ -166,6 +173,17 @@ func (a *App) dashLoad(ctx context.Context) dashData {
 			d.Rows = append(d.Rows, dashRow{
 				Task: r.Task, Window: r.Repo, Branch: r.Branch, Agent: r.Agent,
 				Runtime: r.Runtime, Git: gitSummary(r), Signal: r.Signal, Dir: byName[r.Task].Repos[r.Repo].Worktree,
+			})
+		}
+		for _, e := range ts.Extra {
+			// Only a saved window's place is known.
+			dir := ""
+			if e.Saved {
+				w := task.Window{Name: strings.TrimPrefix(e.Name, task.ExtraWindowPrefix), Repo: e.Repo}
+				dir = workspace.ExtraWindow(a.Store, byName[ts.Task], w).Dir
+			}
+			d.Rows = append(d.Rows, dashRow{
+				Task: ts.Task, Window: e.Name, Agent: extraAgent(e), Runtime: e.Runtime, Git: "-", Dir: dir, Saved: e.Saved,
 			})
 		}
 	}
@@ -374,6 +392,10 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return startedText(res), nil
 		})
 	case "S":
+		if row.extra() {
+			m.note = "S starts a primary window; s starts the task with its saved windows"
+			return m, nil
+		}
 		opts := workspace.StartOptions{Root: row.root()}
 		if !row.root() {
 			opts.Repos = []string{row.Window}
@@ -628,6 +650,9 @@ func (m dashModel) table(b *strings.Builder, now time.Time) {
 		if r.root() {
 			repo = "(root)"
 		}
+		if r.Saved {
+			repo += " (saved)"
+		}
 		if r.Summary > 1 {
 			repo = fmt.Sprintf("(%d windows)", r.Summary)
 		}
@@ -705,7 +730,9 @@ func (m dashModel) detail(b *strings.Builder, now time.Time) {
 	if s := strings.TrimSpace(oneLine(info.Ticket) + "  " + oneLine(info.Title)); s != "" {
 		b.WriteString("  " + s + "\n")
 	}
-	b.WriteString(dashFaint.Render("  "+row.Dir) + "\n")
+	if row.Dir != "" {
+		b.WriteString(dashFaint.Render("  "+row.Dir) + "\n")
+	}
 	if s := row.Signal; s != nil {
 		text := fmt.Sprintf("  signal   %s, %s ago", s.State, age(now.Sub(s.At)))
 		if s.Message != "" {

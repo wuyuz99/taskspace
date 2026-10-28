@@ -11,12 +11,18 @@ TASK               REPO      BRANCH                   AGENT   RUNTIME     GIT
 checkout-redesign  (root)    -                        claude  running     -
 checkout-redesign  backend   agent/checkout-redesign  shell   running     dirty (3 files)
 checkout-redesign  frontend  agent/checkout-redesign  codex   dead        clean, ahead 2
+checkout-redesign  _mon      -                        htop    running     -
 payments-fix       backend   agent/payments-fix       codex   no-session  missing
 ```
 
 A task's first row is its `_root` window; `payments-fix` has one repository,
 so its agent runs there and it has none. It has a runtime state but no git
 state of its own: whatever its agent changes shows up in the repositories' rows.
+
+Extra windows, opened with `tspace window`, follow as `_NAME` rows, marked
+`(saved)` when start opens them again; a saved window that is not open shows
+as `no-window`. `--json` lists them in each task's `windows` array, with
+`name`, `saved`, `runtime` and, for a saved one, its `repo` and `command`.
 
 - **RUNTIME** — `running`, `dead`, `no-window`, `no-session`, `unknown`
 - **GIT** — `clean`, `dirty (N files)`, `missing`, `error`, plus stash and
@@ -119,6 +125,11 @@ it shows clean's refusal and changes nothing.
 `S` and `X` start and stop only the selected window, as `tspace start TASK
 REPO` and `tspace stop TASK REPO` (or `--root`) do; `s` and `x` act on the
 whole task. Extra windows in a stopped window's worktree stay open.
+
+Extra windows have rows of their own, under their task. `enter` goes to one,
+`X` closes it (`tspace stop TASK _NAME`) and `r` relaunches a dead saved one
+with its saved command. A closed saved window stays saved and comes back on
+the next start; `tspace window TASK --forget NAME` drops it.
 
 For moving between a task's windows once inside it, see
 [Task window navigation](TMUX_NAVIGATION.md).

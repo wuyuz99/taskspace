@@ -27,6 +27,11 @@ upgrade.
   blocked or failed signal keeps it open. Task titles follow their names in
   the space left over. `D` cleans the selected task after confirming, as
   `tspace clean TASK` without `--force`.
+- **Extra windows show up, and close one at a time.** `status` and dash list
+  each task's extra windows as `_NAME` rows, saved ones marked, and `status
+  --json` gains a `windows` array. `tspace stop TASK _NAME`, or `X` on its
+  row, closes just that window; a saved one stays saved. `tspace restart TASK
+  _NAME`, or `r`, relaunches a dead saved window with its saved command.
 - **[Task window navigation](docs/TMUX_NAVIGATION.md)**: an opt-in tmux
   binding for a window picker limited to the current task, and the default
   one for switching tasks, with a script that checks both.

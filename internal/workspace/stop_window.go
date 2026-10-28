@@ -3,12 +3,15 @@ package workspace
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/wuyuz99/taskspace/internal/runtime"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
-// StopWindow closes only the named primary window; extra windows stay open.
+// StopWindow closes only the named window: a primary one, or an extra one
+// named with its leading '_'. The rest of the session stays open, and a
+// saved extra window stays saved, for the next start to open again.
 func (s *Service) StopWindow(ctx context.Context, name, repo string, root bool) error {
 	t, ctx, unlock, err := s.Lock(ctx, name, s.command("tspace stop"), true)
 	if err != nil {
@@ -16,7 +19,8 @@ func (s *Service) StopWindow(ctx context.Context, name, repo string, root bool) 
 	}
 	defer unlock()
 	window := repo
-	if root {
+	switch {
+	case root:
 		if repo != "" {
 			return fmt.Errorf("--root cannot be combined with a repository")
 		}
@@ -24,8 +28,25 @@ func (s *Service) StopWindow(ctx context.Context, name, repo string, root bool) 
 			return fmt.Errorf("task %s has no root window", t.Name)
 		}
 		window = task.RootWindowName
-	} else if _, ok := t.Repo(repo); !ok {
-		return fmt.Errorf("task %s has no repository %s", t.Name, repo)
+	case repo == task.RootWindowName:
+		return fmt.Errorf("%s is the root window; stop it with: tspace stop %s --root", repo, t.Name)
+	case strings.HasPrefix(repo, task.ExtraWindowPrefix):
+		// Repository names start with a letter or digit, so this can only be
+		// an extra window, and it has to be open to be closed.
+		if !task.IsExtraWindow(repo) {
+			return fmt.Errorf("%q is not a window name tspace gives", repo)
+		}
+		st, err := s.Runtime.State(ctx, s.Runtime.SessionName(t.Name))
+		if err != nil {
+			return err
+		}
+		if _, open := st.Pane(s.Runtime.WindowName(repo)); !open {
+			return fmt.Errorf("task %s has no open window %s", t.Name, repo)
+		}
+	default:
+		if _, ok := t.Repo(repo); !ok {
+			return fmt.Errorf("task %s has no repository %s", t.Name, repo)
+		}
 	}
 	return s.closeWindow(ctx, t.Name, window)
 }
