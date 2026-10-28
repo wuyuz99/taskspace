@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"sort"
+	"strings"
 	"sync"
 
 	tsgit "github.com/wuyuz99/taskspace/internal/git"
@@ -77,6 +78,9 @@ type TaskStatus struct {
 	// is nil for a single-repo task, whose agent runs in the repository.
 	Root  *RootStatus
 	Repos []RepoStatus
+	// Extra are the task's extra windows: those saved with it, open or not,
+	// and those open in its session without being saved, by name.
+	Extra []ExtraStatus
 	// RuntimeErr is set when the runtime could not be queried at all.
 	RuntimeErr error
 }
@@ -86,6 +90,21 @@ type RootStatus struct {
 	Agent   string
 	Runtime RuntimeState
 	Signal  *task.Signal
+}
+
+// ExtraStatus is a window opened with `tspace window`, beside the root and
+// repository windows. It has no signal or git state of its own.
+type ExtraStatus struct {
+	// Name is the window's name in the session, with its leading '_'.
+	Name string
+	// Saved says the task's record keeps it, so start opens it again. Repo
+	// and Command are then the record's; an unsaved window's are unknown.
+	Saved   bool
+	Repo    string
+	Command []string
+	// Running is the command the multiplexer sees in it, if open.
+	Running string
+	Runtime RuntimeState
 }
 
 // SignalReader supplies what agents have reported about themselves.
@@ -170,7 +189,42 @@ func (a *Aggregator) Task(ctx context.Context, t *task.Task) TaskStatus {
 	wg.Wait()
 
 	out.Repos = rows
+	out.Extra = a.extraWindows(t, sess, runtimeUnknown)
 	return out
+}
+
+// extraWindows lists t's saved windows in record order, then any other
+// extra window open in sess by name.
+func (a *Aggregator) extraWindows(t *task.Task, sess runtime.SessionState, runtimeUnknown bool) []ExtraStatus {
+	var out []ExtraStatus
+	known := map[string]bool{}
+	for _, w := range t.Windows {
+		e := ExtraStatus{Name: w.SessionName(), Saved: true, Repo: w.Repo, Command: w.Command,
+			Runtime: a.windowState(sess, w.SessionName(), runtimeUnknown)}
+		if a.Runtime != nil {
+			known[a.Runtime.WindowName(e.Name)] = true
+			e.Running = sess.Panes[a.Runtime.WindowName(e.Name)].Command
+		}
+		out = append(out, e)
+	}
+	if a.Runtime == nil {
+		return out
+	}
+	known[a.Runtime.WindowName(task.RootWindowName)] = true
+	var open []ExtraStatus
+	for id, pane := range sess.Panes {
+		name := runtime.DisplayName(id)
+		if known[id] || !strings.HasPrefix(name, task.ExtraWindowPrefix) {
+			continue
+		}
+		state := RuntimeRunning
+		if pane.Dead {
+			state = RuntimeDead
+		}
+		open = append(open, ExtraStatus{Name: name, Running: pane.Command, Runtime: state})
+	}
+	sort.Slice(open, func(i, j int) bool { return open[i].Name < open[j].Name })
+	return append(out, open...)
 }
 
 func (a *Aggregator) repoStatus(ctx context.Context, taskName, repoName string, r task.Repo, sess runtime.SessionState, runtimeUnknown bool) RepoStatus {

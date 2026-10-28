@@ -78,11 +78,14 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 func (a *App) newStopCmd() *cobra.Command {
 	var root bool
 	cmd := &cobra.Command{
-		Use:   "stop TASK [REPO | --root]",
+		Use:   "stop TASK [REPO | _WINDOW | --root]",
 		Short: "Stop the task's agents, leaving worktrees untouched",
 		Long: "stop interrupts the agents, gives them a moment, then ends the session.\n" +
 			"Worktrees and branches are not touched. Name REPO or --root to stop only\n" +
-			"that primary window; extra windows stay open. TASK must be explicit.",
+			"that primary window, or an extra window by its name, such as _mon, to\n" +
+			"close only that one; the other windows stay open. A saved window that is\n" +
+			"closed stays saved, and start opens it again; forget it with\n" +
+			"`tspace window TASK --forget NAME`. TASK must be explicit.",
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := explicitTask(args[0]); err != nil {
@@ -113,10 +116,11 @@ func (a *App) newStopCmd() *cobra.Command {
 
 func (a *App) newRestartCmd() *cobra.Command {
 	var root, resume bool
-	cmd := &cobra.Command{Use: "restart TASK [REPO | --root]", Short: "Relaunch a dead agent or shell",
+	cmd := &cobra.Command{Use: "restart TASK [REPO | _WINDOW | --root]", Short: "Relaunch a dead agent or shell",
 		Long: "restart relaunches a dead repository window, or with --root the task-root\n" +
 			"window, using its configured command. A window is dead when `tspace status`\n" +
-			"shows it as such: its command has exited.\n\n" +
+			"shows it as such: its command has exited. A saved extra window, named with\n" +
+			"its leading '_', is relaunched with its saved command.\n\n" +
 			"It refuses live panes. It replaces the old pane's output, so inspect that\n" +
 			"first. It never reruns setup hooks.\n\n" +
 			"--resume runs the window's resume command instead, which brings the agent\n" +

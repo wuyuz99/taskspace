@@ -21,6 +21,16 @@ type statusJSON struct {
 	RuntimeError string           `json:"runtime_error,omitempty"`
 	Root         *statusRootJSON  `json:"root"`
 	Repos        []statusRepoJSON `json:"repos"`
+	// Windows are the extra windows: saved, open, or both.
+	Windows []statusWindowJSON `json:"windows"`
+}
+
+type statusWindowJSON struct {
+	Name    string   `json:"name"`
+	Saved   bool     `json:"saved"`
+	Repo    string   `json:"repo,omitempty"`
+	Command []string `json:"command,omitempty"`
+	Runtime string   `json:"runtime"`
 }
 
 type statusRootJSON struct {
@@ -62,6 +72,10 @@ func (a *App) printStatusJSON(tasks []*task.Task, results []status.TaskStatus) e
 			Session: ts.Session,
 			Running: ts.Running,
 			Repos:   make([]statusRepoJSON, 0, len(ts.Repos)),
+			Windows: make([]statusWindowJSON, 0, len(ts.Extra)),
+		}
+		for _, e := range ts.Extra {
+			row.Windows = append(row.Windows, statusWindowJSON{Name: e.Name, Saved: e.Saved, Repo: e.Repo, Command: e.Command, Runtime: string(e.Runtime)})
 		}
 		// A single-repo task has no root window: "root" is null.
 		if ts.Root != nil {
@@ -134,7 +148,9 @@ func (a *App) newStatusCmd() *cobra.Command {
 			"columns because a worktree can be dirty and running at the same time —\n" +
 			"that is the normal state of an agent doing its job.\n\n" +
 			"Each task's first row, (root), is the window at the task root. It has a\n" +
-			"runtime state but no git state: its changes appear in the repositories.\n\n" +
+			"runtime state but no git state: its changes appear in the repositories.\n" +
+			"Extra windows, opened with `tspace window`, follow as _NAME rows, marked\n" +
+			"(saved) when start opens them again.\n\n" +
 			"RUNTIME is one of:\n\n" +
 			"  running     the window's command is alive\n" +
 			"  dead        the window is there but its command has exited; see tspace restart\n" +
@@ -245,6 +261,9 @@ func printStatusTable(out, errOut io.Writer, results []status.TaskStatus) {
 			empty = false
 			row(tw, r.Signal, r.Task, r.Repo, dash(r.Branch), r.Agent, string(r.Runtime), gitSummary(r))
 		}
+		for _, e := range ts.Extra {
+			row(tw, nil, ts.Task, extraLabel(e), "-", extraAgent(e), string(e.Runtime), "-")
+		}
 	}
 	tw.Flush()
 	if empty {
@@ -261,6 +280,27 @@ func printStatusTable(out, errOut io.Writer, results []status.TaskStatus) {
 			}
 		}
 	}
+}
+
+// extraLabel names an extra window in the REPO column, marking a saved one,
+// which start opens again.
+func extraLabel(e status.ExtraStatus) string {
+	if e.Saved {
+		return e.Name + " (saved)"
+	}
+	return e.Name
+}
+
+// extraAgent is what an extra window runs: its saved command, else what the
+// multiplexer sees running in it.
+func extraAgent(e status.ExtraStatus) string {
+	switch {
+	case e.Saved:
+		return task.Repo{Agent: e.Command}.AgentLabel()
+	case e.Running != "":
+		return e.Running
+	}
+	return "-"
 }
 
 // signalSummary renders the SIGNAL column: the state and how long it has stood.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/wuyuz99/taskspace/internal/runtime"
 	"github.com/wuyuz99/taskspace/internal/task"
@@ -65,6 +66,21 @@ func (s *Service) Restart(ctx context.Context, name string, opts RestartOptions)
 			return "", fmt.Errorf("task directory %s is missing; run: tspace start %s", w.Dir, t.Name)
 		}
 		label += " root window"
+	} else if strings.HasPrefix(opts.Repo, task.ExtraWindowPrefix) {
+		// Only a saved window's command is known; an unsaved one's was typed
+		// once and never recorded.
+		i, ok := t.SavedWindow(opts.Repo)
+		if !ok {
+			return "", fmt.Errorf("%s is not saved, so tspace does not know what it ran; close it with: tspace stop %s %s", opts.Repo, t.Name, opts.Repo)
+		}
+		if opts.Resume {
+			return "", fmt.Errorf("%s is an extra window; there is no agent to resume", opts.Repo)
+		}
+		w = ExtraWindow(s.Store, t, t.Windows[i])
+		if info, err := os.Stat(w.Dir); err != nil || !info.IsDir() {
+			return "", fmt.Errorf("%s is missing; run: tspace start %s", w.Dir, t.Name)
+		}
+		label += "/" + w.Name
 	} else {
 		if opts.Repo == "" {
 			return "", fmt.Errorf("name a repository of %s to restart, or its root window", t.Name)
