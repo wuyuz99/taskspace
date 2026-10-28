@@ -154,3 +154,42 @@ func TestDashDeleteTask(t *testing.T) {
 		t.Fatalf("cursor on %+v, want %s", r, next)
 	}
 }
+
+// Deleting the last task moves the cursor to the first row of the one
+// before it, and a refresh that still shows the task does not move it.
+func TestDashDeleteLastTask(t *testing.T) {
+	h, m := loadedDash(t)
+	last := m.data.Rows[len(m.data.Rows)-1].Task
+	m.cursor = len(m.data.Rows) - 1
+	stale := h.app.dashLoad(t.Context())
+	m = drive(t, m, key("R"))
+	m = drive(t, m, key("y"))
+	if m.noteErr {
+		t.Fatal(m.note)
+	}
+	m = drive(t, m, dashDataMsg(stale))
+	if m.gone != last {
+		t.Fatal("a stale refresh forgot the deleted task")
+	}
+	m = drive(t, m, dashDataMsg(h.app.dashLoad(t.Context())))
+	r, ok := m.selected()
+	if !ok || r.Task == last || (m.cursor > 0 && m.data.Rows[m.cursor-1].Task == r.Task) {
+		t.Fatalf("cursor %d on %+v", m.cursor, r)
+	}
+}
+
+// Inside a task's own session, D and R would end the dash halfway.
+func TestDashCleanRefusedInsideTask(t *testing.T) {
+	h, m := loadedDash(t)
+	name := m.data.Rows[0].Task
+	t.Setenv(envTask, name)
+	for _, k := range []string{"D", "R"} {
+		m = drive(t, m, key(k))
+		if m.confirm != nil || !m.noteErr || !strings.Contains(m.note, "from outside") {
+			t.Fatalf("%s: confirm=%+v note=%q", k, m.confirm, m.note)
+		}
+	}
+	if !h.app.Store.Exists(name) {
+		t.Fatal("task removed")
+	}
+}

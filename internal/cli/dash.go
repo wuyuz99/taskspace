@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -199,6 +201,8 @@ type (
 	dashDoneMsg struct {
 		text string
 		err  error
+		// gone is a task the action deleted.
+		gone string
 	}
 )
 
@@ -225,6 +229,8 @@ type dashModel struct {
 	note    string
 	noteErr bool
 	confirm *dashConfirm
+	// gone is the task an action just deleted, until the next refresh.
+	gone string
 	// attach is set when the program quits in order to attach.
 	attach *dashRow
 }
@@ -270,12 +276,30 @@ func (m dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.data, m.loaded, m.loading = dashData(msg), true, false
 		m.rawRows = append([]dashRow(nil), m.data.Rows...)
 		m.data.Rows = collapseDashRows(m.rawRows, m.expanded)
-		if had {
-			// A task that is gone leaves the cursor on the one after it, or
-			// the last: rows are sorted by task name.
+		// A refresh begun before the delete may still show the task.
+		present := func(name string) bool {
+			return slices.ContainsFunc(m.data.Rows, func(r dashRow) bool { return r.Task == name })
+		}
+		if m.gone != "" && !present(m.gone) && had && prev.Task == m.gone {
+			// A task just deleted leaves the cursor on the first row of the
+			// one after it, or of the last; rows are sorted by task name.
 			for i, r := range m.data.Rows {
-				m.cursor = i
-				if r.Task >= prev.Task {
+				if i == 0 || r.Task != m.data.Rows[i-1].Task {
+					m.cursor = i
+				}
+				if r.Task > prev.Task {
+					break
+				}
+			}
+			had = false
+		}
+		if m.gone != "" && !present(m.gone) {
+			m.gone = ""
+		}
+		if had {
+			for i, r := range m.data.Rows {
+				if r.Task == prev.Task {
+					m.cursor = i
 					break
 				}
 			}
@@ -289,6 +313,10 @@ func (m dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case dashDoneMsg:
+		if msg.gone != "" {
+			m.gone = msg.gone
+			delete(m.expanded, msg.gone)
+		}
 		m.note, m.noteErr = msg.text, false
 		if msg.err != nil {
 			m.note, m.noteErr = msg.err.Error(), true
@@ -468,24 +496,14 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "D":
-		m.confirm = &dashConfirm{
-			prompt: fmt.Sprintf("clean %s and remove its worktrees? record and branches are kept (y/N)", row.Task),
-			run: m.act(func(ws *workspace.Service) (string, error) {
-				err := ws.Clean(m.ctx, row.Task, workspace.CleanOptions{})
-				return "cleaned " + row.Task, err
-			}),
-		}
-		return m, nil
+		return m.clean(row.Task, workspace.CleanOptions{},
+			fmt.Sprintf("clean %s and remove its worktrees? record and branches are kept (y/N)", row.Task),
+			"cleaned "+row.Task)
 	case "R":
 		// Its own key, not a choice under D: D can be undone with s, R cannot.
-		m.confirm = &dashConfirm{
-			prompt: fmt.Sprintf("delete %s: remove worktrees, record and notes? branches are kept (y/N)", row.Task),
-			run: m.act(func(ws *workspace.Service) (string, error) {
-				err := ws.Clean(m.ctx, row.Task, workspace.CleanOptions{Remove: true})
-				return "deleted " + row.Task + "; its branches are kept", err
-			}),
-		}
-		return m, nil
+		return m.clean(row.Task, workspace.CleanOptions{Remove: true},
+			fmt.Sprintf("delete %s: remove worktrees, record and notes? branches are kept (y/N)", row.Task),
+			"deleted "+row.Task+"; its branches are kept, with no task referring to them")
 	case "c":
 		if row.Summary > 1 {
 			m.note = "expand the task with space to clear a window's signal"
@@ -500,6 +518,30 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return dashDoneMsg{text: row.label() + ": signal cleared", err: err}
 		}
 	}
+	return m, nil
+}
+
+// clean asks prompt, then cleans name as `tspace clean` does with opts. A
+// dash running in name's own session would end with it, halfway through, so
+// it refuses there. A task deleted is remembered, for the cursor to move on.
+func (m dashModel) clean(name string, opts workspace.CleanOptions, prompt, done string) (tea.Model, tea.Cmd) {
+	if os.Getenv(envTask) == name {
+		m.note, m.noteErr = fmt.Sprintf("dash runs in %s's session, which this would end first; run it from outside: tspace clean %s", name, name), true
+		if opts.Remove {
+			m.note += " --rm"
+		}
+		return m, nil
+	}
+	act := m.act(func(ws *workspace.Service) (string, error) {
+		return done, ws.Clean(m.ctx, name, opts)
+	})
+	m.confirm = &dashConfirm{prompt: prompt, run: func() tea.Msg {
+		msg := act().(dashDoneMsg)
+		if msg.err == nil && opts.Remove {
+			msg.gone = name
+		}
+		return msg
+	}}
 	return m, nil
 }
 

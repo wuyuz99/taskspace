@@ -125,8 +125,11 @@ it shows clean's refusal and changes nothing.
 `R` deletes the selected task, after confirming: `tspace clean TASK --rm`,
 also without `--force`, so it removes the worktrees, the record and the
 notes (brief and handoff), and keeps the branches. It is a key of its own
-because `D` can be undone with `s` and `R` cannot. A refusal shows on the
-note line and nothing is removed; otherwise the cursor moves to the next task.
+because `D` can be undone with `s` and `R` cannot. When work could be lost,
+clean's refusal shows on the note line and nothing is removed; once the task
+is gone the cursor moves to the next one. A dash running inside the task's
+own session refuses `D` and `R`, since ending the session would end it
+halfway through; run the command from outside.
 
 `S` and `X` start and stop only the selected window, as `tspace start TASK
 REPO` and `tspace stop TASK REPO` (or `--root`) do; `s` and `x` act on the
