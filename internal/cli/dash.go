@@ -41,6 +41,8 @@ func (a *App) newDashCmd() *cobra.Command {
 			"  S / X         start / stop only the selected window (tspace start/stop TASK REPO)\n" +
 			"  D             clean the task, after confirming (tspace clean)\n" +
 			"  R             delete the task, after confirming (tspace clean --rm)\n" +
+			"  -             remove the selected repository from the task, after\n" +
+			"                confirming (tspace repo rm)\n" +
 			"  t             open the task in a new terminal tab (tspace config terminal)\n" +
 			"  c             clear the row's signal\n" +
 			"  q             quit\n\n" +
@@ -504,6 +506,34 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.clean(row.Task, workspace.CleanOptions{Remove: true},
 			fmt.Sprintf("delete %s: remove worktrees, record and notes? branches are kept (y/N)", row.Task),
 			"deleted "+row.Task+"; its branches are kept, with no task referring to them")
+	case "-":
+		switch {
+		case row.Summary > 1:
+			m.note = "expand the task with space to choose a repository"
+			return m, nil
+		case row.root():
+			m.note = "the root window isn't a repository; X closes it, R deletes the task"
+			return m, nil
+		case row.extra():
+			m.note = row.Window + " isn't a repository; X closes it"
+			return m, nil
+		}
+		if os.Getenv(envTask) == row.Task {
+			m.note, m.noteErr = fmt.Sprintf("dash runs in %s's session, and this closes windows of it; run it from outside: tspace repo rm %s %s", row.Task, row.Task, row.Window), true
+			return m, nil
+		}
+		m.confirm = &dashConfirm{
+			prompt: fmt.Sprintf("remove %s from %s: clean its worktree and close its window? branch is kept (y/N)", row.Window, row.Task),
+			run: m.act(func(ws *workspace.Service) (string, error) {
+				left, err := ws.RemoveRepo(m.ctx, row.Task, row.Window, false)
+				text := removedRepoText(row.Window, row.Task)
+				if left != "" {
+					text += "; note: the worktree at " + left + " was left in place"
+				}
+				return text, err
+			}),
+		}
+		return m, nil
 	case "c":
 		if row.Summary > 1 {
 			m.note = "expand the task with space to clear a window's signal"
@@ -562,8 +592,8 @@ func (m dashModel) focus(row dashRow) tea.Cmd {
 
 // act performs a lifecycle action through the same service the CLI's
 // commands use, and says what it did in the CLI's words, so the two cannot
-// drift apart. Nothing is written over the screen: the last warning, as the
-// CLI would show it, goes after the text instead, and hooks' output nowhere.
+// drift apart. Nothing is written over the screen: the warnings, as the CLI
+// would show them, go after the text instead, and hooks' output nowhere.
 // It does not wait for a task another command is changing: nobody would see
 // the wait, or be able to stop it.
 func (m dashModel) act(do func(*workspace.Service) (string, error)) tea.Cmd {
@@ -574,17 +604,17 @@ func (m dashModel) act(do func(*workspace.Service) (string, error)) tea.Cmd {
 		sub.noWait = true
 		ws := sub.workspace()
 		ws.Stdout, ws.Stderr = io.Discard, io.Discard
-		last := ""
+		var notes []string
 		ws.Progress = func(e workspace.Event) {
 			warning.Reset()
 			sub.render(e)
-			if w := strings.TrimSpace(warning.String()); w != "" {
-				last = oneLine(w)
+			if w := oneLine(strings.TrimSpace(warning.String())); w != "" && !slices.Contains(notes, w) {
+				notes = append(notes, w)
 			}
 		}
 		text, err := do(ws)
-		if err == nil && last != "" {
-			text += "; " + last
+		if err == nil && len(notes) > 0 {
+			text += "; " + strings.Join(notes, "; ")
 		}
 		return dashDoneMsg{text: text, err: err}
 	}
@@ -683,7 +713,7 @@ func (m dashModel) View() string {
 	default:
 		b.WriteString(m.note + "\n")
 	}
-	b.WriteString(dashFaint.Render("enter attach · space expand · s/x task · S/X window · r restart · D clean · R delete · t tab · c clear · q quit"))
+	b.WriteString(dashFaint.Render("enter attach · space expand · s/x task · S/X window · r restart · D clean · R delete · - remove repo · t tab · c clear · q quit"))
 
 	// Nothing may wrap: a wrapped line pushes the rest off the alt screen.
 	lines := strings.Split(b.String(), "\n")

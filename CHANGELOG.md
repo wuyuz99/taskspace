@@ -35,6 +35,10 @@ upgrade.
 - **dash: `R` deletes a task**, after a y/N naming what goes: `tspace clean
   TASK --rm` without `--force`, removing worktrees, record and notes and
   keeping branches. Its refusals show on the note line.
+- **dash: `-` removes a repository from a task**, after a y/N, as `tspace
+  repo rm TASK REPO` does: its worktree is cleaned, with clean's refusals,
+  its windows closed and its branch kept. Every warning an action gives now
+  follows its result on the note line, not only the last.
 - **[Task window navigation](docs/TMUX_NAVIGATION.md)**: an opt-in tmux
   binding for a window picker limited to the current task, and the default
   one for switching tasks, with a script that checks both.
