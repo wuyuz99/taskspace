@@ -52,18 +52,42 @@ func (s *Service) Start(ctx context.Context, name string, opts StartOptions) (*S
 		return nil, err
 	}
 	defer unlock()
+	result, l, err := s.launch(ctx, t, opts)
+	if err != nil || l == nil {
+		return result, err
+	}
+	return result, s.settle(ctx, l)
+}
+
+// launched is what launch started and settle has yet to look at.
+type launched struct {
+	task    *task.Task
+	session string
+	at      time.Time
+	// before is the session as it was, if known says it could be read.
+	before  runtime.SessionState
+	known   bool
+	windows []runtime.Window
+	names   []string
+	fresh   map[string]runtime.Window
+	running task.Running
+}
+
+// launch is Start up to its windows being launched, under the lock ctx
+// holds. With NoRuntime it launches nothing and returns no launched.
+func (s *Service) launch(ctx context.Context, t *task.Task, opts StartOptions) (*StartResult, *launched, error) {
 	if opts.Root && (len(opts.Repos) > 0 || !t.HasRootWindow()) {
-		return nil, fmt.Errorf("--root requires a task with a root window and no repository arguments")
+		return nil, nil, fmt.Errorf("--root requires a task with a root window and no repository arguments")
 	}
 	names, err := selectRepos(t, opts.Repos)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if opts.Root {
 		names = nil
 	}
 	if len(names) == 0 && !opts.Root {
-		return nil, fmt.Errorf("task %q has no repositories; add one with: tspace repo add %s REPO", t.Name, t.Name)
+		return nil, nil, fmt.Errorf("task %q has no repositories; add one with: tspace repo add %s REPO", t.Name, t.Name)
 	}
 
 	created := map[string]bool{}
@@ -73,16 +97,16 @@ func (s *Service) Start(ctx context.Context, name string, opts StartOptions) (*S
 		// What an earlier repository's hook changed applies to this one.
 		if hooked {
 			if t, err = s.Store.Load(t.Name); err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		}
 		r, ok := t.Repos[name]
 		if !ok {
-			return nil, fmt.Errorf("%s was removed from %s while it started", name, t.Name)
+			return nil, nil, fmt.Errorf("%s was removed from %s while it started", name, t.Name)
 		}
 		res, err := s.Git.EnsureWorktree(ctx, r.Path, r.Worktree, r.Branch, r.Base)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", name, err)
+			return nil, nil, fmt.Errorf("%s: %w", name, err)
 		}
 		s.report(WorktreeReady{Repo: name, Branch: r.Branch, Result: res})
 
@@ -119,12 +143,12 @@ func (s *Service) Start(ctx context.Context, name string, opts StartOptions) (*S
 			return nil
 		})
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		t = latest
 	case hooked:
 		if t, err = s.Store.Load(t.Name); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	result := &StartResult{Task: t, Session: s.Runtime.SessionName(t.Name)}
@@ -164,43 +188,44 @@ func (s *Service) Start(ctx context.Context, name string, opts StartOptions) (*S
 	}
 
 	if opts.NoRuntime {
-		return result, nil
+		return result, nil, nil
 	}
 	if atRoot {
 		// A multiplexer cannot open a window in a directory that does not exist.
 		if err := os.MkdirAll(s.Store.TaskDir(t.Name), 0o755); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	s.report(Launching{Task: t, Root: withRoot, Repos: names})
 	if err := s.Runtime.Available(ctx); err != nil {
 		s.warnf("worktrees are ready, but the runtime is unavailable: %v", err)
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Unreadable, the session counts as new: checkLaunched then waits, and no
 	// signals are cleared on a guess.
-	before, err := s.Runtime.State(ctx, result.Session)
+	before, stateErr := s.Runtime.State(ctx, result.Session)
 	// Signals left by a session that is gone describe agents that are no
 	// longer there.
-	if err == nil && !before.Exists {
+	if stateErr == nil && !before.Exists {
 		if err := s.Store.ClearSignals(t.Name); err != nil {
 			s.warnf("tspace: %v", err)
 		}
 	}
 	if err := s.ensureContextDir(t); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	// Only a window not already there is launched, resumed or not. Without
 	// the session's state that is unknown, so nothing is taken as resumed.
 	for name := range fresh {
-		if _, open := before.Pane(s.Runtime.WindowName(name)); err != nil || (open && before.Exists) {
+		if _, open := before.Pane(s.Runtime.WindowName(name)); stateErr != nil || (open && before.Exists) {
 			delete(fresh, name)
 		}
 	}
 	if err := s.Runtime.Start(ctx, result.Session, windows); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	at := time.Now()
 	for _, w := range windows {
 		if _, ok := fresh[w.Name]; ok {
 			s.report(Resumed{Task: t.Name, Window: w.Name, Command: w.Command})
@@ -211,37 +236,129 @@ func (s *Service) Start(ctx context.Context, name string, opts StartOptions) (*S
 			}
 		}
 	}
-	if _, err := s.checkLaunched(ctx, t, result.Session, before, windows, append([]string{task.RootWindowName}, names...), fresh); err != nil {
-		return nil, err
-	}
-	// Only a session that survived its launch counts as running, so one
-	// whose agents die at once is never offered as interrupted.
-	if err := s.Store.MarkRunning(t.Name); err != nil {
-		s.warnf("tspace: %v", err)
-	}
-	return result, nil
+	return result, &launched{
+		task: t, session: result.Session, at: at,
+		before: before, known: stateErr == nil,
+		windows: windows, names: append([]string{task.RootWindowName}, names...), fresh: fresh,
+		running: task.Running{Whole: !opts.Root && len(opts.Repos) == 0, Root: opts.Root, Repos: opts.Repos},
+	}, nil
 }
 
-// StartInterrupted starts every interrupted task in turn, reporting
-// StartingTask before each and TaskStarted or TaskNotStarted after it; a
-// failure does not stop the rest. It returns the tasks that did not start.
+// settle finishes what launch started: once what it launched has had its
+// moment to fail, it is looked at, and if it is up the task counts as
+// running it, beside what already ran in a session that was there.
+func (s *Service) settle(ctx context.Context, l *launched) error {
+	if _, err := s.checkLaunched(ctx, l.task, l.session, l.before, l.windows, l.names, l.fresh, l.at); err != nil {
+		return err
+	}
+	// Only a session that survived its launch counts as running, so one
+	// whose agents die at once is never offered as interrupted. One that
+	// could not be read counts as new, as launch took it.
+	running := l.running
+	if prev, ok := s.Store.Running(l.task.Name); ok && l.known && l.before.Exists {
+		running = prev.With(running)
+	}
+	if err := s.Store.MarkRunning(l.task.Name, running); err != nil {
+		s.warnf("tspace: %v", err)
+	}
+	return nil
+}
+
+// StartInterrupted starts again what each interrupted task was running,
+// reporting StartingTask before each and TaskStarted or TaskNotStarted after
+// it; a failure does not stop the rest. Of opts only Fresh counts. Every task
+// is launched before any is looked at, so they settle together rather than
+// one after another. It returns the tasks that did not start.
 func (s *Service) StartInterrupted(ctx context.Context, opts StartOptions) (started, failed []string, err error) {
 	names, err := s.Interrupted(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
+	type pending struct {
+		ctx      context.Context
+		unlock   func()
+		name     string
+		result   *StartResult
+		launched []*launched
+		err      error
+	}
+	var waiting []pending
 	for _, name := range names {
-		s.report(StartingTask{Task: name})
-		res, err := s.Start(ctx, name, opts)
+		t, ctx, unlock, err := s.Lock(ctx, name, s.command("tspace start"), true)
 		if err != nil {
+			s.report(StartingTask{Task: name})
 			s.report(TaskNotStarted{Task: name, Err: err})
 			failed = append(failed, name)
 			continue
 		}
-		s.report(TaskStarted{Result: res})
-		started = append(started, name)
+		running, _ := s.Store.Running(name)
+		plan := restarts(t, running, opts.Fresh)
+		// Everything it ran is gone or was closed on purpose since.
+		if len(plan) == 0 {
+			s.markStopped(name)
+			unlock()
+			continue
+		}
+		s.report(StartingTask{Task: name})
+		p := pending{ctx: ctx, unlock: unlock, name: name}
+		for _, o := range plan {
+			res, l, err := s.launch(ctx, t, o)
+			if err != nil {
+				p.err = err
+				break
+			}
+			p.result, t = res, res.Task
+			p.launched = append(p.launched, l)
+		}
+		waiting = append(waiting, p)
+	}
+	// What a failed second launch left behind still settles and counts as
+	// running: it is up.
+	for _, p := range waiting {
+		err := p.err
+		for _, l := range p.launched {
+			if serr := s.settle(p.ctx, l); serr != nil {
+				err = serr
+				break
+			}
+		}
+		p.unlock()
+		if err != nil {
+			s.report(TaskNotStarted{Task: p.name, Err: err})
+			failed = append(failed, p.name)
+			continue
+		}
+		s.report(TaskStarted{Result: p.result})
+		started = append(started, p.name)
 	}
 	return started, failed, nil
+}
+
+// restarts are the starts that bring back what r says ran in t: the whole
+// task, its root window, some of its repositories, or the root window and
+// some repositories, which takes two. What t no longer has is left out.
+func restarts(t *task.Task, r task.Running, fresh bool) []StartOptions {
+	root := (r.Whole || r.Root) && t.HasRootWindow()
+	var repos []string
+	for _, name := range r.Repos {
+		if _, ok := t.Repo(name); ok {
+			repos = append(repos, name)
+		}
+	}
+	switch {
+	case len(t.Repos) > 0 && (r.Whole || root && len(repos) == len(t.Repos)):
+		return []StartOptions{{Fresh: fresh}}
+	case root && len(repos) == 0:
+		return []StartOptions{{Root: true, Fresh: fresh}}
+	}
+	var plan []StartOptions
+	if root {
+		plan = append(plan, StartOptions{Root: true, Fresh: fresh})
+	}
+	if len(repos) > 0 {
+		plan = append(plan, StartOptions{Repos: repos, Fresh: fresh})
+	}
+	return plan
 }
 
 // Interrupted lists the tasks whose session something other than stop or
@@ -270,17 +387,18 @@ func (s *Service) Interrupted(ctx context.Context) ([]string, error) {
 // commands survive the first second, and a session can go with them; names
 // are the windows to look at, task.RootWindowName among them. A
 // resumed window that is gone is relaunched once with fresh, its command:
-// an agent asked to resume where it has no conversation may just exit.
-func (s *Service) checkLaunched(ctx context.Context, t *task.Task, session string, before runtime.SessionState, windows []runtime.Window, names []string, fresh map[string]runtime.Window) (relaunched []string, err error) {
+// an agent asked to resume where it has no conversation may just exit. What
+// was launched at since has until Settle after it to fail.
+func (s *Service) checkLaunched(ctx context.Context, t *task.Task, session string, before runtime.SessionState, windows []runtime.Window, names []string, fresh map[string]runtime.Window, since time.Time) (relaunched []string, err error) {
 	launched := !before.Exists
 	for _, w := range windows {
 		if _, ok := before.Pane(s.Runtime.WindowName(w.Name)); !ok {
 			launched = true
 		}
 	}
-	if launched && s.Settle > 0 {
+	if wait := time.Until(since.Add(s.Settle)); launched && wait > 0 {
 		select {
-		case <-time.After(s.Settle):
+		case <-time.After(wait):
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
@@ -326,7 +444,7 @@ func (s *Service) checkLaunched(ctx context.Context, t *task.Task, session strin
 		return relaunched, nil
 	}
 	// Looked at as just launched, so it gets its second to fail in too.
-	_, err = s.checkLaunched(ctx, t, session, runtime.SessionState{}, again, relaunched, nil)
+	_, err = s.checkLaunched(ctx, t, session, runtime.SessionState{}, again, relaunched, nil, time.Now())
 	return relaunched, err
 }
 

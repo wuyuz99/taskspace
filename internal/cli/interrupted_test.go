@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/wuyuz99/taskspace/internal/status"
 )
 
@@ -142,5 +143,23 @@ func TestDashOffersInterrupted(t *testing.T) {
 	m = drive(t, m, key("I"))
 	if m.confirm != nil || m.note != "no task was interrupted" {
 		t.Fatalf("confirm=%+v note=%q", m.confirm, m.note)
+	}
+}
+
+// Esc answers no to the question dash asks unprompted; it does not quit.
+func TestDashEscDeclinesInterrupted(t *testing.T) {
+	h := crashedTasks(t)
+	m := newDashModel(t.Context(), h.app, time.Second)
+	m = drive(t, m, dashDataMsg(h.app.dashLoad(t.Context())))
+	if m.confirm == nil {
+		t.Fatal("not offered")
+	}
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if m = next.(dashModel); m.confirm != nil || cmd != nil {
+		t.Fatalf("esc: confirm=%v cmd=%v", m.confirm != nil, cmd != nil)
+	}
+	// Asked for, esc still quits.
+	if _, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc}); cmd == nil {
+		t.Fatal("esc did not quit")
 	}
 }

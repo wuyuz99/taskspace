@@ -277,12 +277,14 @@ func (g *Git) EnsureWorktree(ctx context.Context, repo, path, branch, base strin
 
 // RemoveWorktree removes a worktree registration and its directory.
 //
-// force is passed through to git and will discard modifications; callers are
-// responsible for having established that this is safe.
+// force is passed through to git and will discard modifications, and remove
+// a locked worktree; callers are responsible for having established that this
+// is safe.
 func (g *Git) RemoveWorktree(ctx context.Context, repo, path string, force bool) error {
 	args := []string{"worktree", "remove"}
 	if force {
-		args = append(args, "--force")
+		// Once discards modifications; a locked worktree takes it twice.
+		args = append(args, "--force", "--force")
 	}
 	args = append(args, path)
 

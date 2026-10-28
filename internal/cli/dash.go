@@ -220,8 +220,8 @@ type (
 type dashConfirm struct {
 	prompt string
 	run    tea.Cmd
-	// passing lets a key other than y or n through after cancelling, for a
-	// question dash asks unprompted.
+	// passing lets a key other than y, n or esc through after cancelling,
+	// for a question dash asks unprompted.
 	passing bool
 }
 
@@ -410,7 +410,7 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, c.run
 		}
 		m.note, m.noteErr = "cancelled", false
-		if !c.passing || msg.String() == "n" {
+		if k := msg.String(); !c.passing || k == "n" || k == "esc" {
 			return m, nil
 		}
 	}
@@ -640,7 +640,7 @@ func (m dashModel) interrupted() int {
 }
 
 // startInterrupted asks to start the n interrupted tasks, as `tspace start
-// --interrupted` does: one after another, carrying on past a failure.
+// --interrupted` does: what each was running, carrying on past a failure.
 func (m dashModel) startInterrupted(n int) *dashConfirm {
 	prompt := fmt.Sprintf("%d tasks were interrupted; start them? (y/N)", n)
 	if n == 1 {
