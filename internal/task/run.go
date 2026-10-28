@@ -48,3 +48,36 @@ func (s *Store) ForgetLaunched(taskName, window string) error {
 	}
 	return nil
 }
+
+func (s *Store) runningPath(taskName string) string {
+	return filepath.Join(s.RunDir(taskName), "running")
+}
+
+// MarkRunning records that the task's session is up, as start left it.
+func (s *Store) MarkRunning(taskName string) error {
+	if err := os.MkdirAll(s.RunDir(taskName), 0o755); err != nil {
+		return fmt.Errorf("record start: %w", err)
+	}
+	if err := os.WriteFile(s.runningPath(taskName), nil, 0o644); err != nil {
+		return fmt.Errorf("record start: %w", err)
+	}
+	return nil
+}
+
+// ClearRunning records that the task's session was ended on purpose: by
+// stop, clean, or closing its last window.
+func (s *Store) ClearRunning(taskName string) error {
+	if err := os.Remove(s.runningPath(taskName)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("record stop: %w", err)
+	}
+	return nil
+}
+
+// Interrupted reports whether a task without a session lost it to something
+// other than tspace ending it, such as a computer restart: start left it
+// running and nothing since recorded an end. The caller knows there is no
+// session. A task last run by an older tspace never counts.
+func (s *Store) Interrupted(taskName string) bool {
+	_, err := os.Stat(s.runningPath(taskName))
+	return err == nil
+}

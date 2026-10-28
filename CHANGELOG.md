@@ -46,6 +46,11 @@ upgrade.
   form: a shell, the task's agent or a command, an optional name, and
   whether to save it. It runs `tspace window -d`, and the cursor goes to the
   new window.
+- **Bring back what a computer restart interrupted.** A task that has run
+  and lost its session without `stop`, clean or closing its last window
+  ending it shows as `interrupted` in `status` and dash (`"interrupted":
+  true` per task in `status --json`). `tspace start --interrupted` starts all of them, resuming
+  their agents' conversations; dash offers to on launch, and `I` does it.
 - **[Task window navigation](docs/TMUX_NAVIGATION.md)**: an opt-in tmux
   binding for a window picker limited to the current task, and the default
   one for switching tasks, with a script that checks both.

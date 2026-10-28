@@ -97,6 +97,15 @@ type Resumed struct {
 	Command      []string
 }
 
+// StartingTask, TaskStarted and TaskNotStarted bracket each task
+// StartInterrupted starts.
+type StartingTask struct{ Task string }
+type TaskStarted struct{ Result *StartResult }
+type TaskNotStarted struct {
+	Task string
+	Err  error
+}
+
 // ResumeFailed reports a resumed window whose command exited at once, which
 // was relaunched with its own command, fresh.
 type ResumeFailed struct{ Task, Window string }
@@ -149,6 +158,9 @@ func (Launching) event()        {}
 func (WindowExited) event()     {}
 func (Resumed) event()          {}
 func (ResumeFailed) event()     {}
+func (StartingTask) event()     {}
+func (TaskStarted) event()      {}
+func (TaskNotStarted) event()   {}
 func (NoRepositories) event()   {}
 func (SessionStopped) event()   {}
 func (WorktreeRemoved) event()  {}

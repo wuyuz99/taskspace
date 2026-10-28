@@ -152,6 +152,7 @@ func (s *Service) stopForClean(ctx context.Context, t *task.Task) error {
 		}
 		s.report(SessionStopped{Session: session})
 	}
+	s.markStopped(t.Name)
 	return nil
 }
 
