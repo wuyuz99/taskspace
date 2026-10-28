@@ -108,8 +108,10 @@ type dashRow struct {
 	Git     string
 	Signal  *task.Signal
 	Dir     string
-	// Saved marks an extra window the task's record keeps.
+	// Saved marks an extra window the task's record keeps; Repo is the
+	// repository it opens in, empty at the task root.
 	Saved bool
+	Repo  string
 }
 
 func (r dashRow) root() bool { return r.Window == task.RootWindowName }
@@ -191,7 +193,7 @@ func (a *App) dashLoad(ctx context.Context) dashData {
 				dir = workspace.ExtraWindow(a.Store, byName[ts.Task], w).Dir
 			}
 			d.Rows = append(d.Rows, dashRow{
-				Task: ts.Task, Window: e.Name, Agent: extraAgent(e), Runtime: e.Runtime, Git: "-", Dir: dir, Saved: e.Saved,
+				Task: ts.Task, Window: e.Name, Agent: extraAgent(e), Runtime: e.Runtime, Git: "-", Dir: dir, Saved: e.Saved, Repo: e.Repo,
 			})
 		}
 	}
@@ -305,7 +307,9 @@ func (m dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.gone != "" && !present(m.gone) {
 			m.gone = ""
 		}
-		if m.made != "" && present(m.made) {
+		// A window opened waits for a refresh that shows it.
+		if m.made != "" && present(m.made) && (m.madeWindow == "" ||
+			slices.ContainsFunc(m.data.Rows, func(r dashRow) bool { return r.Task == m.made && r.Window == m.madeWindow })) {
 			first := true
 			for i, r := range m.data.Rows {
 				if r.Task == m.made && (first || r.Window == m.madeWindow) {

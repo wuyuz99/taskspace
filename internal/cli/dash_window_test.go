@@ -20,6 +20,7 @@ func TestSplitWords(t *testing.T) {
 		`make test ARGS='-v -x'`: {"make", "test", "ARGS=-v -x"},
 		`echo "a \"b\"" c\ d`:    {"echo", `a "b"`, "c d"},
 		`''`:                     {""},
+		`grep -P "\d+" "a\$b"`:   {"grep", "-P", `\d+`, "a$b"},
 	} {
 		got, err := splitWords(in)
 		if err != nil || !slices.Equal(got, want) {
@@ -98,5 +99,54 @@ func TestDashOpenWindowNeedsSession(t *testing.T) {
 	m = drive(t, m, key("w"))
 	if m.form != nil || !strings.Contains(m.note, "press s") {
 		t.Fatalf("note %q", m.note)
+	}
+}
+
+func TestWindowLabel(t *testing.T) {
+	for in, want := range map[string]string{"g++": "g--", "node@20": "node-20", "make": "make", "": "cmd"} {
+		if got := windowLabel(in); got != want || (in != "" && !task.IsExtraWindow("_x-"+got)) {
+			t.Errorf("windowLabel(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestDashWindowFormChecks(t *testing.T) {
+	h, _, repo := extraWindowTask(t) // saves _git in repo
+	m := newDashModel(t.Context(), h.app, time.Second)
+	f := m.windowForm(dashRow{Task: "T", Window: repo})
+	f.field("name").value = []rune("git")
+	f.field("save").on = true
+	if note := f.check(f); !strings.Contains(note, "already has a saved window") {
+		t.Fatalf("saved name: %q", note)
+	}
+	f.field("name").value = []rune("root")
+	if note := f.check(f); !strings.Contains(note, "root window") {
+		t.Fatalf("root: %q", note)
+	}
+	f.field("name").value = []rune("x")
+	f.field("command").value = []rune("agent --resume")
+	if note := f.check(f); !strings.Contains(note, "full command") {
+		t.Fatalf("agent args: %q", note)
+	}
+	// A saved window's row opens in its repository.
+	if got := windowPlace(dashRow{Task: "T", Window: "_git", Saved: true, Repo: repo}); got != repo {
+		t.Fatalf("place %q", got)
+	}
+}
+
+// A refresh that shows the task but not yet the new window keeps waiting.
+func TestDashCursorWaitsForNewWindow(t *testing.T) {
+	rows := []dashRow{{Task: "T", Window: task.RootWindowName}, {Task: "T", Window: "api"}}
+	m := newDashModel(t.Context(), nil, time.Second)
+	m = drive(t, m, dashDataMsg(dashData{Rows: rows}))
+	next, _ := m.Update(dashDoneMsg{made: "T", window: "_new"})
+	m = next.(dashModel)
+	m = drive(t, m, dashDataMsg(dashData{Rows: rows}))
+	if m.made == "" {
+		t.Fatal("stale refresh used up the jump")
+	}
+	m = drive(t, m, dashDataMsg(dashData{Rows: append(rows, dashRow{Task: "T", Window: "_new"})}))
+	if r, _ := m.selected(); r.Window != "_new" {
+		t.Fatalf("cursor on %+v", r)
 	}
 }
