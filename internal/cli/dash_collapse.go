@@ -45,6 +45,8 @@ func runtimeUrgency(s status.RuntimeState) int {
 
 // Quiet tasks take one row until explicitly expanded. Tasks needing attention
 // stay expanded so an individual failure cannot be hidden by a summary.
+// Extra windows count as rows but not toward the task's state: a closed
+// saved window, or a finished test run left dead, is not the task failing.
 func collapseDashRows(rows []dashRow, expanded map[string]bool) []dashRow {
 	var result []dashRow
 	for first := 0; first < len(rows); {
@@ -55,7 +57,7 @@ func collapseDashRows(rows []dashRow, expanded map[string]bool) []dashRow {
 		group := rows[first:end]
 		open := expanded[group[0].Task]
 		for _, r := range group {
-			open = open || r.Runtime == status.RuntimeDead || signalUrgency(r.Signal) >= 4
+			open = open || (!r.extra() && r.Runtime == status.RuntimeDead) || signalUrgency(r.Signal) >= 4
 		}
 		if open || len(group) == 1 {
 			result = append(result, group...)
@@ -72,7 +74,7 @@ func collapseDashRows(rows []dashRow, expanded map[string]bool) []dashRow {
 		summary.Summary = len(group)
 		git := map[string]bool{}
 		for _, r := range group {
-			if runtimeUrgency(r.Runtime) > runtimeUrgency(summary.Runtime) {
+			if !r.extra() && runtimeUrgency(r.Runtime) > runtimeUrgency(summary.Runtime) {
 				summary.Runtime = r.Runtime
 			}
 			if signalUrgency(r.Signal) > signalUrgency(summary.Signal) {

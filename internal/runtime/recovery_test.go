@@ -23,6 +23,9 @@ func TestNamesDoNotCollide(t *testing.T) {
 		if strings.ContainsAny(encoded, ".:") {
 			t.Fatalf("target syntax in %s", encoded)
 		}
+		if got := DisplayName(encoded); got != name {
+			t.Fatalf("DisplayName(%q) = %q, want %q", encoded, got, name)
+		}
 	}
 }
 
