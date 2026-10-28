@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -254,7 +255,7 @@ func TestDash(t *testing.T) {
 		t.Fatalf("restart: %q", m.note)
 	}
 	m = drive(t, m, key("down"))
-	if view := m.View(); !strings.Contains(view, "ago: which column?") || !strings.Contains(view, tk.Repos[repo].Worktree) {
+	if view := m.View(); !regexp.MustCompile(`blocked, \d+s ago: which column\?`).MatchString(view) || !strings.Contains(view, tk.Repos[repo].Worktree) {
 		t.Fatalf("detail:\n%s", view)
 	}
 	m = drive(t, m, key("r"))

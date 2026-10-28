@@ -141,33 +141,26 @@ func (a *App) newStopCmd() *cobra.Command {
 // startInterrupted starts every interrupted task in turn, carrying on past
 // one that fails.
 func (a *App) startInterrupted(cmd *cobra.Command, fresh bool) error {
-	ws := a.workspaceFor(cmd)
-	names, err := ws.Interrupted(cmd.Context())
+	started, failed, err := a.workspaceFor(cmd).StartInterrupted(cmd.Context(), workspace.StartOptions{Fresh: fresh})
 	if err != nil {
 		return err
 	}
-	if len(names) == 0 {
-		a.printf("no task was interrupted\n")
-		return nil
+	return interruptedResult(started, failed, func(text string) { a.printf("%s\n", text) })
+}
+
+// interruptedResult says how starting the interrupted tasks went, in the
+// words start --interrupted and dash both use: by done when all started,
+// as the error otherwise.
+func interruptedResult(started, failed []string, done func(string)) error {
+	n := len(started) + len(failed)
+	switch {
+	case n == 0:
+		done("no task was interrupted")
+	case len(failed) > 0:
+		return fmt.Errorf("started %d of %d interrupted tasks; %s did not start", len(started), n, joinNames(failed))
+	default:
+		done(fmt.Sprintf("started %d interrupted task%s: %s", n, plural(n), joinNames(started)))
 	}
-	var failed []string
-	for i, name := range names {
-		if i > 0 {
-			a.printf("\n")
-		}
-		a.printf("== %s\n", name)
-		res, err := ws.Start(cmd.Context(), name, workspace.StartOptions{Fresh: fresh})
-		if err != nil {
-			a.warnf("%s: %v\n", name, err)
-			failed = append(failed, name)
-			continue
-		}
-		a.printf("%s\n", startedText(res))
-	}
-	if len(failed) > 0 {
-		return fmt.Errorf("started %d of %d interrupted tasks; %s did not start", len(names)-len(failed), len(names), joinNames(failed))
-	}
-	a.printf("\nstarted %d interrupted task%s\n", len(names), plural(len(names)))
 	return nil
 }
 

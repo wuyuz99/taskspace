@@ -20,7 +20,6 @@ func (s *Service) Stop(ctx context.Context, name string) (running bool, err erro
 	}
 	defer unlock()
 	session := s.Runtime.SessionName(t.Name)
-	s.markStopped(t.Name)
 
 	running, err = s.Runtime.HasSession(ctx, session)
 	if err != nil {
@@ -28,11 +27,13 @@ func (s *Service) Stop(ctx context.Context, name string) (running bool, err erro
 	}
 	if !running {
 		_ = s.Store.ClearSignals(t.Name)
+		s.markStopped(t.Name)
 		return false, nil
 	}
 	if err := s.Runtime.Stop(ctx, session); err != nil {
 		return true, err
 	}
+	s.markStopped(t.Name)
 	if err := s.Store.ClearSignals(t.Name); err != nil {
 		s.warnf("tspace: %v", err)
 	}
@@ -42,7 +43,7 @@ func (s *Service) Stop(ctx context.Context, name string) (running bool, err erro
 // markStopped records the task was stopped on purpose; failing is a warning,
 // since the cost is only that it may later be offered as interrupted.
 func (s *Service) markStopped(name string) {
-	if err := s.Store.MarkStopped(name); err != nil {
+	if err := s.Store.ClearRunning(name); err != nil {
 		s.warnf("tspace: %v", err)
 	}
 }

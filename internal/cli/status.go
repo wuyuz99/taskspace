@@ -61,6 +61,16 @@ type statusRepoJSON struct {
 	Signal *task.Signal `json:"signal,omitempty"`
 }
 
+// jsonRuntime is a runtime state as --json gives it. "interrupted" came
+// later than the field's values were fixed, so there it stays no-session,
+// and the task's own "interrupted" says the rest.
+func jsonRuntime(s status.RuntimeState) string {
+	if s == status.RuntimeInterrupted {
+		return string(status.RuntimeNoSession)
+	}
+	return string(s)
+}
+
 func (a *App) printStatusJSON(tasks []*task.Task, results []status.TaskStatus) error {
 	byName := make(map[string]*task.Task, len(tasks))
 	for _, t := range tasks {
@@ -77,11 +87,11 @@ func (a *App) printStatusJSON(tasks []*task.Task, results []status.TaskStatus) e
 			Windows:     make([]statusWindowJSON, 0, len(ts.Extra)),
 		}
 		for _, e := range ts.Extra {
-			row.Windows = append(row.Windows, statusWindowJSON{Name: e.Name, Saved: e.Saved, Repo: e.Repo, Command: e.Command, Runtime: string(e.Runtime)})
+			row.Windows = append(row.Windows, statusWindowJSON{Name: e.Name, Saved: e.Saved, Repo: e.Repo, Command: e.Command, Runtime: jsonRuntime(e.Runtime)})
 		}
 		// A single-repo task has no root window: "root" is null.
 		if ts.Root != nil {
-			row.Root = &statusRootJSON{Agent: ts.Root.Agent, Runtime: string(ts.Root.Runtime), Signal: ts.Root.Signal}
+			row.Root = &statusRootJSON{Agent: ts.Root.Agent, Runtime: jsonRuntime(ts.Root.Runtime), Signal: ts.Root.Signal}
 		}
 		if ts.RuntimeErr != nil {
 			row.RuntimeError = ts.RuntimeErr.Error()
@@ -92,7 +102,7 @@ func (a *App) printStatusJSON(tasks []*task.Task, results []status.TaskStatus) e
 				Branch:     r.Branch,
 				Worktree:   byName[ts.Task].Repos[r.Repo].Worktree,
 				Agent:      r.Agent,
-				Runtime:    string(r.Runtime),
+				Runtime:    jsonRuntime(r.Runtime),
 				Git:        string(r.Git),
 				Upstream:   r.Detail.Upstream,
 				Staged:     r.Detail.Staged,

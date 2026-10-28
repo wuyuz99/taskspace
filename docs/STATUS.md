@@ -30,7 +30,11 @@ as `no-window`. `--json` lists them in each task's `windows` array, with
   nor closing its last window ended, such as after a computer restart.
   `tspace start --interrupted` starts all of them, one after another, and
   carries on past one that fails; dash offers to on launch, and `I` does it
-  any time. `--json` carries it as each task's `interrupted`.
+  any time. `--json` carries it as each task's `interrupted`, leaving each
+  row's `runtime` `no-session` as before. A session tspace did not end
+  includes one whose agents all exited on a multiplexer that closes a
+  window when its command ends (tmux keeps it, dead), so such a task is
+  offered too; `tspace stop TASK` tells tspace it is done.
 - **GIT** — `clean`, `dirty (N files)`, `missing`, `error`, plus stash and
   ahead/behind counts against the upstream, or for a branch not yet pushed,
   the commits that are not on its base (`2 commits not pushed`)

@@ -201,9 +201,6 @@ func (s *Service) Start(ctx context.Context, name string, opts StartOptions) (*S
 	if err := s.Runtime.Start(ctx, result.Session, windows); err != nil {
 		return nil, err
 	}
-	if err := s.Store.ClearStopped(t.Name); err != nil {
-		s.warnf("tspace: %v", err)
-	}
 	for _, w := range windows {
 		if _, ok := fresh[w.Name]; ok {
 			s.report(Resumed{Task: t.Name, Window: w.Name, Command: w.Command})
@@ -217,7 +214,34 @@ func (s *Service) Start(ctx context.Context, name string, opts StartOptions) (*S
 	if _, err := s.checkLaunched(ctx, t, result.Session, before, windows, append([]string{task.RootWindowName}, names...), fresh); err != nil {
 		return nil, err
 	}
+	// Only a session that survived its launch counts as running, so one
+	// whose agents die at once is never offered as interrupted.
+	if err := s.Store.MarkRunning(t.Name); err != nil {
+		s.warnf("tspace: %v", err)
+	}
 	return result, nil
+}
+
+// StartInterrupted starts every interrupted task in turn, reporting
+// StartingTask before each and TaskStarted or TaskNotStarted after it; a
+// failure does not stop the rest. It returns the tasks that did not start.
+func (s *Service) StartInterrupted(ctx context.Context, opts StartOptions) (started, failed []string, err error) {
+	names, err := s.Interrupted(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, name := range names {
+		s.report(StartingTask{Task: name})
+		res, err := s.Start(ctx, name, opts)
+		if err != nil {
+			s.report(TaskNotStarted{Task: name, Err: err})
+			failed = append(failed, name)
+			continue
+		}
+		s.report(TaskStarted{Result: res})
+		started = append(started, name)
+	}
+	return started, failed, nil
 }
 
 // Interrupted lists the tasks whose session something other than stop or

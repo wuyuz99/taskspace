@@ -52,9 +52,14 @@ func TestStatusShowsInterrupted(t *testing.T) {
 		if ts.Interrupted != want[ts.Task] {
 			t.Fatalf("%s interrupted = %v", ts.Task, ts.Interrupted)
 		}
-		if r := ts.Repos[0].Runtime; (r == string(status.RuntimeInterrupted)) != want[ts.Task] {
+		// The rows' runtime keeps the values it always had.
+		if r := ts.Repos[0].Runtime; r != string(status.RuntimeNoSession) {
 			t.Fatalf("%s runtime %s", ts.Task, r)
 		}
+	}
+	h.out.Reset()
+	if err := h.exec(t, h.app.newStatusCmd(), "A"); err != nil || !strings.Contains(h.out.String(), "interrupted") {
+		t.Fatalf("table: %v\n%s", err, h.out.String())
 	}
 	// A task never started is no-session, not interrupted.
 	h.startedTask(t, "D")
@@ -118,7 +123,11 @@ func TestDashOffersInterrupted(t *testing.T) {
 	if m.confirm == nil || !strings.Contains(m.confirm.prompt, "2 tasks were interrupted") {
 		t.Fatalf("confirm = %+v", m.confirm)
 	}
-	m = drive(t, m, key("n"))
+	// Unasked, the question lets other keys through: j still moves.
+	m = drive(t, m, key("j"))
+	if m.confirm != nil || m.cursor != 1 {
+		t.Fatalf("j: confirm=%v cursor=%d", m.confirm != nil, m.cursor)
+	}
 	// Offered once: the next refresh does not ask again.
 	m = drive(t, m, dashDataMsg(h.app.dashLoad(t.Context())))
 	if m.confirm != nil {
@@ -126,7 +135,7 @@ func TestDashOffersInterrupted(t *testing.T) {
 	}
 	m = drive(t, m, key("I"))
 	m = drive(t, m, key("y"))
-	if m.noteErr || !strings.Contains(m.note, "started A, B") {
+	if m.noteErr || !strings.Contains(m.note, "started 2 interrupted tasks: A, B") {
 		t.Fatalf("note %q", m.note)
 	}
 	m = drive(t, m, dashDataMsg(h.app.dashLoad(t.Context())))

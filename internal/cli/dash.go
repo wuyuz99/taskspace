@@ -220,6 +220,9 @@ type (
 type dashConfirm struct {
 	prompt string
 	run    tea.Cmd
+	// passing lets a key other than y or n through after cancelling, for a
+	// question dash asks unprompted.
+	passing bool
 }
 
 type dashModel struct {
@@ -341,6 +344,7 @@ func (m dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.offered = true
 			if n := m.interrupted(); n > 0 && m.confirm == nil && m.form == nil {
 				m.confirm = m.startInterrupted(n)
+				m.confirm.passing = true
 			}
 		}
 		return m, nil
@@ -406,7 +410,9 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, c.run
 		}
 		m.note, m.noteErr = "cancelled", false
-		return m, nil
+		if !c.passing || msg.String() == "n" {
+			return m, nil
+		}
 	}
 
 	switch msg.String() {
@@ -643,26 +649,13 @@ func (m dashModel) startInterrupted(n int) *dashConfirm {
 	return &dashConfirm{
 		prompt: prompt,
 		run: m.act(func(ws *workspace.Service) (string, error) {
-			names, err := ws.Interrupted(m.ctx)
+			started, failed, err := ws.StartInterrupted(m.ctx, workspace.StartOptions{})
 			if err != nil {
 				return "", err
 			}
-			var started, failed []string
-			for _, name := range names {
-				if _, err := ws.Start(m.ctx, name, workspace.StartOptions{}); err != nil {
-					failed = append(failed, name+": "+err.Error())
-					continue
-				}
-				started = append(started, name)
-			}
-			text := "started " + joinNames(started)
-			if len(started) == 0 {
-				text = "started nothing"
-			}
-			if len(failed) > 0 {
-				return "", fmt.Errorf("%s; did not start %s", text, strings.Join(failed, "; "))
-			}
-			return text, nil
+			text := ""
+			err = interruptedResult(started, failed, func(t string) { text = t })
+			return text, err
 		}),
 	}
 }
