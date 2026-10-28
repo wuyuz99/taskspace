@@ -3,7 +3,7 @@ package cli
 import (
 	"bytes"
 	"fmt"
-	"slices"
+	"io"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -15,12 +15,7 @@ import (
 func (m dashModel) createForm() *dashForm {
 	repoHint, projectHint := "REPO[@BRANCH][:BASE] ...", "optional"
 	if c, err := m.app.Store.LoadConfig(); err == nil && len(c.Repos) > 0 {
-		names := make([]string, 0, len(c.Repos))
-		for name := range c.Repos {
-			names = append(names, name)
-		}
-		slices.Sort(names)
-		repoHint += "  registered: " + strings.Join(names, " ")
+		repoHint += "  registered: " + strings.Join(c.RepoNames(), " ")
 	}
 	if ps, err := m.app.Store.ListProjects(); err == nil && len(ps) > 0 {
 		names := make([]string, len(ps))
@@ -49,14 +44,24 @@ func (m dashModel) createForm() *dashForm {
 // checkCreate is what is wrong with f before anything is written.
 func (m dashModel) checkCreate(f *dashForm) string {
 	name := f.field("name").text()
-	switch {
-	case name == "":
+	if name == "" {
 		return "name the task"
-	case task.ValidateName("task", name) != nil:
-		return task.ValidateName("task", name).Error()
-	case m.app.Store.Exists(name):
+	}
+	if err := task.ValidateName("task", name); err != nil {
+		return err.Error()
+	}
+	if m.app.Store.Exists(name) {
 		return fmt.Sprintf("task %s already exists", name)
-	case f.field("start").on && f.field("repositories").text() == "" && f.field("project").text() == "":
+	}
+	repos := f.field("repositories").text() != ""
+	if p := f.field("project").text(); p != "" {
+		project, err := m.app.Store.LoadProject(p)
+		if err != nil {
+			return err.Error()
+		}
+		repos = repos || len(project.Repos) > 0
+	}
+	if f.field("start").on && !repos {
 		return "starting needs a repository; name one, or untick start"
 	}
 	return ""
@@ -66,7 +71,7 @@ func (m dashModel) checkCreate(f *dashForm) string {
 // command cannot differ.
 func (m dashModel) create(f *dashForm) tea.Cmd {
 	name := f.field("name").text()
-	args := append([]string{name}, strings.Fields(f.field("repositories").text())...)
+	var args []string
 	if p := f.field("project").text(); p != "" {
 		args = append(args, "--project", p)
 	}
@@ -74,14 +79,17 @@ func (m dashModel) create(f *dashForm) tea.Cmd {
 	if start {
 		args = append(args, "--start")
 	}
+	// After --, nothing typed is read as a flag.
+	args = append(append(args, "--", name), strings.Fields(f.field("repositories").text())...)
 	return func() tea.Msg {
 		var out, warn bytes.Buffer
 		sub := *m.app
-		sub.Out, sub.Err = &out, &warn
+		sub.Out, sub.Err, sub.hookOut = &out, &warn, io.Discard
 		sub.noWait = true
+		existed := m.app.Store.Exists(name)
 		err := sub.runCmd(m.ctx, (*App).newTaskCreateCmd, args...)
 		msg := dashDoneMsg{err: err}
-		if !m.app.Store.Exists(name) {
+		if existed || !m.app.Store.Exists(name) {
 			return msg
 		}
 		// Created, even if starting it then failed: the cursor goes to it.

@@ -100,7 +100,14 @@ func (f *dashForm) key(msg tea.KeyMsg) (tea.Cmd, bool) {
 	case tea.KeyCtrlU:
 		cur.value, cur.cursor = cur.value[cur.cursor:], 0
 	case tea.KeySpace, tea.KeyRunes:
-		in := msg.Runes
+		// A paste may bring line breaks and tabs, which a field of one
+		// line takes as blanks.
+		in := []rune(strings.Map(func(r rune) rune {
+			if r < ' ' || r == 0x7f {
+				return ' '
+			}
+			return r
+		}, string(msg.Runes)))
 		if msg.Type == tea.KeySpace {
 			in = []rune{' '}
 		}

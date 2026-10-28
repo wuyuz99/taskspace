@@ -93,3 +93,29 @@ func TestDashCreateCancelAndToggle(t *testing.T) {
 		t.Fatalf("note %q", m.note)
 	}
 }
+
+// Typed words are never read as flags, an unknown project is refused in
+// the form, and a pasted line break becomes a blank.
+func TestDashCreateInputIsData(t *testing.T) {
+	h := newHarness(t)
+	m := newDashModel(t.Context(), h.app, time.Second)
+	m = drive(t, m, dashDataMsg(h.app.dashLoad(t.Context())))
+	m = drive(t, m, key("n"))
+	m = drive(t, m, key("T"))
+	m = drive(t, m, tab)
+	m = drive(t, m, key("a\nb"))
+	if got := m.form.field("repositories").text(); got != "a b" {
+		t.Fatalf("pasted %q", got)
+	}
+	m = drive(t, m, tab)
+	m = drive(t, m, key("nope"))
+	if m.form.note == "" {
+		t.Fatal("unknown project accepted")
+	}
+	m.form.field("project").value = nil
+	m.form.field("repositories").value = []rune("--help")
+	m = drive(t, m, key("enter"))
+	if !m.noteErr || h.app.Store.Exists("T") {
+		t.Fatalf("--help: note=%q", m.note)
+	}
+}

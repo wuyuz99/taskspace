@@ -51,6 +51,9 @@ type App struct {
 	// settle is how long start waits before checking that what it launched
 	// is still running.
 	settle time.Duration
+	// hookOut, if set, takes what post_create hooks print instead of Out and
+	// Err, for dash, which shows only tspace's own words.
+	hookOut io.Writer
 }
 
 // launchSettle is long enough for an agent that dies on launch, or a session
