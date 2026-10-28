@@ -272,6 +272,10 @@ func (s *Store) Delete(name string) error {
 	if err != nil {
 		return fmt.Errorf("delete task %q: %w", name, err)
 	}
+	// A task of the same name made later has run nothing yet.
+	if err := os.RemoveAll(s.RunDir(name)); err != nil {
+		return fmt.Errorf("delete task %q: %w", name, err)
+	}
 	return nil
 }
 

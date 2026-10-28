@@ -58,9 +58,6 @@ func (s *Service) Restart(ctx context.Context, name string, opts RestartOptions)
 		return "", false, err
 	}
 	defer unlock()
-	if opts.Resume && opts.Fresh {
-		return "", false, fmt.Errorf("choose either --resume or --fresh")
-	}
 	var w runtime.Window
 	label = t.Name
 	if opts.Root {
@@ -114,7 +111,7 @@ func (s *Service) Restart(ctx context.Context, name string, opts RestartOptions)
 	}
 	fresh := w
 	auto := false
-	if argv := t.ResumeFor(w.Name); len(argv) > 0 && !opts.Resume && !opts.Fresh {
+	if argv := t.ResumeFor(w.Name); len(argv) > 0 && !opts.Resume && !opts.Fresh && s.Store.Launched(t.Name, w.Name) {
 		w.Command = ExpandArgv(s.Store, t, argv)
 		resumed, auto = true, true
 	}
@@ -129,6 +126,11 @@ func (s *Service) Restart(ctx context.Context, name string, opts RestartOptions)
 	if err := s.Store.ClearSignal(t.Name, w.Name); err != nil {
 		s.warnf("tspace: %v", err)
 	}
+	if !task.IsExtraWindow(w.Name) {
+		if err := s.Store.MarkLaunched(t.Name, w.Name); err != nil {
+			s.warnf("tspace: %v", err)
+		}
+	}
 	// Resumed unasked, a window whose resume command finds nothing to resume
 	// and exits is started fresh, as Start's are.
 	if auto {
@@ -136,7 +138,10 @@ func (s *Service) Restart(ctx context.Context, name string, opts RestartOptions)
 		if err != nil {
 			return "", false, err
 		}
-		resumed = len(relaunched) == 0
+		// Resumed only if it is still running as resumed.
+		st, err := s.Runtime.State(ctx, session)
+		pane, ok := st.Pane(s.Runtime.WindowName(w.Name))
+		resumed = len(relaunched) == 0 && err == nil && ok && !pane.Dead
 	}
 	return label, resumed, nil
 }

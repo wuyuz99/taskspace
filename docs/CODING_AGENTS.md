@@ -71,9 +71,10 @@ to its directory find it again because the window resumes where it ran.
 Once a window has a resume command, every way of bringing it back uses it:
 `tspace start`, `tspace open` and dash's `s`/`S` for a window that is not
 there (after a computer restart, or `X`), and `tspace restart` and dash's
-`r` for a dead one. Start resumes a window only when its worktree was
-already there, or for the root window the task directory: one just created
-holds no conversation. Each says which happened (`backend  resumed: claude
+`r` for a dead one. A window is resumed only where tspace has launched its
+agent before: not in a worktree just created, one only `start --no-runtime`
+made, or a root window starting for the first time, since none holds a
+conversation. Each says which happened (`backend  resumed: claude
 --continue`, `resumed PAY-142/backend`), on the command line and dash's note
 line.
 

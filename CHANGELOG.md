@@ -62,10 +62,11 @@ upgrade.
 
 - **Bringing a window back resumes its agent's conversation.** When a window
   has a resume command, `start`, `open`, dash `s`/`S`, `restart` and dash `r`
-  launch it with that, for a worktree (or task directory) that was already
-  there, instead of a fresh conversation. A resume command that exits at
+  launch it with that where tspace has launched that agent before,
+  instead of a fresh conversation. A resume command that exits at
   once is followed by the agent's own command. `--fresh` on `start`, `open`
-  and `restart` keeps the old behaviour. If you have set `tspace config
+  and `restart` keeps the old behaviour; a window last launched by an
+  earlier version resumes from its next start on. If you have set `tspace config
   resume`, your agents now come back resumed after a computer restart; see
   [Coding agents](docs/CODING_AGENTS.md#bringing-windows-back-resumes-them).
 

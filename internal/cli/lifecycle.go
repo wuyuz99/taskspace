@@ -62,6 +62,7 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&fresh, "fresh", false, "start every agent with a new conversation, never resuming one")
 	if open {
 		cmd.Use = "open TASK"
 		cmd.Short = "Prepare a workspace, show its context and enter its session"
@@ -73,9 +74,7 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 			"open takes over the terminal until you detach, so it needs a TTY. From a\n" +
 			"script, use `tspace start TASK` and read `tspace status TASK` instead."
 		cmd.Args = cobra.ExactArgs(1)
-		cmd.Flags().BoolVar(&fresh, "fresh", false, "start every agent with a new conversation, never resuming one")
 	} else {
-		cmd.Flags().BoolVar(&fresh, "fresh", false, "start every agent with a new conversation, never resuming one")
 		cmd.Flags().BoolVar(&root, "root", false, "start only the task-root window")
 		cmd.Flags().BoolVar(&noRuntime, "no-runtime", false,
 			"create worktrees but do not start the session")
@@ -165,6 +164,7 @@ func (a *App) newRestartCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&root, "root", false, "restart the task-root window")
 	cmd.Flags().BoolVar(&resume, "resume", false, "run the window's resume command, bringing the agent back with its conversation")
 	cmd.Flags().BoolVar(&fresh, "fresh", false, "run the window's own command, never its resume command")
+	cmd.MarkFlagsMutuallyExclusive("resume", "fresh")
 	return cmd
 }
 
