@@ -233,14 +233,26 @@ func withoutSignalHooks(groups []json.RawMessage) ([]json.RawMessage, int, error
 			}
 		}
 		var kept []json.RawMessage
+		// after is whether the group's first signal hook came after one of
+		// the user's, so it goes back after the group, not before it.
+		after, found := false, false
 		for _, h := range list {
 			var hook struct {
 				Command string `json:"command"`
 			}
 			if json.Unmarshal(h, &hook) == nil && signalHookRe.MatchString(hook.Command) {
+				if !found {
+					after, found = len(kept) > 0, true
+				}
 				continue
 			}
 			kept = append(kept, h)
+		}
+		if found && at < 0 {
+			at = len(out)
+			if after {
+				at++
+			}
 		}
 		switch {
 		case len(kept) == len(list):
@@ -252,13 +264,6 @@ func withoutSignalHooks(groups []json.RawMessage) ([]json.RawMessage, int, error
 			}
 			g.set("hooks", l)
 			out = append(out, g.marshal())
-			if at < 0 {
-				at = len(out)
-			}
-		default:
-			if at < 0 {
-				at = len(out)
-			}
 		}
 	}
 	return out, at, nil

@@ -301,3 +301,20 @@ func TestConfigHooksClaudeAgainKeepsTheirPlace(t *testing.T) {
 		t.Fatalf("Stop = %v", c)
 	}
 }
+
+// A signal hook in a group of the user's goes back on the same side of
+// their hooks.
+func TestConfigHooksClaudeKeepsTheSideOfASharedGroup(t *testing.T) {
+	h := newHarness(t)
+	path := filepath.Join(t.TempDir(), "settings.json")
+	mixed := `{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "tspace signal done --quiet"}, {"type": "command", "command": "make lint"}]}]}}`
+	if err := os.WriteFile(path, []byte(mixed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newConfigCmd(), "hooks", "claude", "--settings", path); err != nil {
+		t.Fatal(err)
+	}
+	if c := commands(readSettings(t, path), "Stop"); len(c) != 2 || c[1] != "make lint" {
+		t.Fatalf("Stop = %v", c)
+	}
+}

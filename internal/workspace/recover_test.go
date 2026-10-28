@@ -167,3 +167,71 @@ func TestCleanRefusesASessionItCannotCheck(t *testing.T) {
 		t.Fatalf("Clean without a runtime = %v", err)
 	}
 }
+
+// Closing the last window an interruption would bring back leaves nothing
+// to bring back, while extra windows keep the session up; restart brings a
+// closed one back into what ran.
+func TestClosedWindowsAreNotInterrupted(t *testing.T) {
+	f := newFixture(t)
+	resumeTask(t, f)
+	ctx := context.Background()
+	if _, err := f.svc.Start(ctx, "T", StartOptions{Repos: []string{"a"}}); err != nil {
+		t.Fatal(err)
+	}
+	f.svc.Runtime = &closingRuntime{f.rt}
+	if err := f.svc.StopWindow(ctx, "T", "a", false); err != nil {
+		t.Fatal(err)
+	}
+	if f.svc.Store.Interrupted("T") {
+		t.Fatal("interrupted with nothing to bring back")
+	}
+
+	if _, err := f.svc.Start(ctx, "T", StartOptions{Repos: []string{"a", "b"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.StopWindow(ctx, "T", "b", false); err != nil {
+		t.Fatal(err)
+	}
+	f.rt.panes["b"] = runtime.PaneState{Window: "b", Dead: true}
+	if _, _, err := f.svc.Restart(ctx, "T", RestartOptions{Repo: "b", Fresh: true}); err != nil {
+		t.Fatal(err)
+	}
+	if r, _ := f.svc.Store.Running("T"); !slices.Equal(r.Repos, []string{"a", "b"}) {
+		t.Fatalf("running %+v", r)
+	}
+}
+
+// When the second of two starts fails, what the first brought up is still
+// up, and counts as running.
+func TestInterruptedHalfStartedStillCounts(t *testing.T) {
+	f := newFixture(t)
+	resumeTask(t, f)
+	ctx := context.Background()
+	if _, err := f.svc.Start(ctx, "T", StartOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	f.crash()
+	if err := f.svc.Store.MarkRunning("T", task.Running{Root: true, Repos: []string{"a"}}); err != nil {
+		t.Fatal(err)
+	}
+	tk, _ := f.svc.Store.Load("T")
+	a := tk.Repos["a"]
+	if err := os.RemoveAll(a.Worktree); err != nil {
+		t.Fatal(err)
+	}
+	a.Path = t.TempDir() // not a repository: a's worktree cannot be made
+	tk.SetRepo("a", a)
+	if err := f.svc.Store.Save(tk); err != nil {
+		t.Fatal(err)
+	}
+	_, failed, err := f.svc.StartInterrupted(ctx, StartOptions{})
+	if err != nil || !slices.Equal(failed, []string{"T"}) {
+		t.Fatalf("failed %v, %v", failed, err)
+	}
+	if got := names(f.rt.started); !slices.Equal(got, []string{task.RootWindowName}) {
+		t.Fatalf("launched %v", got)
+	}
+	if r, ok := f.svc.Store.Running("T"); !ok || !r.Root || len(r.Repos) > 0 {
+		t.Fatalf("running %+v, %v", r, ok)
+	}
+}

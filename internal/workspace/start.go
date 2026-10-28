@@ -252,9 +252,10 @@ func (s *Service) settle(ctx context.Context, l *launched) error {
 		return err
 	}
 	// Only a session that survived its launch counts as running, so one
-	// whose agents die at once is never offered as interrupted.
+	// whose agents die at once is never offered as interrupted. One that
+	// could not be read counts as new, as launch took it.
 	running := l.running
-	if prev, ok := s.Store.Running(l.task.Name); ok && (!l.known || l.before.Exists) {
+	if prev, ok := s.Store.Running(l.task.Name); ok && l.known && l.before.Exists {
 		running = prev.With(running)
 	}
 	if err := s.Store.MarkRunning(l.task.Name, running); err != nil {
@@ -276,67 +277,61 @@ func (s *Service) StartInterrupted(ctx context.Context, opts StartOptions) (star
 	type pending struct {
 		ctx      context.Context
 		unlock   func()
+		name     string
 		result   *StartResult
 		launched []*launched
+		err      error
 	}
 	var waiting []pending
 	for _, name := range names {
-		s.report(StartingTask{Task: name})
-		var p pending
 		t, ctx, unlock, err := s.Lock(ctx, name, s.command("tspace start"), true)
-		if err == nil {
-			p.ctx, p.unlock = ctx, unlock
-			if p.result, p.launched, err = s.relaunch(ctx, t, opts.Fresh); err != nil {
-				unlock()
-			}
-		}
 		if err != nil {
+			s.report(StartingTask{Task: name})
 			s.report(TaskNotStarted{Task: name, Err: err})
 			failed = append(failed, name)
 			continue
 		}
+		running, _ := s.Store.Running(name)
+		plan := restarts(t, running, opts.Fresh)
+		// Everything it ran is gone or was closed on purpose since.
+		if len(plan) == 0 {
+			s.markStopped(name)
+			unlock()
+			continue
+		}
+		s.report(StartingTask{Task: name})
+		p := pending{ctx: ctx, unlock: unlock, name: name}
+		for _, o := range plan {
+			res, l, err := s.launch(ctx, t, o)
+			if err != nil {
+				p.err = err
+				break
+			}
+			p.result, t = res, res.Task
+			p.launched = append(p.launched, l)
+		}
 		waiting = append(waiting, p)
 	}
+	// What a failed second launch left behind still settles and counts as
+	// running: it is up.
 	for _, p := range waiting {
-		name := p.result.Task.Name
-		var err error
+		err := p.err
 		for _, l := range p.launched {
-			if err = s.settle(p.ctx, l); err != nil {
+			if serr := s.settle(p.ctx, l); serr != nil {
+				err = serr
 				break
 			}
 		}
 		p.unlock()
 		if err != nil {
-			s.report(TaskNotStarted{Task: name, Err: err})
-			failed = append(failed, name)
+			s.report(TaskNotStarted{Task: p.name, Err: err})
+			failed = append(failed, p.name)
 			continue
 		}
 		s.report(TaskStarted{Result: p.result})
-		started = append(started, name)
+		started = append(started, p.name)
 	}
 	return started, failed, nil
-}
-
-// relaunch launches what t was running when it was interrupted, under the
-// lock ctx holds.
-func (s *Service) relaunch(ctx context.Context, t *task.Task, fresh bool) (*StartResult, []*launched, error) {
-	running, _ := s.Store.Running(t.Name)
-	plan := restarts(t, running, fresh)
-	if len(plan) == 0 {
-		s.markStopped(t.Name)
-		return nil, nil, fmt.Errorf("nothing it was running is left to start")
-	}
-	var result *StartResult
-	var all []*launched
-	for _, opts := range plan {
-		res, l, err := s.launch(ctx, t, opts)
-		if err != nil {
-			return nil, nil, err
-		}
-		result, t = res, res.Task
-		all = append(all, l)
-	}
-	return result, all, nil
 }
 
 // restarts are the starts that bring back what r says ran in t: the whole

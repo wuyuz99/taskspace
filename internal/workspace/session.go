@@ -142,6 +142,7 @@ func (s *Service) Restart(ctx context.Context, name string, opts RestartOptions)
 		if err := s.Store.MarkLaunched(t.Name, w.Name); err != nil {
 			s.warnf("tspace: %v", err)
 		}
+		s.rememberRunning(t.Name, w.Name)
 	}
 	// Resumed unasked, a window whose resume command finds nothing to resume
 	// and exits is started fresh, as Start's are.

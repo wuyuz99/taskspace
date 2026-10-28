@@ -91,7 +91,28 @@ func (s *Service) forgetRunning(name, window string) {
 	} else {
 		r.Repos = slices.DeleteFunc(r.Repos, func(repo string) bool { return repo == window })
 	}
+	// Only extra windows left: nothing an interruption would bring back.
+	if !r.Root && len(r.Repos) == 0 {
+		s.markStopped(name)
+		return
+	}
 	if err := s.Store.MarkRunning(name, r); err != nil {
+		s.warnf("tspace: %v", err)
+	}
+}
+
+// rememberRunning records that window, a primary one, runs again in a
+// session that is up, as restart may bring back one stop closed.
+func (s *Service) rememberRunning(name, window string) {
+	r, ok := s.Store.Running(name)
+	if !ok {
+		return
+	}
+	add := task.Running{Repos: []string{window}}
+	if window == task.RootWindowName {
+		add = task.Running{Root: true}
+	}
+	if err := s.Store.MarkRunning(name, r.With(add)); err != nil {
 		s.warnf("tspace: %v", err)
 	}
 }
