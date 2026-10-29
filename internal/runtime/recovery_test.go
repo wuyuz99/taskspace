@@ -39,7 +39,7 @@ func TestRestartRefusesLiveOrMissingWindow(t *testing.T) {
 			t.Fatal("refusal changed window")
 		}
 	}
-	f := tsexec.NewFake().Fail("has-session", "missing", 1)
+	f := tsexec.NewFake().Fail("has-session", "can't find session: tspace@x", 1)
 	if err := NewTmux(f).Restart(ctx(), "tspace-task", Window{Name: "backend"}); err == nil {
 		t.Fatal("missing session accepted")
 	}

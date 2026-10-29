@@ -101,6 +101,9 @@ upgrade.
   worktrees and branches again after the stop: a change left behind keeps
   the worktree, and a commit keeps the branch under `--delete-branch`. A
   branch is deleted only if it still points to the commit found safe.
+- **clean refuses when the multiplexer fails its check**, such as an adapter
+  whose `check` exits non-zero, since its sessions may still run. Only a
+  multiplexer, or adapter, that is not installed counts as running nothing.
 - **A repository with no default branch** gets the branch it is on as the
   base, or its commit when detached, not `HEAD`, which `status`, `clean
   --delete-branch` and `repo update --rebase` read in the wrong place.

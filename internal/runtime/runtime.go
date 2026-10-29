@@ -8,8 +8,11 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 )
@@ -196,4 +199,11 @@ func sanitize(s string) string {
 		}
 	}
 	return b.String()
+}
+
+// NotInstalled reports whether err says the multiplexer, or its adapter, is
+// not installed at all. Then it runs no sessions tspace could act on, which is
+// not true of any other failure: a check can fail while sessions still run.
+func NotInstalled(err error) bool {
+	return errors.Is(err, exec.ErrNotFound) || errors.Is(err, fs.ErrNotExist)
 }

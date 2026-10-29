@@ -52,16 +52,29 @@ func target(session string) string { return "=" + session }
 
 func windowTarget(session, window string) string { return "=" + session + ":=" + window }
 
-// HasSession implements Runtime.
+// HasSession implements Runtime. tmux exits 1 for any failure, so only an
+// answer that there is no such session, or no server to hold one, says it is
+// missing; any other, such as a server tmux cannot talk to, is an error.
 func (t *Tmux) HasSession(ctx context.Context, session string) (bool, error) {
-	_, err := t.tmux(ctx, "has-session", "-t", target(session))
+	res, err := t.tmux(ctx, "has-session", "-t", target(session))
 	if err == nil {
 		return true, nil
 	}
-	if tsexec.IsExit(err) {
+	if tsexec.IsExit(err) && noSession(res.Stderr) {
 		return false, nil
 	}
 	return false, err
+}
+
+// noSession reports whether has-session's stderr says the session is not
+// there: no such session, no server running, or no socket for one.
+func noSession(stderr string) bool {
+	for _, s := range []string{"can't find session", "session not found", "no server running", "No such file or directory"} {
+		if strings.Contains(stderr, s) {
+			return true
+		}
+	}
+	return false
 }
 
 // Start implements Runtime.
