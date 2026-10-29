@@ -79,20 +79,16 @@ func (d Discardability) Reason() string {
 func (g *Git) CanDiscardBranch(ctx context.Context, repo, branch, base string) (Discardability, error) {
 	d := Discardability{Branch: branch, Base: base}
 
-	exists, err := g.BranchExists(ctx, repo, branch)
-	if err != nil {
-		return d, err
-	}
-	if !exists {
-		// Nothing to lose.
-		d.Merged = true
-		return d, nil
-	}
 	// Every test below is about this one commit, not whatever the branch
 	// points to by the time each runs: an agent may still be committing.
 	res, err := g.git(ctx, repo, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch+"^{commit}")
 	if err != nil {
-		return d, fmt.Errorf("resolve branch %s: %w", branch, err)
+		if !tsexec.IsExit(err) {
+			return d, fmt.Errorf("resolve branch %s: %w", branch, err)
+		}
+		// No such branch: nothing to lose.
+		d.Merged = true
+		return d, nil
 	}
 	d.Tip = res.Out()
 

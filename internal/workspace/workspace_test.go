@@ -315,7 +315,7 @@ func TestCleanJudgesWorkDoneWhileStopping(t *testing.T) {
 
 	f.rt.onStop = write
 	err := f.svc.Clean(ctx, "T", CleanOptions{DeleteBranch: true})
-	if err == nil || !strings.Contains(err.Error(), "work appeared while it stopped") {
+	if err == nil || !strings.Contains(err.Error(), "work appeared as its agents stopped") {
 		t.Fatalf("Clean = %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(wt, "late.txt")); err != nil {

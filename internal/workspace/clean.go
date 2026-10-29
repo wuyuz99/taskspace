@@ -53,7 +53,7 @@ func (s *Service) Clean(ctx context.Context, name string, opts CleanOptions) err
 		if !opts.Remove {
 			return nil
 		}
-		if err := s.stopForClean(ctx, t); err != nil {
+		if _, err := s.stopForClean(ctx, t); err != nil {
 			return err
 		}
 		return s.finish(t)
@@ -73,22 +73,27 @@ func (s *Service) Clean(ctx context.Context, name string, opts CleanOptions) err
 
 	// Stop the runtime only once the safety checks have passed, so a refused
 	// clean does not disrupt running agents as a side effect.
+	var stopped bool
+	stoppedWhat := "stopped " + t.Name
 	if len(opts.Repos) > 0 {
-		if err := s.stopSelectedForClean(ctx, t, selected); err != nil {
+		stoppedWhat = "closed the windows of " + strings.Join(selected.RepoNames(), ", ")
+		if stopped, err = s.stopSelectedForClean(ctx, t, selected); err != nil {
 			return err
 		}
-	} else if err := s.stopForClean(ctx, t); err != nil {
+	} else if stopped, err = s.stopForClean(ctx, t); err != nil {
 		return err
 	}
 	// An agent may have committed, or left changes, as it shut down; what is
 	// removed is decided by what the worktrees hold now, not before the stop.
-	if plans, err = s.inspectForClean(ctx, selected, opts.DeleteBranch); err != nil {
-		return err
-	}
-	if blocked := blockers(plans); len(blocked) > 0 && !opts.Force {
-		return fmt.Errorf("stopped %s, but kept its worktrees; work appeared while it stopped:\n\n%s\n\n"+
-			"commit, push or stash it, or re-run with --force to discard it",
-			t.Name, strings.Join(blocked, "\n"))
+	if stopped {
+		if plans, err = s.inspectForClean(ctx, selected, opts.DeleteBranch); err != nil {
+			return err
+		}
+		if blocked := blockers(plans); len(blocked) > 0 && !opts.Force {
+			return fmt.Errorf("%s, but kept the worktrees; work appeared as its agents stopped:\n\n%s\n\n"+
+				"commit, push or stash it, or re-run with --force to discard it; tspace start %s brings the windows back",
+				stoppedWhat, strings.Join(blocked, "\n"), t.Name)
+		}
 	}
 
 	for _, p := range plans {
@@ -104,7 +109,7 @@ func (s *Service) Clean(ctx context.Context, name string, opts CleanOptions) err
 		// Branch handling runs even when the worktree was already gone: a
 		// repeated `clean --delete-branch` must still evaluate the branch
 		// rather than silently skipping it.
-		if !opts.DeleteBranch {
+		if !opts.DeleteBranch || p.Discard.Tip == "" {
 			continue
 		}
 		if !p.Discard.Safe() && !opts.Force {
@@ -156,23 +161,25 @@ func (s *Service) Clean(ctx context.Context, name string, opts CleanOptions) err
 
 // stopForClean ends the task's session if it is running. A session it cannot
 // check might be running, and its worktrees must not go from under it, so
-// that refuses; with no runtime at all there is none to run.
-func (s *Service) stopForClean(ctx context.Context, t *task.Task) error {
+// that refuses; with no runtime at all there is none to run. It reports
+// whether it stopped one.
+func (s *Service) stopForClean(ctx context.Context, t *task.Task) (stopped bool, err error) {
 	session := s.Runtime.SessionName(t.Name)
 	if s.Runtime.Available(ctx) == nil {
 		running, err := s.Runtime.HasSession(ctx, session)
 		if err != nil {
-			return fmt.Errorf("could not check whether %s is running, so its worktrees are left alone: %w", session, err)
+			return false, fmt.Errorf("could not check whether %s is running, so its worktrees are left alone: %w", session, err)
 		}
 		if running {
 			if err := s.Runtime.Stop(ctx, session); err != nil {
-				return err
+				return false, err
 			}
 			s.report(SessionStopped{Session: session})
+			stopped = true
 		}
 	}
 	s.markStopped(t.Name)
-	return nil
+	return stopped, nil
 }
 
 // finish deletes a cleaned task's record and notes, but only if nothing else
