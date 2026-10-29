@@ -12,6 +12,9 @@ import (
 type Discardability struct {
 	Branch string
 	Base   string
+	// Tip is the commit the verdict is about, "" when the branch is absent.
+	// A branch that has moved since is not covered by it; see DeleteBranchAt.
+	Tip string
 
 	Merged   bool   // an ancestor of the base branch
 	Squashed bool   // its combined change is a single commit on the base branch
@@ -85,6 +88,13 @@ func (g *Git) CanDiscardBranch(ctx context.Context, repo, branch, base string) (
 		d.Merged = true
 		return d, nil
 	}
+	// Every test below is about this one commit, not whatever the branch
+	// points to by the time each runs: an agent may still be committing.
+	res, err := g.git(ctx, repo, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch+"^{commit}")
+	if err != nil {
+		return d, fmt.Errorf("resolve branch %s: %w", branch, err)
+	}
+	d.Tip = res.Out()
 
 	if base != "" {
 		baseExists, err := g.RefExists(ctx, repo, base)
@@ -98,13 +108,13 @@ func (g *Git) CanDiscardBranch(ctx context.Context, repo, branch, base string) (
 			}
 		}
 		if baseExists {
-			merged, err := g.ok(ctx, repo, "merge-base", "--is-ancestor", "refs/heads/"+branch, base)
+			merged, err := g.ok(ctx, repo, "merge-base", "--is-ancestor", d.Tip, base)
 			if err != nil {
 				return d, err
 			}
 			d.Merged = merged
 			if !merged {
-				if d.Squashed, err = g.squashMerged(ctx, repo, branch, base); err != nil {
+				if d.Squashed, err = g.squashMerged(ctx, repo, branch, d.Tip, base); err != nil {
 					return d, err
 				}
 			}
@@ -118,7 +128,7 @@ func (g *Git) CanDiscardBranch(ctx context.Context, repo, branch, base string) (
 	d.Upstream = upstream
 
 	if upstream != "" {
-		res, err := g.git(ctx, repo, "rev-list", "--count", upstream+"..refs/heads/"+branch)
+		res, err := g.git(ctx, repo, "rev-list", "--count", upstream+".."+d.Tip)
 		if err != nil {
 			return d, fmt.Errorf("count unpushed commits on %s: %w", branch, err)
 		}
@@ -146,9 +156,9 @@ func (g *Git) CanDiscardBranch(ctx context.Context, repo, branch, base string) (
 // and `git cherry` looks for a commit with the same patch-id on base. The probe
 // commit is unreferenced and left for git's garbage collection. A squash that
 // needed conflict resolution produces a different patch and is not recognised,
-// which errs toward keeping the branch.
-func (g *Git) squashMerged(ctx context.Context, repo, branch, base string) (bool, error) {
-	res, err := g.git(ctx, repo, "merge-base", base, branch)
+// which errs toward keeping the branch. tip is the branch's commit.
+func (g *Git) squashMerged(ctx context.Context, repo, branch, tip, base string) (bool, error) {
+	res, err := g.git(ctx, repo, "merge-base", base, tip)
 	if err != nil {
 		if tsexec.IsExit(err) {
 			return false, nil // unrelated histories
@@ -156,7 +166,7 @@ func (g *Git) squashMerged(ctx context.Context, repo, branch, base string) (bool
 		return false, err
 	}
 	mergeBase := res.Out()
-	res, err = g.git(ctx, repo, "rev-parse", branch+"^{tree}")
+	res, err = g.git(ctx, repo, "rev-parse", tip+"^{tree}")
 	if err != nil {
 		return false, err
 	}

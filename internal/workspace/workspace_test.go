@@ -29,6 +29,8 @@ type fakeRuntime struct {
 	started     []runtime.Window
 	restarted   []runtime.Window
 	stopped     bool
+	// onStop runs as Stop does, as an agent finishing up would.
+	onStop func()
 }
 
 func (f *fakeRuntime) Available(context.Context) error { return f.unavailable }
@@ -59,6 +61,9 @@ func (f *fakeRuntime) Restart(_ context.Context, _ string, w runtime.Window) err
 	return nil
 }
 func (f *fakeRuntime) Stop(context.Context, string) error {
+	if f.onStop != nil {
+		f.onStop()
+	}
 	f.stopped, f.exists, f.panes = true, false, nil
 	return nil
 }
@@ -279,6 +284,64 @@ func TestClean(t *testing.T) {
 	}
 	if f.svc.Store.Exists("T") || len(eventsOf[RecordRemoved](f.events)) != 1 || len(eventsOf[NotesRemoved](f.events)) != 1 {
 		t.Fatalf("clean --rm: exists %v, events %+v", f.svc.Store.Exists("T"), f.events)
+	}
+}
+
+// What an agent does as its session stops is judged before anything goes: a
+// commit keeps its branch, and a change left behind keeps its worktree.
+func TestCleanJudgesWorkDoneWhileStopping(t *testing.T) {
+	f := newFixture(t)
+	f.task(t, "T", map[string]task.Repo{"a": {Path: gitRepo(t)}})
+	ctx := context.Background()
+	if _, err := f.svc.Start(ctx, "T", StartOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	tk, _ := f.svc.Store.Load("T")
+	wt := tk.Repos["a"].Worktree
+	write := func() {
+		if err := os.WriteFile(filepath.Join(wt, "late.txt"), []byte("late\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	git := func(args ...string) {
+		cmd := osexec.Command("git", args...)
+		cmd.Dir = wt
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid",
+			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.invalid")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+
+	f.rt.onStop = write
+	err := f.svc.Clean(ctx, "T", CleanOptions{DeleteBranch: true})
+	if err == nil || !strings.Contains(err.Error(), "work appeared while it stopped") {
+		t.Fatalf("Clean = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(wt, "late.txt")); err != nil {
+		t.Fatalf("the change left while stopping is gone: %v", err)
+	}
+
+	if err := os.Remove(filepath.Join(wt, "late.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Start(ctx, "T", StartOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	f.rt.onStop = func() {
+		write()
+		git("add", "late.txt")
+		git("commit", "-q", "-m", "late")
+	}
+	f.events = nil
+	if err := f.svc.Clean(ctx, "T", CleanOptions{DeleteBranch: true}); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := f.svc.Git.BranchExists(ctx, tk.Repos["a"].Path, "agent/T"); !ok {
+		t.Fatal("the branch with the commit made while stopping was deleted")
+	}
+	if len(eventsOf[BranchKept](f.events)) != 1 || len(eventsOf[BranchDeleted](f.events)) != 0 {
+		t.Fatalf("events %+v", f.events)
 	}
 }
 

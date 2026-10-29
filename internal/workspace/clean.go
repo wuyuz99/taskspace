@@ -80,6 +80,16 @@ func (s *Service) Clean(ctx context.Context, name string, opts CleanOptions) err
 	} else if err := s.stopForClean(ctx, t); err != nil {
 		return err
 	}
+	// An agent may have committed, or left changes, as it shut down; what is
+	// removed is decided by what the worktrees hold now, not before the stop.
+	if plans, err = s.inspectForClean(ctx, selected, opts.DeleteBranch); err != nil {
+		return err
+	}
+	if blocked := blockers(plans); len(blocked) > 0 && !opts.Force {
+		return fmt.Errorf("stopped %s, but kept its worktrees; work appeared while it stopped:\n\n%s\n\n"+
+			"commit, push or stash it, or re-run with --force to discard it",
+			t.Name, strings.Join(blocked, "\n"))
+	}
 
 	for _, p := range plans {
 		if p.Present {
@@ -101,7 +111,8 @@ func (s *Service) Clean(ctx context.Context, name string, opts CleanOptions) err
 			s.report(BranchKept{Repo: p.Name, Branch: p.Repo.Branch, Reason: p.Discard.Reason(), Path: p.Repo.Path, Orphaned: opts.Remove})
 			continue
 		}
-		if err := s.Git.DeleteBranch(ctx, p.Repo.Path, p.Repo.Branch, true); err != nil {
+		// Only the commit found safe goes; a branch that moved since is kept.
+		if err := s.Git.DeleteBranchAt(ctx, p.Repo.Path, p.Repo.Branch, p.Discard.Tip); err != nil {
 			s.report(BranchNotDeleted{Repo: p.Name, Branch: p.Repo.Branch, Err: err})
 			continue
 		}

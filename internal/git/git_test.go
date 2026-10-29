@@ -188,6 +188,53 @@ func TestAvailable(t *testing.T) {
 	}
 }
 
+// DeleteBranchAt deletes only the commit it was told was safe: a branch that
+// has moved on, or one checked out, stays.
+func TestDeleteBranchAt(t *testing.T) {
+	g := testGit(t)
+	repo := initRepo(t)
+	runGit(t, repo, "branch", "feature")
+	checked, err := g.Commit(ctx(), repo, "feature")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "config", "branch.feature.description", "x")
+
+	runGit(t, repo, "checkout", "-q", "feature")
+	writeFile(t, filepath.Join(repo, "late.txt"), "late\n")
+	runGit(t, repo, "add", "late.txt")
+	runGit(t, repo, "commit", "-m", "late")
+	err = g.DeleteBranchAt(ctx(), repo, "feature", checked)
+	if err == nil || !strings.Contains(err.Error(), "checked out") {
+		t.Fatalf("DeleteBranchAt(checked out) = %v", err)
+	}
+	runGit(t, repo, "checkout", "-q", "main")
+	err = g.DeleteBranchAt(ctx(), repo, "feature", checked)
+	if err == nil || !strings.Contains(err.Error(), "moved") {
+		t.Fatalf("DeleteBranchAt(moved) = %v", err)
+	}
+	if ok, _ := g.BranchExists(ctx(), repo, "feature"); !ok {
+		t.Fatal("a branch that moved was deleted")
+	}
+
+	tip, err := g.Commit(ctx(), repo, "feature")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := g.DeleteBranchAt(ctx(), repo, "feature", tip); err != nil {
+		t.Fatalf("DeleteBranchAt: %v", err)
+	}
+	if ok, _ := g.BranchExists(ctx(), repo, "feature"); ok {
+		t.Fatal("branch survived")
+	}
+	if _, err := g.git(ctx(), repo, "config", "--get-regexp", `^branch\.feature\.`); err == nil {
+		t.Fatal("the branch's configuration survived")
+	}
+	if err := g.DeleteBranchAt(ctx(), repo, "feature", ""); err == nil {
+		t.Fatal("deleting a missing branch succeeded")
+	}
+}
+
 func TestDeleteBranch(t *testing.T) {
 	g := testGit(t)
 	repo := initRepo(t)

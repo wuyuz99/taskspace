@@ -321,6 +321,39 @@ func (g *Git) DeleteBranch(ctx context.Context, repo, branch string, force bool)
 	return nil
 }
 
+// DeleteBranchAt deletes a local branch only if it still points to tip, the
+// commit a caller's safety check was about, so a commit made since is never
+// lost with it. Like git branch -D, it refuses a branch checked out in a
+// worktree and drops the branch's configuration with it.
+func (g *Git) DeleteBranchAt(ctx context.Context, repo, branch, tip string) error {
+	if tip == "" {
+		return fmt.Errorf("delete branch %s: branch not found", branch)
+	}
+	wt, err := g.FindWorktreeForBranch(ctx, repo, branch)
+	if err != nil {
+		return fmt.Errorf("delete branch %s: %w", branch, err)
+	}
+	if wt != nil {
+		return fmt.Errorf("delete branch %s: it is checked out at %s", branch, wt.Path)
+	}
+	if _, err := g.git(ctx, repo, "update-ref", "-d", "refs/heads/"+branch, tip); err != nil {
+		if res, rerr := g.git(ctx, repo, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch); rerr == nil && res.Out() != tip {
+			return fmt.Errorf("delete branch %s: it moved to %s after it was checked at %s", branch, short(res.Out()), short(tip))
+		}
+		return fmt.Errorf("delete branch %s: %w", branch, err)
+	}
+	// Exits non-zero when the branch had no configuration, which is fine.
+	_, _ = g.git(ctx, repo, "config", "--remove-section", "branch."+branch)
+	return nil
+}
+
+func short(oid string) string {
+	if len(oid) > 12 {
+		return oid[:12]
+	}
+	return oid
+}
+
 // RenameBranch renames a local branch, which may be checked out in a
 // worktree; git carries its upstream and reflog over.
 func (g *Git) RenameBranch(ctx context.Context, repo, from, to string) error {
