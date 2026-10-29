@@ -178,6 +178,12 @@ func TestCleanRefusesASessionItCannotCheck(t *testing.T) {
 	if err := f.svc.Clean(ctx, "T", CleanOptions{}); err != nil {
 		t.Fatalf("Clean without a multiplexer = %v", err)
 	}
+	if _, err := os.Stat(tk.Repos["a"].Worktree); !os.IsNotExist(err) {
+		t.Fatalf("worktree kept: %v", err)
+	}
+	if f.rt.stopped {
+		t.Fatal("stopped a session in a multiplexer that is not installed")
+	}
 }
 
 // Closing the last window an interruption would bring back leaves nothing

@@ -55,7 +55,7 @@ func (s *Service) Clean(ctx context.Context, name string, opts CleanOptions) err
 			return nil
 		}
 		if _, err := s.stopForClean(ctx, t); err != nil {
-			return err
+			return fmt.Errorf("%w; the record of %s is kept", err, t.Name)
 		}
 		return s.finish(t)
 	}
@@ -79,10 +79,10 @@ func (s *Service) Clean(ctx context.Context, name string, opts CleanOptions) err
 	if len(opts.Repos) > 0 {
 		stoppedWhat = "closed the windows of " + strings.Join(selected.RepoNames(), ", ")
 		if stopped, err = s.stopSelectedForClean(ctx, t, selected); err != nil {
-			return err
+			return fmt.Errorf("%w; the worktrees are left alone", err)
 		}
 	} else if stopped, err = s.stopForClean(ctx, t); err != nil {
-		return err
+		return fmt.Errorf("%w; the worktrees are left alone", err)
 	}
 	// An agent may have committed, or left changes, as it shut down; what is
 	// removed is decided by what the worktrees hold now, not before the stop.
@@ -166,12 +166,12 @@ func (s *Service) Clean(ctx context.Context, name string, opts CleanOptions) err
 func (s *Service) stopForClean(ctx context.Context, t *task.Task) (stopped bool, err error) {
 	running, err := s.sessionUp(ctx, t.Name)
 	if err != nil {
-		return false, fmt.Errorf("%w, so its worktrees are left alone", err)
+		return false, err
 	}
 	if running {
 		session := s.Runtime.SessionName(t.Name)
 		if err := s.Runtime.Stop(ctx, session); err != nil {
-			return false, err
+			return false, fmt.Errorf("could not stop %s: %w", session, err)
 		}
 		s.report(SessionStopped{Session: session})
 		stopped = true

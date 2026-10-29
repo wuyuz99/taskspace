@@ -12,7 +12,7 @@ import (
 func (s *Service) stopSelectedForClean(ctx context.Context, t, selected *task.Task) (closed bool, err error) {
 	running, err := s.sessionUp(ctx, t.Name)
 	if err != nil {
-		return false, fmt.Errorf("%w, so its worktrees are left alone", err)
+		return false, err
 	}
 	if !running {
 		return false, nil

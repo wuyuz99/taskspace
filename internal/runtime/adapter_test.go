@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -163,6 +164,10 @@ func TestNotInstalled(t *testing.T) {
 	}
 	if err := missing.Available(context.Background()); !NotInstalled(err) {
 		t.Fatalf("missing adapter: NotInstalled(%v) = false", err)
+	}
+	gone := NewAdapter("gone", []string{filepath.Join(t.TempDir(), "tspace-mux-gone")}, tsexec.Real())
+	if _, err := gone.HasSession(context.Background(), "s"); !NotInstalled(err) {
+		t.Fatalf("adapter path gone: NotInstalled(%v) = false", err)
 	}
 	failing := NewAdapter("failing", []string{"x"}, tsexec.NewFake().Fail("x", "broken", 23))
 	if _, err := failing.HasSession(context.Background(), "s"); err == nil || NotInstalled(err) {
