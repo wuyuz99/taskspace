@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	tsgit "github.com/wuyuz99/taskspace/internal/git"
-	"github.com/wuyuz99/taskspace/internal/runtime"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
@@ -164,7 +163,7 @@ func (s *Service) Clean(ctx context.Context, name string, opts CleanOptions) err
 // check might be running, and its worktrees must not go from under it, so
 // that refuses. It reports whether it stopped one.
 func (s *Service) stopForClean(ctx context.Context, t *task.Task) (stopped bool, err error) {
-	running, err := s.sessionUp(ctx, t.Name)
+	running, err := s.SessionUp(ctx, t.Name)
 	if err != nil {
 		return false, err
 	}
@@ -178,25 +177,6 @@ func (s *Service) stopForClean(ctx context.Context, t *task.Task) (stopped bool,
 	}
 	s.markStopped(t.Name)
 	return stopped, nil
-}
-
-// sessionUp reports whether the task's session is running, for a caller
-// about to change what runs in it. A multiplexer that is not installed runs
-// nothing. Any other failure to tell is an error, even one that says the
-// multiplexer is unusable: its sessions may still be up.
-func (s *Service) sessionUp(ctx context.Context, name string) (bool, error) {
-	if s.Runtime == nil {
-		return false, nil
-	}
-	session := s.Runtime.SessionName(name)
-	running, err := s.Runtime.HasSession(ctx, session)
-	if err != nil {
-		if runtime.NotInstalled(err) {
-			return false, nil
-		}
-		return false, fmt.Errorf("could not check whether %s is running: %w", session, err)
-	}
-	return running, nil
 }
 
 // finish deletes a cleaned task's record and notes, but only if nothing else

@@ -375,6 +375,8 @@ func (s *Service) Interrupted(ctx context.Context) ([]string, error) {
 		if !s.Store.Interrupted(t.Name) {
 			continue
 		}
+		// Only a session known to be gone is offered; one that cannot be
+		// checked is skipped.
 		if running, err := s.Runtime.HasSession(ctx, s.Runtime.SessionName(t.Name)); err == nil && !running {
 			names = append(names, t.Name)
 		}

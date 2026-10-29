@@ -10,7 +10,7 @@ import (
 // stopSelectedForClean closes the selected repositories' windows, reporting
 // whether it closed any.
 func (s *Service) stopSelectedForClean(ctx context.Context, t, selected *task.Task) (closed bool, err error) {
-	running, err := s.sessionUp(ctx, t.Name)
+	running, err := s.SessionUp(ctx, t.Name)
 	if err != nil {
 		return false, err
 	}

@@ -20,9 +20,13 @@ type layoutRuntime struct {
 	running bool
 	opened  []runtime.Window
 	openErr error
+	// hasErr is what a session check fails with.
+	hasErr error
 }
 
-func (r *layoutRuntime) HasSession(context.Context, string) (bool, error) { return r.running, nil }
+func (r *layoutRuntime) HasSession(context.Context, string) (bool, error) {
+	return r.running, r.hasErr
+}
 func (r *layoutRuntime) CloseWindow(_ context.Context, _ string, name string) error {
 	var kept []runtime.Window
 	for _, w := range r.started {
@@ -241,6 +245,57 @@ func TestFirstRepoOfEmptyTaskChoosesTheLayout(t *testing.T) {
 		if got, want := tk.AgentRepo, map[bool]string{false: "backend", true: ""}[running]; got != want {
 			t.Errorf("running=%v: agent_repo=%q, want %q", running, got, want)
 		}
+	}
+}
+
+// A session that cannot be checked may be running the agent in the root
+// window: a first repository does not take the agent, and a second does not
+// open a root window in it.
+func TestRepoAddWithASessionItCannotCheck(t *testing.T) {
+	h := newHarness(t)
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1"); err != nil {
+		t.Fatal(err)
+	}
+	rt := &layoutRuntime{hasErr: errors.New("server busy")}
+	h.app.Runtime = rt
+	if err := h.exec(t, h.app.newRepoCmd(), "add", "PAY-1", h.repo, "--name", "backend"); err != nil {
+		t.Fatal(err)
+	}
+	if tk := h.load(t, "PAY-1"); tk.AgentRepo != "" {
+		t.Fatalf("agent moved to %q under a session that may be running", tk.AgentRepo)
+	}
+	if !strings.Contains(h.errb.String(), "server busy") {
+		t.Fatalf("no warning: %q", h.errb.String())
+	}
+
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-2", "--repo", "backend="+h.repo); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newRepoCmd(), "add", "PAY-2", mkRepo(t), "--name", "frontend"); err != nil {
+		t.Fatal(err)
+	}
+	if tk := h.load(t, "PAY-2"); !tk.RootWindow || len(rt.opened) != 0 {
+		t.Fatalf("root=%v opened=%v", tk.RootWindow, rt.opened)
+	}
+	if !strings.Contains(h.errb.String(), "opens when the task next starts") {
+		t.Fatalf("no warning for the second repository: %q", h.errb.String())
+	}
+}
+
+// Nor does repo rm --keep-worktree move the agent out of a window that may
+// still run it.
+func TestRepoRmRefusesASessionItCannotCheck(t *testing.T) {
+	h := newHarness(t)
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--agent", "claude", "--repo", "backend="+h.repo); err != nil {
+		t.Fatal(err)
+	}
+	h.app.Runtime = &layoutRuntime{hasErr: errors.New("server busy")}
+	err := h.exec(t, h.app.newRepoCmd(), "rm", "PAY-1", "backend", "--keep-worktree")
+	if err == nil || !strings.Contains(err.Error(), "server busy") || !strings.Contains(err.Error(), "tspace stop PAY-1") {
+		t.Fatalf("rm = %v", err)
+	}
+	if _, ok := h.load(t, "PAY-1").Repo("backend"); !ok {
+		t.Fatal("refused rm still removed the repo")
 	}
 }
 

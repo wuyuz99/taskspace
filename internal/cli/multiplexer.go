@@ -126,6 +126,7 @@ func (a *App) warnRunningSessions(cmd *cobra.Command, next string) {
 	}
 	tasks, _ := a.Store.List()
 	var running []string
+	// Only a warning: a session that cannot be checked goes unnamed.
 	for _, t := range tasks {
 		if ok, err := a.Runtime.HasSession(cmd.Context(), a.Runtime.SessionName(t.Name)); err == nil && ok {
 			running = append(running, t.Name)
