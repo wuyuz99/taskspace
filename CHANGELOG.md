@@ -104,6 +104,11 @@ upgrade.
 - **clean refuses when the multiplexer fails its check**, such as an adapter
   whose `check` exits non-zero, since its sessions may still run. Only a
   multiplexer, or adapter, that is not installed counts as running nothing.
+- **`repo rm --keep-worktree`, `repo add` and `import` no longer guess a
+  session is stopped.** When the session cannot be checked, `repo rm` of the
+  agent's repository refuses, and a first `repo add` or `import` leaves the
+  agent in the root window, warning why, instead of moving it while it may
+  still run there. `stop` with no multiplexer installed says nothing runs.
 - **A repository with no default branch** gets the branch it is on as the
   base, or its commit when detached, not `HEAD`, which `status`, `clean
   --delete-branch` and `repo update --rebase` read in the wrong place.

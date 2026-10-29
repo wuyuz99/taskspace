@@ -23,8 +23,14 @@ func (s *Service) RemoveRepo(ctx context.Context, name, repo string, keepWorktre
 	if !ok {
 		return "", fmt.Errorf("task %q has no repo named %q (has: %s)", t.Name, repo, strings.Join(t.RepoNames(), ", "))
 	}
-	if keepWorktree && repo == t.AgentRepo && s.Runtime != nil && s.Runtime.Available(ctx) == nil {
-		if running, err := s.Runtime.HasSession(ctx, s.Runtime.SessionName(t.Name)); err == nil && running {
+	if keepWorktree && repo == t.AgentRepo {
+		// The agent moves to the root window, so it must not be running in
+		// this one, nor might be.
+		running, err := s.SessionUp(ctx, t.Name)
+		if err != nil {
+			return "", fmt.Errorf("the task's agent runs in %s's window, which may still be up: %w; once the multiplexer answers, stop the task first: tspace stop %s", repo, err, t.Name)
+		}
+		if running {
 			return "", fmt.Errorf("the task's agent runs in %s's window; stop the task first: tspace stop %s", repo, t.Name)
 		}
 	}
