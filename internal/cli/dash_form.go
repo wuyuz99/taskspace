@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // dashField is one line of a dashForm: text, a choice toggled with space,
@@ -180,16 +181,12 @@ func (f *dashForm) view(cols int) string {
 		line := mark + fl.label + strings.Repeat(" ", width-len(fl.label)) + "  "
 		switch {
 		case fl.toggle:
-			box := "[ ]"
-			if fl.on {
-				box = "[x]"
-			}
-			line += box + " " + dashFaint.Render(fl.hint)
+			line += box(fl.on) + " " + dashFaint.Render(fl.hint)
 		case fl.choices != nil:
 			if len(fl.choices) == 0 {
 				line += dashFaint.Render(fl.hint)
 			}
-			line += fl.pickLine(i == f.focus, cols-len([]rune(line)))
+			line += fl.pickLine(i == f.focus, cols-lipgloss.Width(line))
 		case i == f.focus:
 			line += string(fl.value[:fl.cursor]) + dashBold.Render("▏") + string(fl.value[fl.cursor:])
 			if len(fl.value) == 0 {
@@ -206,7 +203,7 @@ func (f *dashForm) view(cols int) string {
 	if f.note != "" {
 		b.WriteString(dashRed.Render("  "+f.note) + "\n")
 	}
-	b.WriteString(dashFaint.Render("tab next field · ←/→ choose · space toggles [ ] · enter submit · esc cancel"))
+	b.WriteString(dashFaint.Render("tab next field · ←/→ choose · space picks · enter submit · esc cancel"))
 	return b.String()
 }
 
@@ -218,17 +215,13 @@ func (f dashField) pickLine(focused bool, room int) string {
 	}
 	items := make([]string, len(f.choices))
 	for j, c := range f.choices {
-		box := "[ ]"
-		if f.picked[j] {
-			box = "[x]"
-		}
-		items[j] = box + " " + c
+		items[j] = box(f.picked[j]) + " " + c
 	}
 	// fits says items first..last, with their markers, take room or less.
 	fits := func(first, last int) bool {
 		w := 2 * (last - first)
 		for _, it := range items[first : last+1] {
-			w += len([]rune(it))
+			w += lipgloss.Width(it)
 		}
 		if first > 0 {
 			w += 2
@@ -263,4 +256,11 @@ func (f dashField) pickLine(focused bool, room int) string {
 		b.WriteString(dashFaint.Render(" ›"))
 	}
 	return b.String()
+}
+
+func box(on bool) string {
+	if on {
+		return "[x]"
+	}
+	return "[ ]"
 }

@@ -151,6 +151,10 @@ func TestDashCreatePicks(t *testing.T) {
 	if got := strings.Join(createRepos(f), " "); got != "infra backend@fix-1" {
 		t.Fatalf("repos %q", got)
 	}
+	f.field("more").value = []rune("backend@fix-1 infra=/src/infra")
+	if got := strings.Join(createRepos(f), " "); got != "backend@fix-1 infra=/src/infra" {
+		t.Fatalf("named as typed: %q", got)
+	}
 
 	project := dashField{label: "project"}.pick([]string{"p", "q"}, true)
 	f = &dashForm{fields: []dashField{project}, check: func(*dashForm) string { return "" }}
@@ -169,9 +173,17 @@ func TestDashCreatePicks(t *testing.T) {
 // A pick longer than the screen scrolls to keep the choice at the cursor in
 // view, marking the side where more are hidden.
 func TestDashPickScrolls(t *testing.T) {
+	for _, stem := range []string{"repo", "仓库"} {
+		t.Run(stem, func(t *testing.T) { testPickScrolls(t, stem) })
+	}
+}
+
+// testPickScrolls scrolls a pick of names made from stem, which may be
+// wide characters, two columns each.
+func testPickScrolls(t *testing.T, stem string) {
 	var names []string
 	for i := range 10 {
-		names = append(names, fmt.Sprintf("repo-%d", i))
+		names = append(names, fmt.Sprintf("%s-%d", stem, i))
 	}
 	f := &dashForm{fields: []dashField{dashField{label: "repositories"}.pick(names, false)}}
 	line := func() string {
@@ -186,17 +198,17 @@ func TestDashPickScrolls(t *testing.T) {
 		t.Fatal("no pick line")
 		return ""
 	}
-	if l := line(); !strings.Contains(l, "repo-0") || strings.Contains(l, "‹") || !strings.HasSuffix(l, "›") {
+	if l := line(); !strings.Contains(l, stem+"-0") || strings.Contains(l, "‹") || !strings.HasSuffix(l, "›") {
 		t.Fatalf("at the start: %q", l)
 	}
 	for range 9 {
 		f.key(tea.KeyMsg{Type: tea.KeyRight})
 	}
-	if l := line(); !strings.Contains(l, "repo-9") || strings.Contains(l, "repo-0") || !strings.Contains(l, "‹") || strings.HasSuffix(l, "›") {
+	if l := line(); !strings.Contains(l, stem+"-9") || strings.Contains(l, stem+"-0") || !strings.Contains(l, "‹") || strings.HasSuffix(l, "›") {
 		t.Fatalf("at the end: %q", l)
 	}
 	f.key(tea.KeyMsg{Type: tea.KeyLeft})
-	if l := line(); !strings.Contains(l, "repo-8") {
+	if l := line(); !strings.Contains(l, stem+"-8") {
 		t.Fatalf("one back: %q", l)
 	}
 }

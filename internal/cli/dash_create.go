@@ -14,22 +14,30 @@ import (
 // P] [--start]` takes, checked as it is typed. Registered repositories and
 // saved projects are picked; anything else is typed under more.
 func (m dashModel) createForm() *dashForm {
-	var repos, projects []string
-	if c, err := m.app.Store.LoadConfig(); err == nil {
-		repos = c.RepoNames()
+	repos := dashField{label: "repositories", hint: "none registered (tspace config repo); type them under more"}
+	if c, err := m.app.Store.LoadConfig(); err != nil {
+		repos.hint = oneLine(err.Error()) + "; type them under more"
+		repos = repos.pick(nil, false)
+	} else {
+		repos = repos.pick(c.RepoNames(), false)
 	}
+	// A project the shelf cannot list may still load, so it can be typed.
+	project := dashField{label: "project", hint: "optional; saved projects unreadable, so type it"}
 	if ps, err := m.app.Store.ListProjects(); err == nil {
-		for _, p := range ps {
-			projects = append(projects, p.Name)
+		names := make([]string, len(ps))
+		for i, p := range ps {
+			names[i] = p.Name
 		}
+		project.hint = "none saved"
+		project = project.pick(names, true)
 	}
 	f := &dashForm{
 		title: "new task (tspace task create)",
 		fields: []dashField{
 			{label: "name", hint: "letters, digits, '.', '_' or '-'"},
-			dashField{label: "repositories", hint: "none registered (tspace config repo); type them under more"}.pick(repos, false),
+			repos,
 			{label: "more", hint: "REPO[@BRANCH][:BASE] ...  a branch, a base or a path"},
-			dashField{label: "project", hint: "none saved"}.pick(projects, true),
+			project,
 			{label: "start", hint: "start it once it is created (--start)", toggle: true, on: true},
 		},
 		check: m.checkCreate,
@@ -53,7 +61,7 @@ func (m dashModel) checkCreate(f *dashForm) string {
 	if m.app.Store.Exists(name) {
 		return fmt.Sprintf("task %s already exists", name)
 	}
-	repos := len(createRepos(f)) > 0
+	repos := f.field("repositories").text() != "" || f.field("more").text() != ""
 	if p := f.field("project").text(); p != "" {
 		project, err := m.app.Store.LoadProject(p)
 		if err != nil {
@@ -106,13 +114,14 @@ func (m dashModel) create(f *dashForm) tea.Cmd {
 }
 
 // createRepos are the repositories f names: those typed under more, and
-// each picked one that is not typed there too, with a branch or a base.
+// each picked one that is not typed there too, with a branch, a base or as
+// a name.
 func createRepos(f *dashForm) []string {
 	typed := strings.Fields(f.field("more").text())
 	named := map[string]bool{}
 	for _, t := range typed {
 		if s, err := parseRepoSpec(t); err == nil {
-			named[s.Source] = true
+			named[s.Source], named[s.Name] = true, true
 		}
 	}
 	var out []string
