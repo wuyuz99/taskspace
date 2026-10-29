@@ -97,6 +97,10 @@ upgrade.
   after the session was stopped and earlier worktrees were gone.
 - **clean refuses when it cannot tell whether the session runs**, instead of
   removing the worktrees from under agents that may still be there.
+- **clean keeps what an agent did while its session stopped.** It checks the
+  worktrees and branches again after the stop: a change left behind keeps
+  the worktree, and a commit keeps the branch under `--delete-branch`. A
+  branch is deleted only if it still points to the commit found safe.
 - **A repository with no default branch** gets the branch it is on as the
   base, or its commit when detached, not `HEAD`, which `status`, `clean
   --delete-branch` and `repo update --rebase` read in the wrong place.

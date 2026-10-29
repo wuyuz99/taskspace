@@ -1,6 +1,7 @@
 package git
 
 import (
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -188,38 +189,81 @@ func TestAvailable(t *testing.T) {
 	}
 }
 
-func TestDeleteBranch(t *testing.T) {
+// DeleteBranchAt deletes only the commit it was told was safe: a branch that
+// has moved on, or one checked out, stays.
+func TestDeleteBranchAt(t *testing.T) {
 	g := testGit(t)
 	repo := initRepo(t)
+	runGit(t, repo, "branch", "feature")
+	checked, err := g.Commit(ctx(), repo, "feature")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "config", "branch.feature.description", "x")
 
-	// A merged branch goes with -d.
-	runGit(t, repo, "branch", "merged")
-	if err := g.DeleteBranch(ctx(), repo, "merged", false); err != nil {
-		t.Fatalf("DeleteBranch(merged): %v", err)
+	runGit(t, repo, "checkout", "-q", "feature")
+	writeFile(t, filepath.Join(repo, "late.txt"), "late\n")
+	runGit(t, repo, "add", "late.txt")
+	runGit(t, repo, "commit", "-m", "late")
+	err = g.DeleteBranchAt(ctx(), repo, "feature", checked)
+	if err == nil || !strings.Contains(err.Error(), "checked out") {
+		t.Fatalf("DeleteBranchAt(checked out) = %v", err)
 	}
-	if ok, _ := g.BranchExists(ctx(), repo, "merged"); ok {
-		t.Fatal("merged branch survived")
+	runGit(t, repo, "checkout", "-q", "main")
+	err = g.DeleteBranchAt(ctx(), repo, "feature", checked)
+	if err == nil || !strings.Contains(err.Error(), "moved") {
+		t.Fatalf("DeleteBranchAt(moved) = %v", err)
 	}
-
-	// An unmerged branch is refused without force: git's own safety check is
-	// the last line of defence if a caller's check was wrong.
-	runGit(t, repo, "checkout", "-b", "unmerged")
-	writeFile(t, filepath.Join(repo, "work.txt"), "work\n")
-	runGit(t, repo, "add", "work.txt")
-	runGit(t, repo, "commit", "-m", "work")
-	runGit(t, repo, "checkout", "main")
-	err := g.DeleteBranch(ctx(), repo, "unmerged", false)
-	if err == nil || !strings.Contains(err.Error(), "delete branch unmerged") {
-		t.Fatalf("DeleteBranch(unmerged, no force) = %v, want a refusal", err)
-	}
-	if ok, _ := g.BranchExists(ctx(), repo, "unmerged"); !ok {
-		t.Fatal("unmerged branch deleted without force")
+	if ok, _ := g.BranchExists(ctx(), repo, "feature"); !ok {
+		t.Fatal("a branch that moved was deleted")
 	}
 
-	if err := g.DeleteBranch(ctx(), repo, "unmerged", true); err != nil {
-		t.Fatalf("DeleteBranch(unmerged, force): %v", err)
+	tip, err := g.Commit(ctx(), repo, "feature")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if ok, _ := g.BranchExists(ctx(), repo, "unmerged"); ok {
-		t.Fatal("forced delete left the branch")
+	if err := g.DeleteBranchAt(ctx(), repo, "feature", tip); err != nil {
+		t.Fatalf("DeleteBranchAt: %v", err)
+	}
+	if ok, _ := g.BranchExists(ctx(), repo, "feature"); ok {
+		t.Fatal("branch survived")
+	}
+	if _, err := g.git(ctx(), repo, "config", "--get-regexp", `^branch\.feature\.`); err == nil {
+		t.Fatal("the branch's configuration survived")
+	}
+	if err := g.DeleteBranchAt(ctx(), repo, "feature", ""); err == nil {
+		t.Fatal("deleting a missing branch succeeded")
+	}
+}
+
+// A worktree stopped in a rebase of the branch is detached, but the branch
+// is still in use there: git branch -D refuses it, and so does DeleteBranchAt.
+func TestDeleteBranchAtRefusesARebase(t *testing.T) {
+	g := testGit(t)
+	repo := initRepo(t)
+	runGit(t, repo, "checkout", "-q", "-b", "feature")
+	writeFile(t, filepath.Join(repo, "README.md"), "feature\n")
+	runGit(t, repo, "commit", "-q", "-am", "feature")
+	runGit(t, repo, "checkout", "-q", "main")
+	writeFile(t, filepath.Join(repo, "README.md"), "main\n")
+	runGit(t, repo, "commit", "-q", "-am", "main")
+	wt := filepath.Join(t.TempDir(), "wt")
+	runGit(t, repo, "worktree", "add", "-q", wt, "feature")
+	tip, err := g.Commit(ctx(), repo, "feature")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("git", "rebase", "main")
+	cmd.Dir = wt
+	if out, err := cmd.CombinedOutput(); err == nil {
+		t.Fatalf("rebase did not stop on its conflict:\n%s", out)
+	}
+
+	err = g.DeleteBranchAt(ctx(), repo, "feature", tip)
+	if err == nil || !strings.Contains(err.Error(), "being rebased") {
+		t.Fatalf("DeleteBranchAt(rebasing) = %v", err)
+	}
+	if ok, _ := g.BranchExists(ctx(), repo, "feature"); !ok {
+		t.Fatal("a branch being rebased was deleted")
 	}
 }
