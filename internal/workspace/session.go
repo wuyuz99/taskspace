@@ -22,7 +22,7 @@ func (s *Service) Stop(ctx context.Context, name string) (running bool, err erro
 	defer unlock()
 	session := s.Runtime.SessionName(t.Name)
 
-	running, err = s.Runtime.HasSession(ctx, session)
+	running, err = s.SessionUp(ctx, t.Name)
 	if err != nil {
 		return false, err
 	}

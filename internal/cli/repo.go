@@ -450,7 +450,9 @@ func (a *App) newRepoAddCmd() *cobra.Command {
 			"The first repository of a task with none, and no session, runs the task's\n" +
 			"agent in its own window, as `tspace task create` does for one. Adding a\n" +
 			"second to such a task leaves that agent where it is and gives the task a\n" +
-			"root window with a shell, opened at once if the session is running.\n\n" +
+			"root window with a shell, opened at once if the session is running.\n" +
+			"If tspace cannot tell whether the session is running, the agent stays in\n" +
+			"the root window, and a new root window waits for the next start.\n\n" +
 			"Nothing else is created on disk here — `tspace start` makes the worktrees.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -502,12 +504,20 @@ func (a *App) newRepoAddCmd() *cobra.Command {
 // session.
 func (a *App) settleLayout(ctx context.Context, t *task.Task, first bool) (openRoot bool) {
 	movable := first && t.HasRootWindow() && !t.RootWindow && t.CanRunAgentIn(t.RepoNames()[0])
+	needsRoot := !t.HasRootWindow() && len(t.Repos) > 1
+	if !movable && !needsRoot {
+		return false
+	}
 	// A session that cannot be checked may be running the agent in the root
 	// window: the agent is not moved out of it, and a new root window is left
 	// for the next start to open.
 	running, err := a.workspace().SessionUp(ctx, t.Name)
-	if err != nil && movable {
-		a.warnf("tspace: %v; the task's agent stays in the root window\n", err)
+	if err != nil {
+		if movable {
+			a.warnf("tspace: %v; the task's agent stays in the root window\n", err)
+		} else {
+			a.warnf("tspace: %v; if it is running, the root window opens when the task next starts\n", err)
+		}
 	}
 	switch {
 	case movable && err == nil && !running:
@@ -515,7 +525,7 @@ func (a *App) settleLayout(ctx context.Context, t *task.Task, first bool) (openR
 		// of, so this task starts as a single-repo one.
 		t.AgentRepo = t.RepoNames()[0]
 		a.printf("  agent:    %s (runs in this worktree)\n", agentDisplay(task.Repo{Agent: t.RepoAgent(t.AgentRepo)}))
-	case !t.HasRootWindow() && len(t.Repos) > 1:
+	case needsRoot:
 		t.RootWindow = true
 		openRoot = running
 		if !running {

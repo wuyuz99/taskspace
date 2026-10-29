@@ -28,7 +28,7 @@ func (s *Service) RemoveRepo(ctx context.Context, name, repo string, keepWorktre
 		// this one, nor might be.
 		running, err := s.SessionUp(ctx, t.Name)
 		if err != nil {
-			return "", fmt.Errorf("the task's agent runs in %s's window, which may still be up (%w); stop the task first: tspace stop %s", repo, err, t.Name)
+			return "", fmt.Errorf("the task's agent runs in %s's window, which may still be up: %w; once the multiplexer answers, stop the task first: tspace stop %s", repo, err, t.Name)
 		}
 		if running {
 			return "", fmt.Errorf("the task's agent runs in %s's window; stop the task first: tspace stop %s", repo, t.Name)

@@ -277,6 +277,9 @@ func TestRepoAddWithASessionItCannotCheck(t *testing.T) {
 	if tk := h.load(t, "PAY-2"); !tk.RootWindow || len(rt.opened) != 0 {
 		t.Fatalf("root=%v opened=%v", tk.RootWindow, rt.opened)
 	}
+	if !strings.Contains(h.errb.String(), "opens when the task next starts") {
+		t.Fatalf("no warning for the second repository: %q", h.errb.String())
+	}
 }
 
 // Nor does repo rm --keep-worktree move the agent out of a window that may
