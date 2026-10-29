@@ -3,7 +3,9 @@ package workspace
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	osexec "os/exec"
 	"slices"
 	"strings"
 	"testing"
@@ -161,10 +163,20 @@ func TestCleanRefusesASessionItCannotCheck(t *testing.T) {
 		t.Fatal("recorded as stopped")
 	}
 
-	// Without a runtime there is no session to run.
-	f.rt.hasErr, f.rt.unavailable = nil, errors.New("no multiplexer")
+	// A multiplexer that says it is unusable may still run the session.
+	f.rt.hasErr, f.rt.unavailable = errors.New("state: exit status 23"), errors.New("check: exit status 23")
+	if err := f.svc.Clean(ctx, "T", CleanOptions{}); err == nil {
+		t.Fatal("Clean with an unusable runtime removed the worktrees")
+	}
+	if _, err := os.Stat(tk.Repos["a"].Worktree); err != nil {
+		t.Fatalf("worktree removed: %v", err)
+	}
+
+	// One that is not installed runs nothing.
+	notInstalled := fmt.Errorf("exec tmux: %w", osexec.ErrNotFound)
+	f.rt.hasErr, f.rt.unavailable = notInstalled, notInstalled
 	if err := f.svc.Clean(ctx, "T", CleanOptions{}); err != nil {
-		t.Fatalf("Clean without a runtime = %v", err)
+		t.Fatalf("Clean without a multiplexer = %v", err)
 	}
 }
 

@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -150,5 +151,21 @@ func TestRenameWindowCommands(t *testing.T) {
 	}
 	if !g.Ran("tspace-mux-wez rename tspace@t _git _lg") {
 		t.Errorf("adapter: %v", g.Commands())
+	}
+}
+
+// Only a missing program means no session can be running; an adapter that
+// runs and fails says nothing about its sessions.
+func TestNotInstalled(t *testing.T) {
+	missing := NewAdapter("nosuch", []string{"tspace-mux-surely-not-installed"}, tsexec.Real())
+	if _, err := missing.HasSession(context.Background(), "s"); !NotInstalled(err) {
+		t.Fatalf("missing adapter: NotInstalled(%v) = false", err)
+	}
+	if err := missing.Available(context.Background()); !NotInstalled(err) {
+		t.Fatalf("missing adapter: NotInstalled(%v) = false", err)
+	}
+	failing := NewAdapter("failing", []string{"x"}, tsexec.NewFake().Fail("x", "broken", 23))
+	if _, err := failing.HasSession(context.Background(), "s"); err == nil || NotInstalled(err) {
+		t.Fatalf("failing adapter: err %v", err)
 	}
 }
