@@ -501,9 +501,16 @@ func (a *App) newRepoAddCmd() *cobra.Command {
 // reports whether that root window should be opened now, in the running
 // session.
 func (a *App) settleLayout(ctx context.Context, t *task.Task, first bool) (openRoot bool) {
-	running := a.sessionRunning(ctx, t)
+	movable := first && t.HasRootWindow() && !t.RootWindow && t.CanRunAgentIn(t.RepoNames()[0])
+	// A session that cannot be checked may be running the agent in the root
+	// window: the agent is not moved out of it, and a new root window is left
+	// for the next start to open.
+	running, err := a.workspace().SessionUp(ctx, t.Name)
+	if err != nil && movable {
+		a.warnf("tspace: %v; the task's agent stays in the root window\n", err)
+	}
 	switch {
-	case first && t.HasRootWindow() && !t.RootWindow && !running && t.CanRunAgentIn(t.RepoNames()[0]):
+	case movable && err == nil && !running:
 		// Nothing has run in a root window that the agent could be moved out
 		// of, so this task starts as a single-repo one.
 		t.AgentRepo = t.RepoNames()[0]
@@ -516,16 +523,6 @@ func (a *App) settleLayout(ctx context.Context, t *task.Task, first bool) (openR
 		}
 	}
 	return openRoot
-}
-
-// sessionRunning reports whether the task's session is up. A runtime that
-// cannot be asked has nothing running that tspace could act on.
-func (a *App) sessionRunning(ctx context.Context, t *task.Task) bool {
-	if a.Runtime == nil || a.Runtime.Available(ctx) != nil {
-		return false
-	}
-	running, err := a.Runtime.HasSession(ctx, a.Runtime.SessionName(t.Name))
-	return err == nil && running
 }
 
 // openRootWindow adds the task-root window to a running session, for a task

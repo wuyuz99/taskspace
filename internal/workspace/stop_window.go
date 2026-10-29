@@ -61,7 +61,7 @@ func (s *Service) closeWindow(ctx context.Context, name, window string) error {
 		return err
 	}
 	// A multiplexer ends a session with its last window, and that was on
-	// purpose too.
+	// purpose too. A session that cannot be checked is taken as still up.
 	if running, err := s.Runtime.HasSession(ctx, s.Runtime.SessionName(name)); err == nil && !running {
 		s.markStopped(name)
 	} else if !task.IsExtraWindow(window) {

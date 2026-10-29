@@ -41,6 +41,25 @@ func (s *Service) Stop(ctx context.Context, name string) (running bool, err erro
 	return true, nil
 }
 
+// SessionUp reports whether the task's session is running, for a caller
+// about to change what runs in it. A multiplexer that is not installed runs
+// nothing. Any other failure to tell is an error, even one that says the
+// multiplexer is unusable: its sessions may still be up.
+func (s *Service) SessionUp(ctx context.Context, name string) (bool, error) {
+	if s.Runtime == nil {
+		return false, nil
+	}
+	session := s.Runtime.SessionName(name)
+	running, err := s.Runtime.HasSession(ctx, session)
+	if err != nil {
+		if runtime.NotInstalled(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("could not check whether %s is running: %w", session, err)
+	}
+	return running, nil
+}
+
 // markStopped records the task was stopped on purpose; failing is a warning,
 // since the cost is only that it may later be offered as interrupted.
 func (s *Service) markStopped(name string) {
