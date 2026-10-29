@@ -307,18 +307,66 @@ func (g *Git) BranchExists(ctx context.Context, repo, branch string) (bool, erro
 	return g.ok(ctx, repo, "show-ref", "--verify", "--quiet", "refs/heads/"+branch)
 }
 
-// DeleteBranch deletes a local branch. force uses -D, which discards the
-// merge-safety check git would otherwise apply; callers must have run their own
-// safety check first.
-func (g *Git) DeleteBranch(ctx context.Context, repo, branch string, force bool) error {
-	flag := "-d"
-	if force {
-		flag = "-D"
+// DeleteBranchAt deletes a local branch only if it still points to tip, the
+// commit a caller's safety check was about, so a commit made since is never
+// lost with it. Like git branch -D, it refuses a branch checked out, rebased
+// or bisected in a worktree, and drops the branch's configuration with it.
+func (g *Git) DeleteBranchAt(ctx context.Context, repo, branch, tip string) error {
+	if tip == "" {
+		return fmt.Errorf("delete branch %s: branch not found", branch)
 	}
-	if _, err := g.git(ctx, repo, "branch", flag, branch); err != nil {
+	if use, err := g.branchInUse(ctx, repo, branch); err != nil {
+		return fmt.Errorf("delete branch %s: %w", branch, err)
+	} else if use != "" {
+		return fmt.Errorf("delete branch %s: it is %s", branch, use)
+	}
+	if _, err := g.git(ctx, repo, "update-ref", "-d", "refs/heads/"+branch, tip); err != nil {
+		if res, rerr := g.git(ctx, repo, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch); rerr == nil && res.Out() != tip {
+			return fmt.Errorf("delete branch %s: it moved to %s after it was checked at %s", branch, short(res.Out()), short(tip))
+		}
 		return fmt.Errorf("delete branch %s: %w", branch, err)
 	}
+	// Exits non-zero when the branch had no configuration, which is fine.
+	_, _ = g.git(ctx, repo, "config", "--remove-section", "branch."+branch)
 	return nil
+}
+
+// branchInUse says where a worktree is using branch, or "" if none is: on
+// it, or rebasing or bisecting it, which leaves the worktree detached.
+func (g *Git) branchInUse(ctx context.Context, repo, branch string) (string, error) {
+	list, err := g.Worktrees(ctx, repo)
+	if err != nil {
+		return "", err
+	}
+	for _, wt := range list {
+		if wt.Branch == branch {
+			return "checked out at " + wt.Path, nil
+		}
+		if !wt.Detached || wt.Prunable {
+			continue
+		}
+		res, err := g.git(ctx, wt.Path, "rev-parse", "--absolute-git-dir")
+		if err != nil {
+			return "", err
+		}
+		for _, m := range []struct{ file, want, use string }{
+			{"rebase-merge/head-name", "refs/heads/" + branch, "being rebased at "},
+			{"rebase-apply/head-name", "refs/heads/" + branch, "being rebased at "},
+			{"BISECT_START", branch, "being bisected at "},
+		} {
+			if b, err := os.ReadFile(filepath.Join(res.Out(), m.file)); err == nil && strings.TrimSpace(string(b)) == m.want {
+				return m.use + wt.Path, nil
+			}
+		}
+	}
+	return "", nil
+}
+
+func short(oid string) string {
+	if len(oid) > 12 {
+		return oid[:12]
+	}
+	return oid
 }
 
 // RenameBranch renames a local branch, which may be checked out in a
