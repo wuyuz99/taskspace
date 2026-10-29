@@ -11,25 +11,25 @@ import (
 )
 
 // createForm is n's form: what `tspace task create NAME REPO... [--project
-// P] [--start]` takes, checked as it is typed.
+// P] [--start]` takes, checked as it is typed. Registered repositories and
+// saved projects are picked; anything else is typed under more.
 func (m dashModel) createForm() *dashForm {
-	repoHint, projectHint := "REPO[@BRANCH][:BASE] ...", "optional"
-	if c, err := m.app.Store.LoadConfig(); err == nil && len(c.Repos) > 0 {
-		repoHint += "  registered: " + strings.Join(c.RepoNames(), " ")
+	var repos, projects []string
+	if c, err := m.app.Store.LoadConfig(); err == nil {
+		repos = c.RepoNames()
 	}
-	if ps, err := m.app.Store.ListProjects(); err == nil && len(ps) > 0 {
-		names := make([]string, len(ps))
-		for i, p := range ps {
-			names[i] = p.Name
+	if ps, err := m.app.Store.ListProjects(); err == nil {
+		for _, p := range ps {
+			projects = append(projects, p.Name)
 		}
-		projectHint += "; saved: " + strings.Join(names, " ")
 	}
 	f := &dashForm{
 		title: "new task (tspace task create)",
 		fields: []dashField{
 			{label: "name", hint: "letters, digits, '.', '_' or '-'"},
-			{label: "repositories", hint: repoHint},
-			{label: "project", hint: projectHint},
+			dashField{label: "repositories", hint: "none registered (tspace config repo); type them under more"}.pick(repos, false),
+			{label: "more", hint: "REPO[@BRANCH][:BASE] ...  a branch, a base or a path"},
+			dashField{label: "project", hint: "none saved"}.pick(projects, true),
 			{label: "start", hint: "start it once it is created (--start)", toggle: true, on: true},
 		},
 		check: m.checkCreate,
@@ -53,7 +53,7 @@ func (m dashModel) checkCreate(f *dashForm) string {
 	if m.app.Store.Exists(name) {
 		return fmt.Sprintf("task %s already exists", name)
 	}
-	repos := f.field("repositories").text() != ""
+	repos := len(createRepos(f)) > 0
 	if p := f.field("project").text(); p != "" {
 		project, err := m.app.Store.LoadProject(p)
 		if err != nil {
@@ -80,7 +80,7 @@ func (m dashModel) create(f *dashForm) tea.Cmd {
 		args = append(args, "--start")
 	}
 	// After --, nothing typed is read as a flag.
-	args = append(append(args, "--", name), strings.Fields(f.field("repositories").text())...)
+	args = append(append(args, "--", name), createRepos(f)...)
 	return func() tea.Msg {
 		var out, warn bytes.Buffer
 		sub := *m.app
@@ -103,6 +103,25 @@ func (m dashModel) create(f *dashForm) tea.Cmd {
 		}
 		return msg
 	}
+}
+
+// createRepos are the repositories f names: those typed under more, and
+// each picked one that is not typed there too, with a branch or a base.
+func createRepos(f *dashForm) []string {
+	typed := strings.Fields(f.field("more").text())
+	named := map[string]bool{}
+	for _, t := range typed {
+		if s, err := parseRepoSpec(t); err == nil {
+			named[s.Source] = true
+		}
+	}
+	var out []string
+	for _, r := range strings.Fields(f.field("repositories").text()) {
+		if !named[r] {
+			out = append(out, r)
+		}
+	}
+	return append(out, typed...)
 }
 
 // lines are s's non-blank lines, each made one.

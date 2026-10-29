@@ -40,8 +40,8 @@ upgrade.
   its windows closed and its branch kept. Every warning an action gives now
   follows its result on the note line, not only the last.
 - **dash: `n` creates a task**, from a form below the table: name (checked
-  as it is typed), repositories, an optional project, and whether to start
-  it. It runs `tspace task create`, and the cursor goes to the new task.
+  as it is typed), repositories picked from the registered ones or typed,
+  an optional project picked from the saved ones, and whether to start it. It runs `tspace task create`, and the cursor goes to the new task.
 - **dash: `w` opens another window** at the selected row's place, from a
   form: a shell, the task's agent or a command, an optional name, and
   whether to save it. It runs `tspace window -d`, and the cursor goes to the

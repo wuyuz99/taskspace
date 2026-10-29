@@ -737,6 +737,7 @@ func (m dashModel) act(do func(*workspace.Service) (string, error)) tea.Cmd {
 var (
 	dashBold   = lipgloss.NewStyle().Bold(true)
 	dashFaint  = lipgloss.NewStyle().Faint(true)
+	dashPicked = lipgloss.NewStyle().Reverse(true)
 	dashRed    = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 	dashGreen  = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	dashYellow = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
@@ -824,7 +825,7 @@ func (m dashModel) View() string {
 	}
 	switch {
 	case m.form != nil:
-		b.WriteString(m.form.view())
+		b.WriteString(m.form.view(m.width))
 	case m.confirm != nil:
 		b.WriteString(dashBold.Render(m.confirm.prompt) + "\n")
 	case m.noteErr:

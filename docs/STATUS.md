@@ -150,11 +150,14 @@ row: on a collapsed task, expand it first.
 
 `n` creates a task, through a form below the table: its name, checked as
 you type it (a bad or taken name is refused before anything is written),
-its repositories as `REPO[@BRANCH][:BASE]` words, with the registered names
-shown, an optional project, and whether to start it, ticked by default.
-`tab` moves between fields, space ticks the box, `enter` runs `tspace task
-create NAME REPO... [--project P] [--start]` and `esc` cancels without
-writing. The cursor then goes to the new task. Agents, briefs and tickets
+its repositories, picked from the registered ones, with more typed as
+`REPO[@BRANCH][:BASE]` words for a branch, a base or an unregistered path
+(a picked name typed there too is named once, as typed), an optional
+project, picked from the saved ones, and whether to start it, ticked by
+default. `tab` moves between fields, `←`/`→` move along a list (one wider
+than the screen scrolls, `‹` and `›` marking hidden choices), space picks
+or ticks, `enter` runs `tspace task create NAME REPO... [--project P]
+[--start]` and `esc` cancels without writing. The cursor then goes to the new task. Agents, briefs and tickets
 are set afterwards with `tspace task update` and `tspace task brief`.
 
 `w` opens another window in a running task, at the selected row's place: a
