@@ -362,3 +362,20 @@ func TestLaunchArgvSetsWindowEnv(t *testing.T) {
 		t.Errorf("launchArgv = %q", got)
 	}
 }
+
+// tmux exits 1 for every failure; only "no such session" means missing.
+func TestHasSessionOnlyTrustsAMissingSession(t *testing.T) {
+	for stderr, missing := range map[string]bool{
+		"can't find session: tspace@x":                                           true,
+		"no server running on /tmp/tmux-1000/default":                            true,
+		"error connecting to /tmp/tmux-1000/default (No such file or directory)": true,
+		"protocol version mismatch (client 8, server 7)":                         false,
+		"error connecting to /tmp/tmux-1000/default (Permission denied)":         false,
+	} {
+		f := tsexec.NewFake().Fail("has-session", stderr, 1)
+		ok, err := NewTmux(f).HasSession(ctx(), "tspace@x")
+		if ok || (err == nil) != missing {
+			t.Errorf("%q: HasSession = %v, %v", stderr, ok, err)
+		}
+	}
+}
