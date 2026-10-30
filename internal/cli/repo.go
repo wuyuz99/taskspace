@@ -37,6 +37,9 @@ func (a *App) newRepoUpdateCmd() *cobra.Command {
 			"newly created.\n\n" +
 			"  tspace repo update PAY-142 backend --agent codex --agent=--resume\n" +
 			"  tspace repo update PAY-142 backend --shell --post-create=''\n\n" +
+			"In the repository whose window runs the task's agent, --agent replaces\n" +
+			"the task's agent; --shell refuses, since the task would have no agent\n" +
+			"left (tspace task update TASK --shell drops it on purpose).\n\n" +
 			"--branch renames the task's branch, checked out in the worktree if there\n" +
 			"is one; it never takes over a branch that already exists. --base changes\n" +
 			"what the branch is compared with, for status and clean, and what start\n" +
@@ -78,15 +81,18 @@ func (a *App) newRepoUpdateCmd() *cobra.Command {
 			if !ok {
 				return fmt.Errorf("task %q has no repo named %q (has: %s)", t.Name, args[1], joinNames(t.RepoNames()))
 			}
-			// The agent repository's window runs the task's agent, so that is
-			// what its agent flags change.
-			taskAgent := args[1] == t.AgentRepo
+			// The agent repository's window runs the task's agent, unless it
+			// has one of its own, so that is what its agent flags change.
+			taskAgent := args[1] == t.AgentRepo && len(r.Agent) == 0
+			// A shell there would leave the task with no agent anywhere, and
+			// take its resume command along.
+			if taskAgent && shell && len(t.Agent) > 0 {
+				return fmt.Errorf("%s's window runs the task's agent, so --shell would drop it; to run a shell there, drop the task's agent with tspace task update %s --shell", args[1], t.Name)
+			}
 			before := t.RepoAgent(args[1])
 			switch {
 			case taskAgent && setAgent:
 				t.Agent = agent
-			case taskAgent && shell:
-				t.Agent = nil
 			case setAgent:
 				r.Agent = agent
 			case shell:

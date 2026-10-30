@@ -93,6 +93,10 @@ upgrade.
 
 ### Fixed
 
+- **`repo update --shell` refuses on the repository that runs the task's
+  agent**, instead of deleting the task's agent and its resume command with
+  only a note. `tspace task update TASK --shell` still drops the agent on
+  purpose.
 - **`clean --force` removes a locked worktree** instead of failing partway,
   after the session was stopped and earlier worktrees were gone.
 - **clean refuses when it cannot tell whether the session runs**, instead of
