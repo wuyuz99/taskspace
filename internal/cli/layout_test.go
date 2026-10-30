@@ -380,18 +380,29 @@ func TestRepoUpdateOfAgentRepoChangesTheTaskAgent(t *testing.T) {
 	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--agent", "claude", "--repo", "backend="+h.repo); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.exec(t, h.app.newRepoCmd(), "update", "PAY-1", "backend", "--shell"); err != nil {
-		t.Fatal(err)
-	}
-	if got := h.load(t, "PAY-1").RepoAgent("backend"); len(got) != 0 {
-		t.Fatalf("after --shell backend runs %v", got)
-	}
 	if err := h.exec(t, h.app.newRepoCmd(), "update", "PAY-1", "backend", "--agent", "codex"); err != nil {
 		t.Fatal(err)
 	}
 	tk := h.load(t, "PAY-1")
 	if !slices.Equal(tk.Agent, []string{"codex"}) || len(tk.Repos["backend"].Agent) != 0 {
 		t.Fatalf("agent=%v repo agent=%v", tk.Agent, tk.Repos["backend"].Agent)
+	}
+}
+
+// --shell on the agent repository would leave the task with no agent and
+// no resume command, so it refuses and changes nothing.
+func TestRepoUpdateShellRefusesToDropTheTaskAgent(t *testing.T) {
+	h := newHarness(t)
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--agent", "claude", "--resume", "claude", "--resume=--continue", "--repo", "backend="+h.repo); err != nil {
+		t.Fatal(err)
+	}
+	err := h.exec(t, h.app.newRepoCmd(), "update", "PAY-1", "backend", "--shell", "--post-create", "make")
+	if err == nil || !strings.Contains(err.Error(), "tspace task update PAY-1 --shell") {
+		t.Fatalf("update = %v", err)
+	}
+	tk := h.load(t, "PAY-1")
+	if !slices.Equal(tk.Agent, []string{"claude"}) || !slices.Equal(tk.Resume, []string{"claude", "--continue"}) || tk.AgentRepo != "backend" || tk.Repos["backend"].PostCreate != "" {
+		t.Fatalf("agent=%v resume=%v agent_repo=%q post_create=%q", tk.Agent, tk.Resume, tk.AgentRepo, tk.Repos["backend"].PostCreate)
 	}
 }
 
