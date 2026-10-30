@@ -100,6 +100,11 @@ upgrade.
 
 ### Fixed
 
+- **`import` takes a worktree no task claims**, wherever it is, instead of
+  refusing everything under tspace's worktrees directory. A worktree left by
+  `repo rm --keep-worktree` can join another task, or its old task under the
+  same repository name, where it is adopted in place. One a task still lists
+  is refused, naming that task and repository.
 - **`repo update --shell` refuses on the repository that runs the task's
   agent**, instead of deleting the task's agent and its resume command with
   only a note. `tspace task update TASK --shell` still drops the agent on
