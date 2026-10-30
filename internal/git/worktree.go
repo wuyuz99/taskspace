@@ -194,7 +194,14 @@ func (g *Git) EnsureWorktree(ctx context.Context, repo, path, branch, base strin
 		return out, err
 	}
 	if existing != nil {
-		if _, statErr := os.Stat(path); statErr == nil {
+		info, statErr := os.Stat(path)
+		if statErr == nil {
+			if !info.IsDir() {
+				return out, fmt.Errorf("%s has a stale worktree registration: not a directory; restore the original worktree before retrying", path)
+			}
+			if err := g.verifyWorktree(ctx, repo, path); err != nil {
+				return out, fmt.Errorf("%s has a stale or invalid worktree registration: %w; restore the original worktree or repair its registration with git worktree repair before retrying", path, err)
+			}
 			if existing.Branch != "" && existing.Branch != branch {
 				return out, fmt.Errorf(
 					"%s already exists as a worktree on branch %q, not %q; remove it or choose another branch",
@@ -202,6 +209,9 @@ func (g *Git) EnsureWorktree(ctx context.Context, repo, path, branch, base strin
 			}
 			out.Base = "" // nothing was forked
 			return out, nil
+		}
+		if !os.IsNotExist(statErr) {
+			return out, fmt.Errorf("inspect worktree %s: %w", path, statErr)
 		}
 		// Registered but the directory is gone: git will refuse to reuse the
 		// path until the stale record is pruned.
@@ -273,6 +283,63 @@ func (g *Git) EnsureWorktree(ctx context.Context, repo, path, branch, base strin
 	}
 	out.Created = true
 	return out, nil
+}
+
+// verifyWorktree checks both directions of a linked worktree's identity.
+// A matching top level and common directory alone could still be another
+// worktree of the same repository moved over this registration.
+func (g *Git) verifyWorktree(ctx context.Context, repo, path string) error {
+	resolve := func(dir, flag string) (string, error) {
+		res, err := g.git(ctx, dir, "rev-parse", "--path-format=absolute", flag)
+		if err != nil {
+			return "", err
+		}
+		if res.Out() == "" {
+			return "", fmt.Errorf("git returned no %s", flag)
+		}
+		return canonical(res.Out()), nil
+	}
+	top, err := resolve(path, "--show-toplevel")
+	if err != nil {
+		return err
+	}
+	if top != canonical(path) {
+		return fmt.Errorf("directory belongs to worktree %s", top)
+	}
+	common, err := resolve(path, "--git-common-dir")
+	if err != nil {
+		return err
+	}
+	want, err := resolve(repo, "--git-common-dir")
+	if err != nil {
+		return err
+	}
+	if common != want {
+		return fmt.Errorf("directory belongs to a different repository")
+	}
+	gitDir, err := resolve(path, "--absolute-git-dir")
+	if err != nil {
+		return err
+	}
+	if gitDir == common {
+		// The main worktree has no backlink, but must be the main entry.
+		list, err := g.Worktrees(ctx, repo)
+		if err != nil {
+			return err
+		}
+		if len(list) == 0 || canonical(list[0].Path) != canonical(path) {
+			return fmt.Errorf("directory uses the main worktree's Git metadata")
+		}
+		return nil
+	}
+	backlink, err := os.ReadFile(filepath.Join(gitDir, "gitdir"))
+	if err != nil {
+		return fmt.Errorf("read worktree backlink: %w", err)
+	}
+	if canonical(strings.TrimSpace(string(backlink))) != canonical(filepath.Join(path, ".git")) {
+		return fmt.Errorf("Git metadata points to a different worktree location")
+	}
+	return nil
 }
 
 // RemoveWorktree removes a worktree registration and its directory.
