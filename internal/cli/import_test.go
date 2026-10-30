@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/wuyuz99/taskspace/internal/task"
 )
 
 // linkedWorktree adds a worktree of repo on a new branch, outside tspace.
@@ -137,7 +139,7 @@ func TestImportSafety(t *testing.T) {
 	}
 
 	// Another task's worktree is that task's.
-	if err := h.exec(t, h.app.newImportCmd(), r.Worktree, "--task", "other"); err == nil || !strings.Contains(err.Error(), "already a task's worktree") {
+	if err := h.exec(t, h.app.newImportCmd(), r.Worktree, "--task", "other"); err == nil || !strings.Contains(err.Error(), "pushed's "+filepath.Base(h.repo)) {
 		t.Fatalf("import of a task's worktree = %v", err)
 	}
 	// A task of the default name is not joined without --task.
@@ -195,5 +197,87 @@ func TestImportRefusesALockOrANameInUse(t *testing.T) {
 	}
 	if _, err := os.Stat(second); err != nil {
 		t.Fatalf("refused import moved the worktree: %v", err)
+	}
+}
+
+func TestImportAfterRepoRmKeepWorktree(t *testing.T) {
+	for _, target := range []string{"original", "other"} {
+		t.Run(target, func(t *testing.T) {
+			h := newHarness(t)
+			tk := h.startedTask(t, "original")
+			name := tk.RepoNames()[0]
+			original := tk.Repos[name]
+			if err := os.WriteFile(filepath.Join(original.Worktree, ".env"), []byte("keep me"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := h.exec(t, h.app.newRepoCmd(), "rm", tk.Name, name, "--keep-worktree"); err != nil {
+				t.Fatal(err)
+			}
+			if err := h.exec(t, h.app.newImportCmd(), original.Worktree, "--task", target, "--name", name); err != nil {
+				t.Fatal(err)
+			}
+			got := h.load(t, target).Repos[name]
+			if got.Branch != original.Branch || !samePath(got.Path, original.Path) {
+				t.Fatalf("imported %+v, originally %+v", got, original)
+			}
+			if b, err := os.ReadFile(filepath.Join(got.Worktree, ".env")); err != nil || string(b) != "keep me" {
+				t.Fatalf("preserved file = %q, %v", b, err)
+			}
+			if branch := gitIn(t, got.Worktree, "branch", "--show-current"); branch != original.Branch {
+				t.Fatalf("branch = %q", branch)
+			}
+			if target != tk.Name {
+				if len(h.load(t, tk.Name).Repos) != 0 {
+					t.Fatal("old task claims a repository")
+				}
+				if _, err := os.Stat(original.Worktree); !os.IsNotExist(err) {
+					t.Fatalf("old worktree still exists: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestImportChecksOwnershipOutsideWorktreesDir(t *testing.T) {
+	h := newHarness(t)
+	wt := linkedWorktree(t, h.repo, "external")
+	owner, err := h.app.Store.Create("owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner.SetRepo("backend", task.Repo{Path: h.repo, Worktree: wt, Branch: "external"})
+	if err := h.app.Store.Save(owner); err != nil {
+		t.Fatal(err)
+	}
+	err = h.exec(t, h.app.newImportCmd(), wt, "--task", "other")
+	if err == nil || !strings.Contains(err.Error(), "owner's backend") || !strings.Contains(err.Error(), "repo rm owner backend --keep-worktree") {
+		t.Fatalf("claimed import = %v", err)
+	}
+	if h.app.Store.Exists("other") {
+		t.Fatal("refusal created a task")
+	}
+	if _, err := os.Stat(wt); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestImportRefusesUnreadableOwnership(t *testing.T) {
+	h := newHarness(t)
+	wt := linkedWorktree(t, h.repo, "unclaimed")
+	if err := os.MkdirAll(h.app.Store.TasksDir(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(h.app.Store.TasksDir(), "broken.json"), []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := h.exec(t, h.app.newImportCmd(), wt)
+	if err == nil || !strings.Contains(err.Error(), "check worktree ownership") {
+		t.Fatalf("import = %v", err)
+	}
+	if h.app.Store.Exists("unclaimed") {
+		t.Fatal("refusal created a task")
+	}
+	if _, err := os.Stat(wt); err != nil {
+		t.Fatal(err)
 	}
 }
