@@ -45,6 +45,7 @@ func (a *App) newDashCmd() *cobra.Command {
 			"                confirming (tspace repo rm)\n" +
 			"  t             open the task in a new terminal tab (tspace config terminal)\n" +
 			"  c             clear the row's signal\n" +
+			"  N             rename the selected task (tspace task rename)\n" +
 			"  n             create a task, in a form below the table (tspace task create)\n" +
 			"  I             start every interrupted task (tspace start --interrupted);\n" +
 			"                dash offers it on launch when there are any\n" +
@@ -604,6 +605,9 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}),
 		}
 		return m, nil
+	case "N":
+		m.form = m.renameForm(row.Task)
+		return m, nil
 	case "w":
 		if !m.sessionUp(row.Task) {
 			m.note = row.Task + " is not running; press s to start it"
@@ -834,7 +838,7 @@ func (m dashModel) View() string {
 		b.WriteString(m.note + "\n")
 	}
 	if m.form == nil {
-		b.WriteString(dashFaint.Render("enter attach · space expand · s/x task · S/X window · r restart · D clean · R delete · - remove repo · t tab · c clear · n new · w window · I interrupted · q quit"))
+		b.WriteString(dashFaint.Render("enter attach · space expand · s/x task · S/X window · r restart · D clean · R delete · - remove repo · t tab · c clear · n new · N rename · w window · I interrupted · q quit"))
 	}
 
 	// Nothing may wrap: a wrapped line pushes the rest off the alt screen.

@@ -452,3 +452,29 @@ func TestNearestRootNeedsBothStateDirectories(t *testing.T) {
 		t.Fatalf("NearestRoot = %q, want %q", got, dir)
 	}
 }
+
+func TestCommitRename(t *testing.T) {
+	s := NewStore(t.TempDir())
+	original := New("OLD")
+	if err := s.CreatePrepared(original); err != nil {
+		t.Fatal(err)
+	}
+	renamed := *original
+	renamed.Name = "NEW"
+	if err := s.CommitRename("OLD", &renamed); err != nil {
+		t.Fatal(err)
+	}
+	if s.Exists("OLD") || !s.Exists("NEW") {
+		t.Fatal("record identity not moved")
+	}
+	missing := New("missing")
+	if err := s.CommitRename("absent", missing); err == nil || s.Exists("missing") {
+		t.Fatalf("failed rename left record: %v", err)
+	}
+	if err := s.CommitRename("../bad", New("safe")); err == nil || s.Exists("safe") {
+		t.Fatalf("unsafe rename: %v", err)
+	}
+	if err := s.CommitRename("NEW", New("NEW")); !errors.Is(err, ErrExists) || !s.Exists("NEW") {
+		t.Fatalf("overwrite: %v", err)
+	}
+}

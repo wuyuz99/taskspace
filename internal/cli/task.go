@@ -21,7 +21,7 @@ func (a *App) newTaskCmd() *cobra.Command {
 			"and its repositories; its brief and handoff are Markdown notes beside its\n" +
 			"worktrees. Elsewhere tspace calls a task's directory its workspace.",
 	}
-	cmd.AddCommand(a.newTaskCreateCmd(), a.newTaskListCmd(), a.newTaskShowCmd(), a.newTaskRmCmd())
+	cmd.AddCommand(a.newTaskCreateCmd(), a.newTaskListCmd(), a.newTaskShowCmd(), a.newTaskRmCmd(), a.newTaskRenameCmd())
 	cmd.AddCommand(a.newTaskUpdateCmd(), a.newTaskNoteCmd(false), a.newTaskNoteCmd(true))
 	return cmd
 }

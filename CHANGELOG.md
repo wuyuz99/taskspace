@@ -7,6 +7,12 @@ upgrade.
 
 ### Added
 
+- **Rename a stopped task.** `tspace task rename OLD NEW` moves its worktrees,
+  notes and session metadata while preserving uncommitted files and settings.
+  `--branches` also renames unpublished branches following the configured
+  task-name convention. Dash offers the same operation with `N`. A warning
+  names old directories where resumable agents leave their conversations.
+
 - **`.` names the task you are in.** Inside a task's directory or one of its
   worktrees, `tspace task handoff . "API done"`, `tspace restart . backend`
   and the other per-task commands use that task; the directory decides, not
