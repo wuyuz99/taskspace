@@ -7,6 +7,11 @@ upgrade.
 
 ### Added
 
+- **Rename a stopped task.** `tspace task rename OLD NEW` moves its worktrees,
+  notes and session metadata while preserving uncommitted files and settings.
+  `--branches` also renames unpublished branches following the configured
+  task-name convention. Dash offers the same operation with `N`. A warning
+  names old directories where resumable agents leave their conversations.
 - **`tspace config agent-status claude`** has status and dash read Claude
   Code's own `claude agents --json`, matching each interactive session to the
   window in its directory: `working`, `blocked` (with what it waits for) or

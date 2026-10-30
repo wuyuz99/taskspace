@@ -314,3 +314,21 @@ func (s *Store) List() ([]*Task, error) {
 	}
 	return tasks, skipped.orNil()
 }
+
+// CommitRename publishes the renamed record, then removes the old identity.
+// Callers hold both task locks and have already moved the workspace and run data.
+func (s *Store) CommitRename(old string, t *Task) error {
+	if err := ValidateName("task", old); err != nil {
+		return err
+	}
+	if err := s.CreatePrepared(t); err != nil {
+		return err
+	}
+	if err := os.Remove(s.path(old)); err != nil {
+		if cleanup := os.Remove(s.path(t.Name)); cleanup != nil {
+			return errors.Join(err, fmt.Errorf("remove new record: %w", cleanup))
+		}
+		return err
+	}
+	return nil
+}
