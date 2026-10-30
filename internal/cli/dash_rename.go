@@ -10,7 +10,7 @@ import (
 
 func (m dashModel) renameForm(old string) *dashForm {
 	f := &dashForm{
-		title:  "rename " + old + " (tspace task rename; directory-based conversations stay at the old path)",
+		title:  "rename " + old + " (tspace task rename; conversations stay at the old path unless carried)",
 		fields: []dashField{{label: "name", hint: "new task name"}, {label: "branches", hint: "rename unpublished default branches (--branches)", toggle: true}},
 		check: func(f *dashForm) string {
 			name := f.field("name").text()

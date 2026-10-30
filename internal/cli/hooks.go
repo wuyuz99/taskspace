@@ -167,14 +167,23 @@ func (a *App) newConfigHooksAgentCmd(agent hookAgent) *cobra.Command {
 
 // claudeSettingsPath is Claude Code's user settings file.
 func claudeSettingsPath() (string, error) {
+	dir, err := claudeConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "settings.json"), nil
+}
+
+// claudeConfigDir is where Claude Code keeps its user files.
+func claudeConfigDir() (string, error) {
 	if dir := os.Getenv("CLAUDE_CONFIG_DIR"); dir != "" {
-		return filepath.Join(dir, "settings.json"), nil
+		return dir, nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".claude", "settings.json"), nil
+	return filepath.Join(home, ".claude"), nil
 }
 
 // geminiSettingsPath is Gemini CLI's user settings file.

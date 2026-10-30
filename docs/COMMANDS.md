@@ -22,6 +22,7 @@ task names.
 | `tspace config ticket-pattern [REGEXP / --unset]` | Read new tasks' tickets from their names |
 | `tspace config terminal [CMD ARGS... / --unset]` | How dash's `t` opens a task in a new terminal tab |
 | `tspace config agent-status [AGENT... / --unset]` | Read an agent's own published status, such as `claude agents --json` |
+| `tspace config carry-conversations [AGENT... / --unset]` | Move an agent's conversation history along when task rename moves its directory |
 | `tspace config editor [CMD ARGS... / --unset]` | The editor `tspace editor` opens a task's workspace with |
 | `tspace config multiplexer [NAME [CMD ARGS...] / --unset]` | Choose tmux, zellij or an adapter; see [Multiplexers](MULTIPLEXERS.md) |
 | `tspace project save NAME --from TASK [--replace]` | Save a reusable repository recipe |
@@ -32,7 +33,7 @@ task names.
 | `tspace task show [NAME] [--json]` | Show a task's repos in detail |
 | `tspace task brief NAME [TEXT / --file F / --edit / --clear]` | Show or replace the task's brief |
 | `tspace task handoff NAME [TEXT / --file F / --edit / --clear]` | Show or replace the task's handoff |
-| `tspace task rename OLD NEW [--branches]` | Rename a stopped task, moving worktrees and notes; optionally rename unpublished default branches. Directory-based agent conversations stay at the old paths. Dash: `N` |
+| `tspace task rename OLD NEW [--branches]` | Rename a stopped task, moving worktrees and notes; optionally rename unpublished default branches. Directory-based agent conversations stay at the old paths unless carried (`config carry-conversations`). Dash: `N` |
 | `tspace task rm NAME [--force]` | Delete the record; refuses while worktrees exist unless `--force` |
 | `tspace repo add TASK REPO [--name --branch --base --agent --post-create]` | Attach a repository, by registered name or path |
 | `tspace repo rm TASK REPO [--keep-worktree]` | Clean the repository's worktree and windows safely, then detach it; `--keep-worktree` only forgets it |

@@ -66,6 +66,13 @@ and changing an agent forgets its resume command, so a resume never runs a
 different program than the agent it belongs to. Agents that key a conversation
 to its directory find it again because the window resumes where it ran.
 
+Moving that directory, as `tspace task rename` does, leaves such a conversation
+behind, and tspace names the old directory so you can move it yourself. For
+Claude Code it can do that for you: `tspace config carry-conversations claude`
+has it rename Claude Code's folder for the old directory, under
+`~/.claude/projects`, to the new one's once the move is done. It never merges
+into a folder the new directory already has.
+
 ### Bringing windows back resumes them
 
 Once a window has a resume command, every way of bringing it back uses it:
