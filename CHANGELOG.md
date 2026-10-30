@@ -66,6 +66,12 @@ upgrade.
   (`base_assumed`). `repo update --rebase` refuses a guessed base until `repo
   update --base` confirms it. Such records use format version 3; see
   [Branching](docs/BRANCHING.md).
+- **Move a task's agent between windows.** `tspace task update TASK
+  --agent-at-root` moves the agent out of its repository's worktree into the
+  task-root window, and `--agent-in REPO` into a repository's; the agent and
+  its resume command stay, and the window it leaves runs its own agent or a
+  shell. A running session is left alone, and the command says what to
+  restart, and where a resumable agent's conversation stays.
 
 ### Changed
 

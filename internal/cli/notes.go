@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"os"
@@ -78,7 +79,18 @@ func (a *App) newTaskUpdateCmd() *cobra.Command {
 	var d taskDetails
 	var agent agentOptions
 	var resume resumeOptions
-	cmd := &cobra.Command{Use: "update NAME", Short: "Update a task's title, ticket, brief or root agent", Args: cobra.ExactArgs(1),
+	var atRoot bool
+	var agentIn string
+	cmd := &cobra.Command{Use: "update NAME", Short: "Update a task's title, ticket, brief or agent", Args: cobra.ExactArgs(1),
+		Long: "update changes the task's title, ticket, brief, agent or resume command.\n\n" +
+			"--agent-at-root moves the task's agent to the task-root window, which\n" +
+			"sees every repository; --agent-in REPO moves it to that repository's\n" +
+			"window, in its worktree. The agent and resume command stay as they are;\n" +
+			"the window it leaves runs its own agent, or a shell. A move applies when\n" +
+			"windows are created or explicitly restarted: in a running session the\n" +
+			"agent keeps running where it is until then.\n\n" +
+			"  tspace task update PAY-142 --agent-at-root\n" +
+			"  tspace task update PAY-142 --agent-in backend",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			brief, err := d.readBrief(cmd)
 			if err != nil {
@@ -90,11 +102,37 @@ func (a *App) newTaskUpdateCmd() *cobra.Command {
 			if err := resume.validate(cmd); err != nil {
 				return err
 			}
+			moving := atRoot || cmd.Flags().Changed("agent-in")
+			if atRoot && cmd.Flags().Changed("agent-in") {
+				return fmt.Errorf("choose either --agent-at-root or --agent-in")
+			}
 			t, unlock, err := a.lockTask(cmd, args[0], false)
 			if err != nil {
 				return err
 			}
 			defer unlock()
+			from := t.AgentWindow()
+			hadRoot := t.HasRootWindow()
+			if cmd.Flags().Changed("agent-in") {
+				if agentIn == task.RootWindowName {
+					return fmt.Errorf("%s is the root window; use --agent-at-root", agentIn)
+				}
+				if _, ok := t.Repo(agentIn); !ok {
+					return fmt.Errorf("task %q has no repo named %q (has: %s)", t.Name, agentIn, joinNames(t.RepoNames()))
+				}
+				if !t.CanRunAgentIn(agentIn) {
+					return fmt.Errorf("%s has an agent of its own, which its window runs; clear it first with tspace repo update %s %s --shell", agentIn, t.Name, agentIn)
+				}
+				t.AgentRepo = agentIn
+				// A root window there was may be running; it stays, as a shell.
+				t.RootWindow = hadRoot
+			}
+			if atRoot {
+				t.AgentRepo = ""
+				// Kept from now on, as RemoveRepo keeps it: the agent's history
+				// is in the task directory.
+				t.RootWindow = true
+			}
 			d.apply(cmd, t)
 			before := t.Agent
 			setAgent := agent.apply(cmd, t)
@@ -123,12 +161,64 @@ func (a *App) newTaskUpdateCmd() *cobra.Command {
 				}
 				a.printf("  agent: %s (window %s; applies on window creation or explicit restart)\n", agentDisplay(task.Repo{Agent: t.Agent}), window)
 			}
+			if moving {
+				a.reportAgentMove(cmd.Context(), t, from, hadRoot)
+			}
 			return nil
 		}}
 	d.flags(cmd)
 	agent.flags(cmd)
 	resume.flags(cmd, true)
+	cmd.Flags().BoolVar(&atRoot, "agent-at-root", false, "run the task's agent in the task-root window, which sees every repository")
+	cmd.Flags().StringVar(&agentIn, "agent-in", "", "run the task's agent in this repository's window, in its worktree")
 	return cmd
+}
+
+// reportAgentMove says where the task's agent now runs, having run in window
+// from, and in a running session, what still runs where until windows are
+// created or restarted. hadRoot is whether the task had a root window before.
+func (a *App) reportAgentMove(ctx context.Context, t *task.Task, from string, hadRoot bool) {
+	to := t.AgentWindow()
+	if to == from {
+		a.printf("  agent window: %s (unchanged)\n", to)
+		return
+	}
+	a.printf("  agent window: %s (was %s, which now runs %s)\n", to, from, agentDisplay(task.Repo{Agent: t.WindowAgent(from)}))
+	// An agent that resumes by directory finds its conversation where it ran.
+	if len(t.Resume) > 0 && a.Store.Launched(t.Name, from) {
+		a.warnf("note: %s's agent resumes by directory; its conversation from %s stays there\n", t.Name, a.windowDir(t, from))
+	}
+	running, err := a.workspace().SessionUp(ctx, t.Name)
+	if err != nil {
+		a.warnf("tspace: %v; if it is running, the agent moves when its windows are restarted\n", err)
+		return
+	}
+	if !running {
+		return
+	}
+	a.printf("  %s is running: %s keeps its agent until restarted (tspace restart %s %s, once it exits)\n", t.Name, from, t.Name, restartTarget(from))
+	switch {
+	case to == task.RootWindowName && !hadRoot:
+		a.printf("  tspace start %s opens the root window with the agent\n", t.Name)
+	default:
+		a.printf("  %s runs the agent once restarted (tspace restart %s %s, once what runs there exits)\n", to, t.Name, restartTarget(to))
+	}
+}
+
+// restartTarget is what names window to tspace restart.
+func restartTarget(window string) string {
+	if window == task.RootWindowName {
+		return "--root"
+	}
+	return window
+}
+
+// windowDir is the directory a root or repository window runs in.
+func (a *App) windowDir(t *task.Task, window string) string {
+	if window == task.RootWindowName {
+		return a.Store.TaskDir(t.Name)
+	}
+	return t.Repos[window].Worktree
 }
 
 func resumeDisplay(argv []string) string {

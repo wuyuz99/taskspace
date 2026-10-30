@@ -554,3 +554,134 @@ func TestAgentCommandPlaceholders(t *testing.T) {
 		t.Fatalf("recorded agent %v", got)
 	}
 }
+
+// --agent-at-root moves the task's agent out of its repository's worktree,
+// keeping the agent and its resume command; the repository's window goes
+// back to a shell, and the root window stays from then on.
+func TestTaskUpdateMovesTheAgentToTheRoot(t *testing.T) {
+	h := newHarness(t)
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--agent", "claude", "--resume", "claude", "--resume=--continue", "--repo", "backend="+h.repo); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.app.Store.MarkLaunched("PAY-1", "backend"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newTaskCmd(), "update", "PAY-1", "--agent-at-root"); err != nil {
+		t.Fatal(err)
+	}
+	tk := h.load(t, "PAY-1")
+	if tk.AgentRepo != "" || !tk.RootWindow || !slices.Equal(tk.Agent, []string{"claude"}) || !slices.Equal(tk.Resume, []string{"claude", "--continue"}) {
+		t.Fatalf("agent_repo=%q root=%v agent=%v resume=%v", tk.AgentRepo, tk.RootWindow, tk.Agent, tk.Resume)
+	}
+	if len(tk.RepoAgent("backend")) != 0 || !slices.Equal(tk.RootAgent(), []string{"claude"}) {
+		t.Fatalf("backend runs %v, root runs %v", tk.RepoAgent("backend"), tk.RootAgent())
+	}
+	if out := h.out.String(); !strings.Contains(out, "agent window: _root (was backend, which now runs shell)") {
+		t.Fatalf("out:\n%s", out)
+	}
+	if e := h.errb.String(); !strings.Contains(e, "conversation from "+tk.Repos["backend"].Worktree+" stays there") {
+		t.Fatalf("no conversation note:\n%s", e)
+	}
+	// A first repository added later no longer takes the agent into its worktree.
+	if err := h.exec(t, h.app.newRepoCmd(), "rm", "PAY-1", "backend"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newRepoCmd(), "add", "PAY-1", "backend="+h.repo); err != nil {
+		t.Fatal(err)
+	}
+	if tk := h.load(t, "PAY-1"); tk.AgentRepo != "" {
+		t.Fatalf("agent moved back into %s", tk.AgentRepo)
+	}
+}
+
+// In a running session nothing is restarted: the command says which window
+// keeps the agent and how the root window gets it.
+func TestTaskUpdateAgentAtRootInARunningSession(t *testing.T) {
+	h := newHarness(t)
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--agent", "claude", "--repo", "backend="+h.repo); err != nil {
+		t.Fatal(err)
+	}
+	rt := &layoutRuntime{running: true}
+	h.app.Runtime = rt
+	if err := h.exec(t, h.app.newTaskCmd(), "update", "PAY-1", "--agent-at-root"); err != nil {
+		t.Fatal(err)
+	}
+	out := h.out.String()
+	for _, want := range []string{"backend keeps its agent until restarted (tspace restart PAY-1 backend", "tspace start PAY-1 opens the root window"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in:\n%s", want, out)
+		}
+	}
+	if len(rt.opened) != 0 || len(rt.started) != 0 {
+		t.Fatalf("windows changed: opened=%v started=%v", rt.opened, rt.started)
+	}
+	// With a root window open already, restarting it is what runs the agent.
+	h.app.Runtime = &stubRuntime{}
+	if err := h.exec(t, h.app.newTaskCmd(), "update", "PAY-1", "--agent-in", "backend"); err != nil {
+		t.Fatal(err)
+	}
+	h.app.Runtime = rt
+	if err := h.exec(t, h.app.newTaskCmd(), "update", "PAY-1", "--agent-at-root"); err != nil {
+		t.Fatal(err)
+	}
+	if out := h.out.String(); !strings.Contains(out, "_root runs the agent once restarted (tspace restart PAY-1 --root") {
+		t.Fatalf("out:\n%s", out)
+	}
+}
+
+// --agent-in moves the agent into a repository's worktree, keeping the root
+// window there was as a shell, and refuses a repository with its own agent.
+func TestTaskUpdateMovesTheAgentIntoARepo(t *testing.T) {
+	h := newHarness(t)
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--agent", "claude", "--with-root", "--repo", "backend="+h.repo); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newTaskCmd(), "update", "PAY-1", "--agent-in", "backend"); err != nil {
+		t.Fatal(err)
+	}
+	tk := h.load(t, "PAY-1")
+	if tk.AgentRepo != "backend" || !tk.HasRootWindow() || len(tk.RootAgent()) != 0 || !slices.Equal(tk.RepoAgent("backend"), []string{"claude"}) {
+		t.Fatalf("agent_repo=%q root=%v root agent=%v backend agent=%v", tk.AgentRepo, tk.HasRootWindow(), tk.RootAgent(), tk.RepoAgent("backend"))
+	}
+	if err := h.exec(t, h.app.newTaskCmd(), "update", "PAY-1", "--agent-in", "backend"); err != nil {
+		t.Fatal(err)
+	}
+	if out := h.out.String(); !strings.Contains(out, "agent window: backend (unchanged)") {
+		t.Fatalf("out:\n%s", out)
+	}
+
+	if err := h.exec(t, h.app.newRepoCmd(), "update", "PAY-1", "backend", "--post-create", "make"); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"--agent-in", "frontend"}, `no repo named "frontend"`},
+		{[]string{"--agent-in", "_root"}, "use --agent-at-root"},
+		{[]string{"--agent-in", "backend", "--agent-at-root"}, "choose either"},
+	} {
+		err := h.exec(t, h.app.newTaskCmd(), append([]string{"update", "PAY-1"}, c.args...)...)
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Fatalf("%v: %v", c.args, err)
+		}
+	}
+}
+
+// A repository with its own agent cannot run the task's.
+func TestTaskUpdateAgentInRefusesARepoWithItsOwnAgent(t *testing.T) {
+	h := newHarness(t)
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--agent", "claude"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newRepoCmd(), "add", "PAY-1", "backend="+h.repo, "--agent", "codex"); err != nil {
+		t.Fatal(err)
+	}
+	err := h.exec(t, h.app.newTaskCmd(), "update", "PAY-1", "--agent-in", "backend", "--title", "x")
+	if err == nil || !strings.Contains(err.Error(), "tspace repo update PAY-1 backend --shell") {
+		t.Fatalf("update = %v", err)
+	}
+	if tk := h.load(t, "PAY-1"); tk.AgentRepo != "" || tk.Title != "" {
+		t.Fatalf("changed: agent_repo=%q title=%q", tk.AgentRepo, tk.Title)
+	}
+}
