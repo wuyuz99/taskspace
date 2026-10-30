@@ -51,6 +51,7 @@ task names.
 | `tspace dash` | Live full-screen view of every task; create, attach, start, restart, stop, clean, delete, remove a repository, open a window, open in a new tab |
 | `tspace signal STATE [MESSAGE] [--task --repo / --root] [--quiet] [--clear]` | Report an agent as `working`, `blocked`, `done` or `failed` |
 | `tspace config hooks claude [--remove]` | Install the Claude Code hooks that call `tspace signal` |
+| `tspace config hooks gemini [--remove]` | Install the Gemini CLI hooks that call `tspace signal` |
 | `tspace clean TASK [REPO...] [--delete-branch] [--force] [--rm]` | Remove worktrees, safely, of every repository or only those named; `--rm` deletes the task record too |
 | `tspace import PATH [--task NAME] [--name REPO]` | Move a worktree made with `git worktree add` into a task |
 | `tspace editor [TASK] [--print]` | Write the task's `.code-workspace` and open it in your editor |

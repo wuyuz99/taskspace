@@ -188,7 +188,7 @@ func TestConfigHooksClaudeReviewCases(t *testing.T) {
 	}
 	// Notification asks only for the notifications that need a person.
 	var s struct {
-		Hooks map[string][]claudeHookGroup `json:"hooks"`
+		Hooks map[string][]hookGroup `json:"hooks"`
 	}
 	if err := json.Unmarshal(b, &s); err != nil {
 		t.Fatal(err)
@@ -316,5 +316,59 @@ func TestConfigHooksClaudeKeepsTheSideOfASharedGroup(t *testing.T) {
 	}
 	if c := commands(readSettings(t, path), "Stop"); len(c) != 2 || c[1] != "make lint" {
 		t.Fatalf("Stop = %v", c)
+	}
+}
+
+// Gemini CLI keeps hooks in the same shape as Claude Code, in its own file,
+// under its own events; the user's settings and hooks stay as they were.
+func TestConfigHooksGemini(t *testing.T) {
+	h := newHarness(t)
+	home := t.TempDir()
+	t.Setenv("GEMINI_CLI_HOME", home)
+	path := filepath.Join(home, ".gemini", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	original := `{"model": {"name": "gemini-3-pro"}, "hooks": {"AfterAgent": [{"hooks": [{"type": "command", "command": "say done"}]}]}}`
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newConfigCmd(), "hooks", "gemini"); err != nil {
+		t.Fatal(err)
+	}
+	got := readSettings(t, path)
+	for event, want := range map[string][]string{
+		"BeforeAgent":  {"tspace signal --quiet working"},
+		"Notification": {"tspace signal --quiet blocked"},
+		"AfterAgent":   {"say done", "tspace signal --quiet done"},
+	} {
+		if c := commands(got, event); strings.Join(c, ";") != strings.Join(want, ";") {
+			t.Errorf("%s = %v, want %v", event, c, want)
+		}
+	}
+	if _, ok := got["hooks"].(map[string]any)["UserPromptSubmit"]; ok {
+		t.Error("Claude Code's events written for Gemini CLI")
+	}
+	if got["model"] == nil {
+		t.Error("model setting lost")
+	}
+
+	before, _ := os.ReadFile(path)
+	if err := h.exec(t, h.app.newConfigCmd(), "hooks", "gemini"); err != nil {
+		t.Fatal(err)
+	}
+	if after, _ := os.ReadFile(path); string(after) != string(before) {
+		t.Errorf("installing again changed the file:\n%s\n%s", before, after)
+	}
+
+	if err := h.exec(t, h.app.newConfigCmd(), "hooks", "gemini", "--remove"); err != nil {
+		t.Fatal(err)
+	}
+	got = readSettings(t, path)
+	if c := commands(got, "AfterAgent"); len(c) != 1 || c[0] != "say done" {
+		t.Errorf("after remove AfterAgent = %v", c)
+	}
+	if c := commands(got, "BeforeAgent"); len(c) != 0 {
+		t.Errorf("after remove BeforeAgent = %v", c)
 	}
 }
