@@ -289,37 +289,38 @@ func (g *Git) EnsureWorktree(ctx context.Context, repo, path, branch, base strin
 // A matching top level and common directory alone could still be another
 // worktree of the same repository moved over this registration.
 func (g *Git) verifyWorktree(ctx context.Context, repo, path string) error {
-	resolve := func(dir, flag string) (string, error) {
-		res, err := g.git(ctx, dir, "rev-parse", "--path-format=absolute", flag)
+	// One rev-parse per directory: process spawns dominate on Windows.
+	resolve := func(dir string, flags ...string) ([]string, error) {
+		res, err := g.git(ctx, dir, append([]string{"rev-parse", "--path-format=absolute"}, flags...)...)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
-		if res.Out() == "" {
-			return "", fmt.Errorf("git returned no %s", flag)
+		lines := strings.Split(res.Out(), "\n")
+		if len(lines) != len(flags) {
+			return nil, fmt.Errorf("git rev-parse returned %d paths for %v", len(lines), flags)
 		}
-		return canonical(res.Out()), nil
+		for i, l := range lines {
+			if l = strings.TrimSpace(l); l == "" {
+				return nil, fmt.Errorf("git returned no %s", flags[i])
+			}
+			lines[i] = canonical(l)
+		}
+		return lines, nil
 	}
-	top, err := resolve(path, "--show-toplevel")
+	got, err := resolve(path, "--show-toplevel", "--git-common-dir", "--absolute-git-dir")
 	if err != nil {
 		return err
 	}
+	top, common, gitDir := got[0], got[1], got[2]
 	if top != canonical(path) {
 		return fmt.Errorf("directory belongs to worktree %s", top)
-	}
-	common, err := resolve(path, "--git-common-dir")
-	if err != nil {
-		return err
 	}
 	want, err := resolve(repo, "--git-common-dir")
 	if err != nil {
 		return err
 	}
-	if common != want {
+	if common != want[0] {
 		return fmt.Errorf("directory belongs to a different repository")
-	}
-	gitDir, err := resolve(path, "--absolute-git-dir")
-	if err != nil {
-		return err
 	}
 	if gitDir == common {
 		// The main worktree has no backlink, but must be the main entry.
