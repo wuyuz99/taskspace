@@ -180,7 +180,12 @@ func (a *App) newTaskUpdateCmd() *cobra.Command {
 func (a *App) reportAgentMove(ctx context.Context, t *task.Task, from string, hadRoot bool) {
 	to := t.AgentWindow()
 	if to == from {
-		a.printf("  agent window: %s (unchanged)\n", to)
+		if to == task.RootWindowName {
+			// root_window is set now, if it was not, so it stays put.
+			a.printf("  agent window: %s (unchanged; it stays there when repositories are added)\n", to)
+		} else {
+			a.printf("  agent window: %s (unchanged)\n", to)
+		}
 		return
 	}
 	a.printf("  agent window: %s (was %s, which now runs %s)\n", to, from, agentDisplay(task.Repo{Agent: t.WindowAgent(from)}))

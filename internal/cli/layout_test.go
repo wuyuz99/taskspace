@@ -685,3 +685,24 @@ func TestTaskUpdateAgentInRefusesARepoWithItsOwnAgent(t *testing.T) {
 		t.Fatalf("changed: agent_repo=%q title=%q", tk.AgentRepo, tk.Title)
 	}
 }
+
+// On a task with no repository yet, --agent-at-root keeps the agent at the
+// root when the first one is added, as task create --with-root does.
+func TestTaskUpdateAgentAtRootPinsAnAgentAlreadyThere(t *testing.T) {
+	h := newHarness(t)
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--agent", "claude"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newTaskCmd(), "update", "PAY-1", "--agent-at-root"); err != nil {
+		t.Fatal(err)
+	}
+	if out := h.out.String(); !strings.Contains(out, "it stays there when repositories are added") {
+		t.Fatalf("out:\n%s", out)
+	}
+	if err := h.exec(t, h.app.newRepoCmd(), "add", "PAY-1", "backend="+h.repo); err != nil {
+		t.Fatal(err)
+	}
+	if tk := h.load(t, "PAY-1"); tk.AgentRepo != "" {
+		t.Fatalf("agent moved into %s", tk.AgentRepo)
+	}
+}
