@@ -26,7 +26,7 @@ task names.
 | `tspace project save NAME --from TASK [--replace]` | Save a reusable repository recipe |
 | `tspace project list` / `tspace project show NAME` | Inspect saved recipes |
 | `tspace task create NAME [REPO...] [--agent CMD / --shell] [--project P] [--with-root] [--start]` | Create a task; each REPO is `REPO[@BRANCH][:BASE]`; `--start` starts it too. Also `tspace new` and `task new` |
-| `tspace task update NAME [--agent CMD / --shell] [--title ...]` | Update a task's root agent and details |
+| `tspace task update NAME [--agent CMD / --shell] [--agent-at-root / --agent-in REPO] [--title ...]` | Update a task's agent, where it runs, and details |
 | `tspace task list [--json]` | List tasks |
 | `tspace task show [NAME] [--json]` | Show a task's repos in detail |
 | `tspace task brief NAME [TEXT / --file F / --edit / --clear]` | Show or replace the task's brief |
