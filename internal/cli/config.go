@@ -45,6 +45,9 @@ func (a *App) newConfigCmd() *cobra.Command {
 			if len(c.AgentStatus) > 0 {
 				a.printf("agent status: %s\n", agentStatusDisplay(c.AgentStatus))
 			}
+			if len(c.CarryConversations) > 0 {
+				a.printf("conversations carried: %s\n", carryConversationsDisplay(c.CarryConversations))
+			}
 			if len(c.Repos) == 0 {
 				a.printf("repos:  none registered (tspace config repo NAME PATH)\n")
 				return nil
@@ -54,7 +57,7 @@ func (a *App) newConfigCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.AddCommand(a.newConfigAgentCmd(), a.newConfigRepoCmd(), a.newConfigBranchPrefixCmd(), a.newConfigMultiplexerCmd(), a.newConfigHooksCmd(), a.newConfigResumeCmd(), a.newConfigTicketPatternCmd(), a.newConfigTerminalCmd(), a.newConfigEditorCmd(), a.newConfigAgentStatusCmd())
+	cmd.AddCommand(a.newConfigAgentCmd(), a.newConfigRepoCmd(), a.newConfigBranchPrefixCmd(), a.newConfigMultiplexerCmd(), a.newConfigHooksCmd(), a.newConfigResumeCmd(), a.newConfigTicketPatternCmd(), a.newConfigTerminalCmd(), a.newConfigEditorCmd(), a.newConfigAgentStatusCmd(), a.newConfigCarryConversationsCmd())
 	return cmd
 }
 

@@ -33,6 +33,7 @@ func (a *App) workspace() *workspace.Service {
 		Stderr:   stderr,
 		Progress: a.render,
 		NoWait:   a.noWait,
+		Carriers: conversationCarriers,
 		Waiting: func(name string, h task.LockHolder) {
 			a.warnf("tspace: waiting for %s, which is changing %s (Ctrl-C to stop waiting)\n", h, name)
 		},
@@ -114,6 +115,8 @@ func (a *App) render(e workspace.Event) {
 		}
 	case workspace.RecordRemoved:
 		a.printf("removed task %s\n", e.Task)
+	case workspace.ConversationCarried:
+		a.printf("%-12s carried its %s conversation from %s\n", windowCell(e.Window), e.Agent, e.From)
 	case workspace.NotesRemoved:
 		a.printf("deleted its notes (%s)\n", joinNames(e.Files))
 	}

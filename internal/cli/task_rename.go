@@ -14,8 +14,9 @@ func (a *App) newTaskRenameCmd() *cobra.Command {
 			"Run from outside its directory. Branch names are kept unless --branches is\n" +
 			"set; then only unpublished branches matching the configured task prefix\n" +
 			"are renamed. Custom and published branches are reported and kept.\n\n" +
-			"Agents that resume by directory leave their conversation at the old path.\n" +
-			"History is not migrated; a warning names each affected agent's old directory.",
+			"Agents that resume by directory leave their conversation at the old path,\n" +
+			"and a note names each affected agent's old directory. An agent chosen with\n" +
+			"`tspace config carry-conversations` has its history moved along instead.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := a.workspace().Rename(cmd.Context(), args[0], args[1], workspace.RenameOptions{Branches: branches}); err != nil {

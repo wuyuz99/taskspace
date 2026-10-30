@@ -47,6 +47,10 @@ type Service struct {
 	// "tspace open", named to whoever has to wait for it. Empty, each
 	// operation names its own.
 	Command string
+
+	// Carriers are the conversation carriers the caller knows, by agent
+	// name. Only those the config's carry_conversations names run.
+	Carriers map[string]ConversationCarrier
 }
 
 // command is the name an operation runs under: Command, else its own.
@@ -143,6 +147,11 @@ type Cleaned struct {
 	Removing bool
 }
 
+// ConversationCarried reports the carrier for Agent moved the conversation
+// history kept for From to To, which From moved to. Window is
+// task.RootWindowName for the task root.
+type ConversationCarried struct{ Task, Window, Agent, From, To string }
+
 // RecordRemoved and NotesRemoved report Delete.
 type RecordRemoved struct{ Task string }
 type NotesRemoved struct {
@@ -150,27 +159,28 @@ type NotesRemoved struct {
 	Files []string
 }
 
-func (Warning) event()          {}
-func (WorktreeReady) event()    {}
-func (HookStarted) event()      {}
-func (HookFailed) event()       {}
-func (Launching) event()        {}
-func (WindowExited) event()     {}
-func (Resumed) event()          {}
-func (ResumeFailed) event()     {}
-func (StartingTask) event()     {}
-func (TaskStarted) event()      {}
-func (TaskNotStarted) event()   {}
-func (NoRepositories) event()   {}
-func (SessionStopped) event()   {}
-func (WorktreeRemoved) event()  {}
-func (NoWorktree) event()       {}
-func (BranchKept) event()       {}
-func (BranchDeleted) event()    {}
-func (BranchNotDeleted) event() {}
-func (Cleaned) event()          {}
-func (RecordRemoved) event()    {}
-func (NotesRemoved) event()     {}
+func (Warning) event()             {}
+func (WorktreeReady) event()       {}
+func (HookStarted) event()         {}
+func (HookFailed) event()          {}
+func (Launching) event()           {}
+func (WindowExited) event()        {}
+func (Resumed) event()             {}
+func (ResumeFailed) event()        {}
+func (StartingTask) event()        {}
+func (TaskStarted) event()         {}
+func (TaskNotStarted) event()      {}
+func (NoRepositories) event()      {}
+func (SessionStopped) event()      {}
+func (WorktreeRemoved) event()     {}
+func (NoWorktree) event()          {}
+func (BranchKept) event()          {}
+func (BranchDeleted) event()       {}
+func (BranchNotDeleted) event()    {}
+func (Cleaned) event()             {}
+func (RecordRemoved) event()       {}
+func (NotesRemoved) event()        {}
+func (ConversationCarried) event() {}
 
 func (s *Service) report(e Event) {
 	if s.Progress != nil {

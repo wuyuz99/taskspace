@@ -733,6 +733,9 @@ func (m dashModel) act(do func(*workspace.Service) (string, error)) tea.Cmd {
 			if r, ok := e.(workspace.Resumed); ok {
 				notes = append(notes, "resumed "+dashRow{Task: r.Task, Window: r.Window}.label())
 			}
+			if c, ok := e.(workspace.ConversationCarried); ok {
+				notes = append(notes, "carried "+dashRow{Task: c.Task, Window: c.Window}.label()+"'s conversation")
+			}
 			warning.Reset()
 			sub.render(e)
 			if w := oneLine(strings.TrimSpace(warning.String())); w != "" && !slices.Contains(notes, w) {

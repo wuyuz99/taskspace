@@ -12,6 +12,12 @@ upgrade.
   `--branches` also renames unpublished branches following the configured
   task-name convention. Dash offers the same operation with `N`. A warning
   names old directories where resumable agents leave their conversations.
+- **`tspace config carry-conversations claude`** has task rename move Claude
+  Code's history along with the task root and worktrees it moves, by renaming
+  the folder under `~/.claude/projects` named after each directory, so
+  `restart --resume` finds the conversation at the new path. A conversation
+  that is not carried, because the new path already has one or for any other
+  reason, is still named with its old directory. Off unless turned on.
 - **`tspace config agent-status claude`** has status and dash read Claude
   Code's own `claude agents --json`, matching each interactive session to the
   window in its directory: `working`, `blocked` (with what it waits for) or

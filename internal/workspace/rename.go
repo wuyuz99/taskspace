@@ -72,6 +72,14 @@ func (s *Service) Rename(ctx context.Context, old, name string, opts RenameOptio
 		if err != nil {
 			return err
 		}
+	} else if len(s.Carriers) > 0 {
+		// Carrying conversations is a convenience; a config it cannot read
+		// must not stop a rename that needs nothing else from it.
+		if c, err := s.Store.LoadConfig(); err == nil {
+			cfg = c
+		} else {
+			s.warnf("carrying no conversations: %v", err)
+		}
 	}
 	type plan struct {
 		repo, from, to, branch        string
@@ -215,7 +223,18 @@ func (s *Service) Rename(ctx context.Context, old, name string, opts RenameOptio
 			return err
 		}
 	}
-	s.warnMovedConversations(t, from)
+	// Without a carrier, say before anything moves what stays behind.
+	carriers := s.carriers(cfg)
+	resumed := s.resumedByDirectory(t, from)
+	if len(carriers) == 0 {
+		s.warnConversationsLeft(old, resumed, nil)
+	}
+	moved := []movedDir{newMovedDir(task.RootWindowName, from, to)}
+	for _, p := range plans {
+		if p.present {
+			moved = append(moved, newMovedDir(p.repo, p.from, p.to))
+		}
+	}
 	var undo []func() error
 	rollback := func(cause error) error {
 		for i := len(undo) - 1; i >= 0; i-- {
@@ -291,6 +310,10 @@ func (s *Service) Rename(ctx context.Context, old, name string, opts RenameOptio
 	if err := os.Remove(from); err != nil && !os.IsNotExist(err) {
 		s.warnf("renamed task, but could not remove empty directory %s: %v", from, err)
 	}
+	// History follows only a rename that happened, and never undoes it.
+	if len(carriers) > 0 {
+		s.warnConversationsLeft(name, resumed, s.carryConversations(name, carriers, moved))
+	}
 	return nil
 }
 
@@ -315,21 +338,4 @@ func sameDirectory(a, b string) bool {
 	}
 	y, err := os.Stat(b)
 	return err == nil && os.SameFile(x, y)
-}
-
-func (s *Service) warnMovedConversations(t *task.Task, root string) {
-	windows := append([]string{task.RootWindowName}, t.RepoNames()...)
-	for _, window := range windows {
-		if len(t.WindowAgent(window)) == 0 || len(t.ResumeFor(window)) == 0 || !s.Store.Launched(t.Name, window) {
-			continue
-		}
-		dir := root
-		if window != task.RootWindowName {
-			dir = t.Repos[window].Worktree
-			if _, err := os.Stat(dir); err != nil {
-				continue
-			}
-		}
-		s.warnf("note: %s's %s agent resumes by directory; its conversation from %s stays there", t.Name, window, dir)
-	}
 }
