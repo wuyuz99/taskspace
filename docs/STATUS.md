@@ -40,12 +40,42 @@ as `no-window`. `--json` lists them in each task's `windows` array, with
   the commits that are not on its base (`2 commits not pushed`)
 
 They are separate columns because a worktree can be dirty *and* running at the
-same time — that is the normal state of an agent doing its job. `tspace` reports
-only what it can observe; it will not guess that an agent is "waiting for
-input", because no multiplexer can tell it that.
+same time — that is the normal state of an agent doing its job. Whether the
+agent is waiting for you is a third thing, in its own column: see
+[What the agent is doing](#what-the-agent-is-doing).
 
 `tspace status --watch` redraws the table every two seconds (`--interval`), and
 `--json` prints the same observations for a script.
+
+### What the agent is doing
+
+Once any window has something to say about its agent, `tspace status` grows
+a `STATE` column, and dash always has one. It shows one answer per window,
+from the most trusted source that has one:
+
+1. **Signals**: `working`, `blocked`, `done` or `failed`, the agent's own
+   word through `tspace signal`, usually from its hooks (below).
+2. **The bell**: `bell`, when the window rang the terminal bell since you last
+   looked at it. Something there wants you, though tspace can't say what. It
+   outranks a `working` signal, since it came after the agent said it needed
+   nothing, but not `blocked`, `done` or `failed`, which already ask for you.
+3. **Silence**: `quiet`, when an agent's window has printed nothing for 10
+   minutes. It is a hint that the agent may be waiting, never a claim that it
+   is blocked: an agent thinking hard is quiet too. A window running a shell
+   is never called quiet.
+
+Each is followed by how long ago it was signalled, or the window last printed
+(`blocked 3m`, `bell 2m`, `quiet 25m`). The bell and silence come from the
+multiplexer and only for live windows. tmux tracks both for every window,
+whatever your `monitor-*` options; Zellij doesn't, so there you see signals
+only. An adapter can supply them; see [Multiplexers](MULTIPLEXERS.md).
+`--json` carries the chosen one as each row's `agent_state`, with `state`,
+`source` (`signal`, `bell` or `silence`), `at` and `message`, beside the raw
+`signal`, `bell` and `output_at`.
+
+tspace never reads an agent's screen for its wording: silent reasoning looks
+idle, a printed `(y/n)` looks like a prompt, and every new release of an agent
+would break it.
 
 ### Signals
 
@@ -87,8 +117,8 @@ Code session: `--quiet` makes `tspace signal` do nothing outside a task, and
 print nothing inside one, since what a `UserPromptSubmit` hook prints is shown
 to the agent.
 
-Once any window has a signal, `tspace status` grows a `SIGNAL` column (`blocked 3m`),
-and `--json` carries the state, message and time. A signal is the agent's word,
+A signal shows in the `STATE` column (`blocked 3m`), and `--json` carries the
+state, message and time. A signal is the agent's word,
 shown beside `RUNTIME` and never instead of it. It is one file,
 `.context/signals/REPO.json` (`_root.json` for the root window), so an agent
 without `tspace` on its `PATH` can write `{"state": "blocked", "message": "..."}`
@@ -103,7 +133,7 @@ several agents at once:
 ```
 tspace dash  2 tasks · 1 blocked · 1 dead  22:53:17
 
-  TASK               REPO      AGENT   RUNTIME     SIGNAL       GIT
+  TASK               REPO      AGENT   RUNTIME     STATE        GIT
   checkout-redesign  (root)    claude  running     working 40s  -
                      backend   claude  running     done 12m     dirty (3 files)
 >                    frontend  codex   running     blocked 3m   clean, ahead 2
@@ -121,10 +151,10 @@ enter attach · space expand · s/x task · S/X window · r restart · D clean �
 the multiplexer it switches the client instead and the dashboard keeps running in its own
 window. Every key runs the command you would have typed.
 
-A task whose windows are all quiet takes one row, `(N windows)`, with the
-worst runtime, the most urgent signal and every git state among them; space
+A task where nothing needs you takes one row, `(N windows)`, with the
+worst runtime, the most urgent state and every git state among them; space
 or right expands it and left collapses it again. A task with a dead window,
-or a blocked or failed signal, always shows every window. `enter`, `S` and
+a blocked or failed signal, or a bell always shows every window. `enter`, `S` and
 `X` on a collapsed task act on its root window. Each task's title follows its
 name, using only the width the other columns leave.
 

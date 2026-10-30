@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Window is one pane's worth of work: a named shell in a directory, optionally
@@ -34,13 +35,21 @@ type Window struct {
 
 // PaneState is what we can actually observe about a running window.
 //
-// It deliberately stops at "is the process still alive". Semantic states like
-// "waiting for input" are not knowable from tmux, and guessing them would make
-// the status output untrustworthy.
+// It holds only what the multiplexer itself tracks: whether the process is
+// alive, whether it rang the bell, and when it last printed. Semantic states
+// like "waiting for input" are not knowable from a multiplexer, and guessing
+// them would make the status output untrustworthy; status may offer a long
+// silence as a hint, labelled as one.
 type PaneState struct {
 	Window  string
 	Dead    bool
 	Command string
+	// Bell says the window rang the terminal bell since a person last looked
+	// at it: something in it wants attention.
+	Bell bool
+	// Output is when the window last printed anything. It is zero when the
+	// multiplexer does not say.
+	Output time.Time
 }
 
 // SessionState is the observed state of one task's session.
@@ -85,6 +94,35 @@ type Runtime interface {
 	RenameWindow(ctx context.Context, session, from, to string) error
 	// State reports what is observably running.
 	State(ctx context.Context, session string) (SessionState, error)
+}
+
+// mergePane folds p into what panes already holds for its window, for a
+// window split into several panes: alive if any pane is, ringing if any is,
+// and last printing when the latest did.
+func mergePane(panes map[string]PaneState, p PaneState) PaneState {
+	prev, ok := panes[p.Window]
+	if !ok {
+		return p
+	}
+	p.Dead = prev.Dead && p.Dead
+	if p.Command == "" {
+		p.Command = prev.Command
+	}
+	p.Bell = prev.Bell || p.Bell
+	if prev.Output.After(p.Output) {
+		p.Output = prev.Output
+	}
+	return p
+}
+
+// unixTime reads whole seconds since the epoch; anything else, the empty
+// string included, is the zero time.
+func unixTime(s string) time.Time {
+	n, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
+	if err != nil || n <= 0 {
+		return time.Time{}
+	}
+	return time.Unix(n, 0)
 }
 
 // launchArgv is the argv a window runs: its command, or for an empty Command
