@@ -43,8 +43,16 @@ func (a *App) newImportCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if within(top, a.Store.WorktreesDir()) {
-				return fmt.Errorf("%s is already a task's worktree", top)
+			tasks, err := a.Store.List()
+			if err != nil {
+				return fmt.Errorf("check worktree ownership: %w", err)
+			}
+			for _, owner := range tasks {
+				for _, repo := range owner.RepoNames() {
+					if wt := owner.Repos[repo].Worktree; wt != "" && samePath(wt, top) {
+						return fmt.Errorf("%s is %s's %s; run tspace repo rm %s %s --keep-worktree before importing it", top, owner.Name, repo, owner.Name, repo)
+					}
+				}
 			}
 			// A directory in use cannot be moved on Windows, and elsewhere the
 			// shell would be left in one that is gone.
@@ -147,16 +155,22 @@ func (a *App) newImportCmd() *cobra.Command {
 			// Moved first, then recorded as any repository is: one whose
 			// branch is checked out at its own place in the task.
 			dest := a.Store.WorktreePath(t.Name, name)
-			if _, err := os.Stat(dest); err == nil {
+			inPlace := samePath(top, dest)
+			if _, err := os.Stat(dest); !inPlace && err == nil {
 				return undo(fmt.Errorf("%s already exists; it is where %s's worktree goes", dest, name))
 			}
 			if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 				return undo(err)
 			}
-			if err := a.Git.MoveWorktree(ctx, main, top, dest); err != nil {
-				return undo(err)
+			if !inPlace {
+				if err := a.Git.MoveWorktree(ctx, main, top, dest); err != nil {
+					return undo(err)
+				}
 			}
 			back := func(err error) error {
+				if inPlace {
+					return undo(err)
+				}
 				if merr := a.Git.MoveWorktree(ctx, main, dest, top); merr != nil {
 					return fmt.Errorf("%w; and the worktree could not be moved back from %s (%v)", err, dest, merr)
 				}
@@ -173,7 +187,11 @@ func (a *App) newImportCmd() *cobra.Command {
 			if openRoot {
 				a.openRootWindow(ctx, t)
 			}
-			a.printf("moved %s to %s\n", top, dest)
+			if inPlace {
+				a.printf("adopted %s in place\n", top)
+			} else {
+				a.printf("moved %s to %s\n", top, dest)
+			}
 			if st.Upstream != "" && (st.Ahead > 0 || st.Behind > 0) {
 				a.printf("  %s is %d ahead and %d behind %s; nothing was pushed or pulled\n", branch, st.Ahead, st.Behind, st.Upstream)
 			}
