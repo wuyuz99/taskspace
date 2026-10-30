@@ -39,15 +39,16 @@ base refs are reused; no fetch is performed. An empty base is resolved at creati
 ```bash
 tspace repo update PAY-142 backend --agent codex
 tspace repo update PAY-142 backend --post-create 'pnpm install'
-tspace repo update PAY-142 backend --shell
+tspace repo update PAY-142 backend --shell   # not where the task's agent runs
 tspace repo update PAY-142 backend --post-create=''
 tspace task update PAY-142 --agent claude --agent=--model --agent opus
 tspace task update PAY-142 --shell
 tspace project save payments --from PAY-142 --replace
 ```
 
-`task update --agent` and `--shell` set the task-root window's command the same
-way `repo update` sets a repository's.
+`task update --agent` and `--shell` set the task agent's command the same
+way `repo update` sets a repository's. `--agent-at-root` and `--agent-in REPO`
+choose the window it runs in, keeping the command and its resume command.
 
 Only supplied settings change. Repeat `--agent` for command arguments; `--shell`
 clears the agent command, and an empty `--post-create` clears the hook. Existing

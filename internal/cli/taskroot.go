@@ -19,7 +19,7 @@ type agentOptions struct {
 func (o *agentOptions) flags(cmd *cobra.Command) {
 	cmd.Flags().StringArrayVar(&o.argv, "agent", nil,
 		"agent command for the task-root window, which sees every repository; one flag per word")
-	cmd.Flags().BoolVar(&o.shell, "shell", false, "run the default shell in the task-root window")
+	cmd.Flags().BoolVar(&o.shell, "shell", false, "run the default shell instead of an agent, in the window the agent would run in")
 }
 
 func (o *agentOptions) validate(cmd *cobra.Command) error {
