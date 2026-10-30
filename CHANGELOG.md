@@ -7,6 +7,11 @@ upgrade.
 
 ### Added
 
+- **`tspace config hooks gemini`** installs Gemini CLI hooks that report
+  `working`, `blocked` and `done`, as `config hooks claude` does for Claude
+  Code, in `~/.gemini/settings.json`. [Status](docs/STATUS.md#recipes-for-other-agents)
+  has the hooks to paste for Codex and how to wire up any other agent.
+
 - **`.` names the task you are in.** Inside a task's directory or one of its
   worktrees, `tspace task handoff . "API done"`, `tspace restart . backend`
   and the other per-task commands use that task; the directory decides, not

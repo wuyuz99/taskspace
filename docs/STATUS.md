@@ -62,7 +62,12 @@ The states are `working`, `blocked`, `done` and `failed`. Run inside a task,
 `TSPACE_WINDOW`, which tspace sets in every window it launches (or, without
 them, from the current directory), so it needs no arguments in an agent's
 hooks, and a root agent that `cd`s into a worktree still reports for the root.
-For Claude Code, install the hooks once:
+
+Wiring an agent up takes three of its hook events: one when a prompt is
+submitted (`working`), one when it needs a person (`blocked`), and one when it
+finishes a turn (`done`). tspace installs them for Claude Code and Gemini CLI.
+For other agents, [Recipes for other agents](#recipes-for-other-agents) has the
+snippets to paste. For Claude Code, install the hooks once:
 
 ```bash
 tspace config hooks claude            # --remove takes them out again
@@ -86,6 +91,52 @@ file, which `tspace clean` refuses to remove. They therefore run in every Claude
 Code session: `--quiet` makes `tspace signal` do nothing outside a task, and
 print nothing inside one, since what a `UserPromptSubmit` hook prints is shown
 to the agent.
+
+For Gemini CLI, `tspace config hooks gemini` does the same in
+`~/.gemini/settings.json` (under `$GEMINI_CLI_HOME` if that is set), with
+Gemini's events: `BeforeAgent` for `working`, `Notification` (tool permission
+prompts) for `blocked`, and `AfterAgent` for `done`. Gemini's hooks are on
+unless `hooksConfig.enabled` is `false`. Gemini allows comments in that file
+and tspace can't rewrite one that has them, so it refuses; add the hooks by
+hand instead, in the same shape as the Claude Code example above.
+
+Each installer only writes what you could write yourself. A hook you've
+changed, such as `tspace signal --quiet done && say done`, is yours: running
+the installer again, or `--remove`, leaves it alone.
+
+#### Recipes for other agents
+
+Any agent that can run a command on its own events can report. Pick the
+events closest to "a prompt was submitted", "waiting on a person" and "the
+turn ended", and run `tspace signal --quiet` with `working`, `blocked` and
+`done`. Keep `--quiet`: some agents show a hook's output to the model, and
+some refuse output that isn't JSON.
+
+**Codex** reads user hooks from `~/.codex/hooks.json` (under `$CODEX_HOME` if
+that is set), in the same shape as Claude Code. It has no notification event,
+so `PermissionRequest`, which runs when a command needs approval, stands in
+for `blocked`:
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit":  [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet working" }] }],
+    "PermissionRequest": [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet blocked" }] }],
+    "Stop":              [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet done" }] }]
+  }
+}
+```
+
+Codex runs a new or changed hook only after you trust it: open `/hooks` in
+Codex once after adding these. A hook that prints nothing leaves the approval
+to you, as it would be without the hook. Codex's `notify` setting also fires
+at the end of a turn, but it holds a single command, so it's often already
+taken; hooks don't replace anything.
+
+**Agents without hooks** can still be seen: dash shows a window that rang the
+bell, or one quiet for 10 minutes, without any setup (see
+[What the agent is doing](#what-the-agent-is-doing)). An agent you script
+yourself can write `.context/signals/WINDOW.json` directly, as described below.
 
 Once any window has a signal, `tspace status` grows a `SIGNAL` column (`blocked 3m`),
 and `--json` carries the state, message and time. A signal is the agent's word,
