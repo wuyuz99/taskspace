@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/wuyuz99/taskspace/internal/task"
+	"github.com/wuyuz99/taskspace/internal/workspace"
 )
 
 // notes reads a task's brief and handoff, changing nothing; see Store.Notes.
@@ -92,6 +93,10 @@ func (a *App) newTaskUpdateCmd() *cobra.Command {
 			"  tspace task update PAY-142 --agent-at-root\n" +
 			"  tspace task update PAY-142 --agent-in backend",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			moving := atRoot || cmd.Flags().Changed("agent-in")
+			if atRoot && cmd.Flags().Changed("agent-in") {
+				return fmt.Errorf("choose either --agent-at-root or --agent-in")
+			}
 			brief, err := d.readBrief(cmd)
 			if err != nil {
 				return err
@@ -101,10 +106,6 @@ func (a *App) newTaskUpdateCmd() *cobra.Command {
 			}
 			if err := resume.validate(cmd); err != nil {
 				return err
-			}
-			moving := atRoot || cmd.Flags().Changed("agent-in")
-			if atRoot && cmd.Flags().Changed("agent-in") {
-				return fmt.Errorf("choose either --agent-at-root or --agent-in")
 			}
 			t, unlock, err := a.lockTask(cmd, args[0], false)
 			if err != nil {
@@ -175,8 +176,8 @@ func (a *App) newTaskUpdateCmd() *cobra.Command {
 }
 
 // reportAgentMove says where the task's agent now runs, having run in window
-// from, and in a running session, what still runs where until windows are
-// created or restarted. hadRoot is whether the task had a root window before.
+// from, and in a running session, what to restart for it to move there.
+// hadRoot is whether the task had a root window before.
 func (a *App) reportAgentMove(ctx context.Context, t *task.Task, from string, hadRoot bool) {
 	to := t.AgentWindow()
 	if to == from {
@@ -186,6 +187,16 @@ func (a *App) reportAgentMove(ctx context.Context, t *task.Task, from string, ha
 		} else {
 			a.printf("  agent window: %s (unchanged)\n", to)
 		}
+		return
+	}
+	// Whatever ran in the new window before, a shell or another agent, was not
+	// this agent: it starts there fresh rather than resume a conversation
+	// that is not its own. restart --resume still resumes on request.
+	if err := a.Store.ForgetLaunched(t.Name, to); err != nil {
+		a.warnf("tspace: %v\n", err)
+	}
+	if len(t.Agent) == 0 {
+		a.printf("  agent window: %s (was %s; the task has no agent, so a shell runs there until one is set with --agent)\n", to, from)
 		return
 	}
 	a.printf("  agent window: %s (was %s, which now runs %s)\n", to, from, agentDisplay(task.Repo{Agent: t.WindowAgent(from)}))
@@ -201,13 +212,15 @@ func (a *App) reportAgentMove(ctx context.Context, t *task.Task, from string, ha
 	if !running {
 		return
 	}
-	a.printf("  %s is running: %s keeps its agent until restarted (tspace restart %s %s, once it exits)\n", t.Name, from, t.Name, restartTarget(from))
-	switch {
-	case to == task.RootWindowName && !hadRoot:
-		a.printf("  tspace start %s opens the root window with the agent\n", t.Name)
-	default:
-		a.printf("  %s runs the agent once restarted (tspace restart %s %s, once what runs there exits)\n", to, t.Name, restartTarget(to))
+	// Nothing is restarted here: the agent may be in the middle of something.
+	// It leaves its old window first, so two never run at once.
+	a.printf("  %s is running, so the agent is still in %s; once it exits there:\n", t.Name, from)
+	if to == task.RootWindowName && !hadRoot {
+		a.printf("    tspace start %s (opens the root window with the agent)\n", t.Name)
+	} else {
+		a.printf("    tspace restart %s %s (runs it in %s, once what runs there exits)\n", t.Name, restartTarget(to), to)
 	}
+	a.printf("    tspace restart %s %s (gives %s its %s)\n", t.Name, restartTarget(from), from, agentDisplay(task.Repo{Agent: t.WindowAgent(from)}))
 }
 
 // restartTarget is what names window to tspace restart.
@@ -221,9 +234,9 @@ func restartTarget(window string) string {
 // windowDir is the directory a root or repository window runs in.
 func (a *App) windowDir(t *task.Task, window string) string {
 	if window == task.RootWindowName {
-		return a.Store.TaskDir(t.Name)
+		return a.rootWindow(t).Dir
 	}
-	return t.Repos[window].Worktree
+	return workspace.RepoWindow(a.Store, t, window).Dir
 }
 
 func resumeDisplay(argv []string) string {

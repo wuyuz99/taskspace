@@ -607,7 +607,7 @@ func TestTaskUpdateAgentAtRootInARunningSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := h.out.String()
-	for _, want := range []string{"backend keeps its agent until restarted (tspace restart PAY-1 backend", "tspace start PAY-1 opens the root window"} {
+	for _, want := range []string{"the agent is still in backend; once it exits there", "tspace start PAY-1 (opens the root window", "tspace restart PAY-1 backend (gives backend its shell)"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %q in:\n%s", want, out)
 		}
@@ -624,7 +624,7 @@ func TestTaskUpdateAgentAtRootInARunningSession(t *testing.T) {
 	if err := h.exec(t, h.app.newTaskCmd(), "update", "PAY-1", "--agent-at-root"); err != nil {
 		t.Fatal(err)
 	}
-	if out := h.out.String(); !strings.Contains(out, "_root runs the agent once restarted (tspace restart PAY-1 --root") {
+	if out := h.out.String(); !strings.Contains(out, "tspace restart PAY-1 --root (runs it in _root") {
 		t.Fatalf("out:\n%s", out)
 	}
 }
@@ -704,5 +704,51 @@ func TestTaskUpdateAgentAtRootPinsAnAgentAlreadyThere(t *testing.T) {
 	}
 	if tk := h.load(t, "PAY-1"); tk.AgentRepo != "" {
 		t.Fatalf("agent moved into %s", tk.AgentRepo)
+	}
+}
+
+// The window the agent moves to starts it fresh: what ran there before, a
+// shell or another agent, left no conversation of this agent's to resume.
+func TestTaskUpdateAgentMoveStartsTheAgentFreshThere(t *testing.T) {
+	h := newHarness(t)
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--agent", "claude", "--resume", "claude", "--resume=--continue", "--with-root", "--repo", "backend="+h.repo); err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range []string{task.RootWindowName, "backend"} {
+		if err := h.app.Store.MarkLaunched("PAY-1", w); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := h.exec(t, h.app.newTaskCmd(), "update", "PAY-1", "--agent-in", "backend"); err != nil {
+		t.Fatal(err)
+	}
+	if h.app.Store.Launched("PAY-1", "backend") || !h.app.Store.Launched("PAY-1", task.RootWindowName) {
+		t.Fatalf("launched: backend=%v root=%v", h.app.Store.Launched("PAY-1", "backend"), h.app.Store.Launched("PAY-1", task.RootWindowName))
+	}
+	// Moved back before it ran in backend, it left no conversation there.
+	if err := h.exec(t, h.app.newTaskCmd(), "update", "PAY-1", "--agent-at-root"); err != nil {
+		t.Fatal(err)
+	}
+	if e := h.errb.String(); strings.Contains(e, "conversation") {
+		t.Fatalf("note for an agent that never ran in backend:\n%s", e)
+	}
+}
+
+// A task with no agent has only a shell to move, and says so.
+func TestTaskUpdateMovesNoAgent(t *testing.T) {
+	h := newHarness(t)
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--shell", "--repo", "backend="+h.repo); err != nil {
+		t.Fatal(err)
+	}
+	h.app.Runtime = &layoutRuntime{running: true}
+	if err := h.exec(t, h.app.newTaskCmd(), "update", "PAY-1", "--agent-at-root"); err != nil {
+		t.Fatal(err)
+	}
+	out := h.out.String()
+	if !strings.Contains(out, "the task has no agent") || strings.Contains(out, "is running") {
+		t.Fatalf("out:\n%s", out)
+	}
+	if tk := h.load(t, "PAY-1"); tk.AgentRepo != "" || !tk.RootWindow {
+		t.Fatalf("agent_repo=%q root=%v", tk.AgentRepo, tk.RootWindow)
 	}
 }
