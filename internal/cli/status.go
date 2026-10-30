@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	tsexec "github.com/wuyuz99/taskspace/internal/exec"
 	"github.com/wuyuz99/taskspace/internal/runtime"
 	"github.com/wuyuz99/taskspace/internal/status"
 	"github.com/wuyuz99/taskspace/internal/task"
@@ -151,6 +152,16 @@ func (a *App) aggregator() *status.Aggregator {
 	agg := status.New(a.Git, a.Runtime)
 	agg.Signals = a.Store
 	agg.Run = a.Store
+	agg.TaskDir = a.Store.TaskDir
+	// An unreadable config reads no agent's status; the command that needs
+	// the config reports it.
+	if c, err := a.Store.LoadConfig(); err == nil {
+		run := a.run
+		if run == nil {
+			run = tsexec.Real()
+		}
+		agg.Published = agentStatusReaders(c, run)
+	}
 	return agg
 }
 
@@ -201,6 +212,10 @@ func (a *App) newStatusCmd() *cobra.Command {
 			"  bell   the window rang the bell; this outranks only a working signal\n" +
 			"  quiet  an agent's window has printed nothing for 10 minutes: a hint\n" +
 			"         that it may be waiting, never a claim that it is\n\n" +
+			"An agent turned on with `tspace config agent-status` adds its own\n" +
+			"published status after the signal, as working, blocked or idle followed\n" +
+			"by the agent's name. Like the bell, it outranks a working signal it\n" +
+			"contradicts, and it outranks the bell.\n\n" +
 			"Each is followed by how long ago it was signalled, or the window last\n" +
 			"printed. The bell and silence are read only from live windows, where the\n" +
 			"multiplexer tracks them (tmux does). --json has the chosen one as\n" +
@@ -346,12 +361,15 @@ func extraAgent(e status.ExtraStatus) string {
 }
 
 // reportSummary renders the STATE column: the state and, when it is known,
-// how long it has stood.
+// how long it has stood. An agent's published status names the agent, and
+// is current, so it has no age.
 func reportSummary(r *status.Report, now time.Time) string {
-	if r == nil {
+	switch {
+	case r == nil:
 		return "-"
-	}
-	if r.At.IsZero() {
+	case r.Published():
+		return string(r.State) + " (" + string(r.Source) + ")"
+	case r.At.IsZero():
 		return string(r.State)
 	}
 	return string(r.State) + " " + age(now.Sub(r.At))

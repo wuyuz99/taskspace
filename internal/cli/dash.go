@@ -773,7 +773,7 @@ func reportStyle(r *status.Report) lipgloss.Style {
 		return dashYellow.Bold(true)
 	case status.ReportState(task.SignalFailed):
 		return dashRed.Bold(true)
-	case status.ReportState(task.SignalDone):
+	case status.ReportState(task.SignalDone), status.ReportIdle:
 		return dashGreen
 	}
 	return dashFaint
@@ -951,8 +951,13 @@ func reportLines(row dashRow, now time.Time) []string {
 			}
 		case status.SourceSilence:
 			text = fmt.Sprintf("  state    quiet: no output for %s, so it may be waiting (a guess)", age(now.Sub(r.At)))
-		default:
+		case status.SourceSignal:
 			text = fmt.Sprintf("  signal   %s, %s ago", r.State, age(now.Sub(r.At)))
+			if r.Message != "" {
+				text += ": " + oneLine(r.Message)
+			}
+		default:
+			text = fmt.Sprintf("  state    %s, as %s reports it now", r.State, r.Source)
 			if r.Message != "" {
 				text += ": " + oneLine(r.Message)
 			}
