@@ -10,30 +10,73 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
 
-// claudeSignalHooks are the Claude Code hook events tspace listens to, in the
-// order they are written, and the signal each one sends.
+// signalHook is one of an agent's hook events tspace listens to, and the
+// signal it sends; note says, for the help, when the event fires if its
+// name does not.
+type signalHook struct{ event, matcher, command, note string }
+
+// hookAgent is an agent whose settings file `config hooks` can write. Each
+// is opt-in and named after its agent; all of them only call `tspace signal`.
+// The agents here keep hooks in the same shape, a JSON settings file with
+// a "hooks" object of event lists of matcher groups.
+type hookAgent struct {
+	name, product string
+	// hooks are written in this order.
+	hooks []signalHook
+	// settings is the agent's user settings file, and settingsHelp how
+	// the help names it.
+	settings     func() (string, error)
+	settingsHelp string
+	// notes end the help, after what every agent shares.
+	notes string
+}
+
+// claudeAgent is Claude Code.
 //
 // Notification is limited by its matcher to the notifications that need a
 // person. Claude Code also notifies when a finished agent has sat idle for a
 // while, and that one must not turn "done" into "blocked".
-var claudeSignalHooks = []struct{ event, matcher, command string }{
-	{"UserPromptSubmit", "", "tspace signal --quiet working"},
-	{"Notification", "permission_prompt|elicitation_dialog", "tspace signal --quiet blocked"},
-	{"Stop", "", "tspace signal --quiet done"},
+var claudeAgent = hookAgent{
+	name: "claude", product: "Claude Code",
+	hooks: []signalHook{
+		{"UserPromptSubmit", "", "tspace signal --quiet working", ""},
+		{"Notification", "permission_prompt|elicitation_dialog", "tspace signal --quiet blocked", "permission prompts and questions"},
+		{"Stop", "", "tspace signal --quiet done", ""},
+	},
+	settings:     claudeSettingsPath,
+	settingsHelp: "~/.claude/settings.json (under $CLAUDE_CONFIG_DIR if that is set)",
 }
 
-// claudeHookGroup is one entry of an event's list in Claude Code settings,
-// with its fields in the order Claude Code's own documentation shows them.
-type claudeHookGroup struct {
-	Matcher string       `json:"matcher,omitempty"`
-	Hooks   []claudeHook `json:"hooks"`
+// geminiAgent is Gemini CLI. Its Notification ignores matchers and today
+// fires only for tool permission prompts, so it needs none; BeforeAgent runs
+// when a prompt is submitted, and AfterAgent once the turn's answer is done.
+var geminiAgent = hookAgent{
+	name: "gemini", product: "Gemini CLI",
+	hooks: []signalHook{
+		{"BeforeAgent", "", "tspace signal --quiet working", "a prompt was submitted"},
+		{"Notification", "", "tspace signal --quiet blocked", "tool permission prompts"},
+		{"AfterAgent", "", "tspace signal --quiet done", "the turn's answer is done"},
+	},
+	settings:     geminiSettingsPath,
+	settingsHelp: "~/.gemini/settings.json (in $GEMINI_CLI_HOME instead of ~ if that is set)",
+	notes: "Hooks are on by default; hooksConfig.enabled false in the same file turns\n" +
+		"them all off. Gemini CLI reads settings with comments in them, which tspace\n" +
+		"cannot rewrite safely, so it refuses such a file.",
 }
 
-type claudeHook struct {
+// hookGroup is one entry of an event's list, with its fields in the order
+// the agents' own documentation shows them.
+type hookGroup struct {
+	Matcher string        `json:"matcher,omitempty"`
+	Hooks   []hookCommand `json:"hooks"`
+}
+
+type hookCommand struct {
 	Type    string `json:"type"`
 	Command string `json:"command"`
 }
@@ -53,41 +96,52 @@ func (a *App) newConfigHooksCmd() *cobra.Command {
 			"knows one agent's settings file. Nothing else in tspace depends on it:\n" +
 			"any agent with hooks of its own can run `tspace signal --quiet STATE`,\n" +
 			"and one without can write .context/signals/WINDOW.json itself; see\n" +
-			"`tspace signal --help`.",
+			"`tspace signal --help`, and docs/STATUS.md for other agents' recipes.",
 	}
-	cmd.AddCommand(a.newConfigHooksClaudeCmd())
+	cmd.AddCommand(a.newConfigHooksAgentCmd(claudeAgent), a.newConfigHooksAgentCmd(geminiAgent))
 	return cmd
 }
 
-func (a *App) newConfigHooksClaudeCmd() *cobra.Command {
+func (a *App) newConfigHooksAgentCmd(agent hookAgent) *cobra.Command {
 	var settings string
 	var remove bool
+	var table strings.Builder
+	var help strings.Builder
+	for _, h := range agent.hooks {
+		fmt.Fprintf(&table, "  %-17s %s\n", h.event, h.command)
+		if h.note != "" {
+			fmt.Fprintf(&help, "  %-17s %s  (%s)\n", h.event, h.command, h.note)
+		} else {
+			fmt.Fprintf(&help, "  %-17s %s\n", h.event, h.command)
+		}
+	}
+	long := fmt.Sprintf("%s adds three hooks to %s's user settings,\n%s:\n\n", agent.name, agent.product, agent.settingsHelp) +
+		help.String() + "\n" +
+		"They are user-wide rather than in each worktree, where the settings file\n" +
+		"would be an untracked file that clean refuses to remove. So they run in\n" +
+		"every " + agent.product + " session; --quiet makes them do nothing outside a task.\n\n" +
+		"Everything else in the file is kept as it is, other hooks included. A\n" +
+		"hook that is only a `tspace signal` call is replaced, so running this\n" +
+		"again changes nothing. --remove takes the tspace hooks out again. A\n" +
+		"settings file that is a symbolic link is written through the link."
+	if agent.notes != "" {
+		long += "\n\n" + agent.notes
+	}
 	cmd := &cobra.Command{
-		Use:   "claude",
-		Short: "Install the signal hooks into Claude Code's user settings",
-		Long: "claude adds three hooks to Claude Code's user settings,\n" +
-			"~/.claude/settings.json (under $CLAUDE_CONFIG_DIR if that is set):\n\n" +
-			"  UserPromptSubmit  tspace signal --quiet working\n" +
-			"  Notification      tspace signal --quiet blocked  (permission prompts and questions)\n" +
-			"  Stop              tspace signal --quiet done\n\n" +
-			"They are user-wide rather than in each worktree, where the settings file\n" +
-			"would be an untracked file that clean refuses to remove. So they run in\n" +
-			"every Claude Code session; --quiet makes them do nothing outside a task.\n\n" +
-			"Everything else in the file is kept as it is, other hooks included. A\n" +
-			"hook that is only a `tspace signal` call is replaced, so running this\n" +
-			"again changes nothing. --remove takes the tspace hooks out again. A\n" +
-			"settings file that is a symbolic link is written through the link.",
-		Args: cobra.NoArgs,
+		Use:   agent.name,
+		Short: "Install the signal hooks into " + agent.product + "'s user settings",
+		Long:  long,
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path := settings
 			if path == "" {
-				p, err := claudeSettingsPath()
+				p, err := agent.settings()
 				if err != nil {
 					return err
 				}
 				path = p
 			}
-			changed, err := updateClaudeHooks(path, !remove)
+			changed, err := updateSignalHooks(path, agent.hooks, !remove)
 			if err != nil {
 				return err
 			}
@@ -100,15 +154,13 @@ func (a *App) newConfigHooksClaudeCmd() *cobra.Command {
 				a.printf("removed the tspace hooks from %s\n", path)
 			default:
 				a.printf("installed the tspace hooks in %s:\n", path)
-				for _, h := range claudeSignalHooks {
-					a.printf("  %-17s %s\n", h.event, h.command)
-				}
+				a.printf("%s", table.String())
 				a.printf("sessions started from now on use them\n")
 			}
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&settings, "settings", "", "settings file to change (default: Claude Code's user settings)")
+	cmd.Flags().StringVar(&settings, "settings", "", "settings file to change (default: "+agent.product+"'s user settings)")
 	cmd.Flags().BoolVar(&remove, "remove", false, "remove the tspace hooks instead")
 	return cmd
 }
@@ -125,11 +177,24 @@ func claudeSettingsPath() (string, error) {
 	return filepath.Join(home, ".claude", "settings.json"), nil
 }
 
-// updateClaudeHooks installs (or with install false, removes) the signal
-// hooks in a settings file, and reports whether the file changed. Only the
-// event lists that gain or lose a tspace hook are rewritten; everything else
-// is written back as the bytes it was read as.
-func updateClaudeHooks(path string, install bool) (bool, error) {
+// geminiSettingsPath is Gemini CLI's user settings file.
+func geminiSettingsPath() (string, error) {
+	home := os.Getenv("GEMINI_CLI_HOME")
+	if home == "" {
+		h, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		home = h
+	}
+	return filepath.Join(home, ".gemini", "settings.json"), nil
+}
+
+// updateSignalHooks installs (or with install false, removes) signal hooks
+// in a settings file, and reports whether the file changed. Only the event
+// lists that gain or lose a tspace hook are rewritten; everything else is
+// written back as the bytes it was read as.
+func updateSignalHooks(path string, signalHooks []signalHook, install bool) (bool, error) {
 	// A symbolic link, into a dotfiles repository say, is written through.
 	if target, err := filepath.EvalSymlinks(path); err == nil {
 		path = target
@@ -158,7 +223,7 @@ func updateClaudeHooks(path string, install bool) (bool, error) {
 		}
 	}
 	changed := false
-	for _, h := range claudeSignalHooks {
+	for _, h := range signalHooks {
 		var groups []json.RawMessage
 		if raw, ok := hooks.get(h.event); ok {
 			if err := json.Unmarshal(raw, &groups); err != nil {
@@ -173,7 +238,7 @@ func updateClaudeHooks(path string, install bool) (bool, error) {
 			continue // nothing of ours here: leave the event exactly as it was
 		}
 		if install {
-			group, err := marshalPlain(claudeHookGroup{Matcher: h.matcher, Hooks: []claudeHook{{Type: "command", Command: h.command}}})
+			group, err := marshalPlain(hookGroup{Matcher: h.matcher, Hooks: []hookCommand{{Type: "command", Command: h.command}}})
 			if err != nil {
 				return false, err
 			}
