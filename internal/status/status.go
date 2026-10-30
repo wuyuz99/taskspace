@@ -7,9 +7,12 @@ package status
 
 import (
 	"context"
-
+	"path/filepath"
+	goruntime "runtime"
 	"sort"
+	"strings"
 	"sync"
+	"time"
 
 	tsgit "github.com/wuyuz99/taskspace/internal/git"
 	"github.com/wuyuz99/taskspace/internal/runtime"
@@ -67,6 +70,12 @@ type RepoStatus struct {
 	// Signal is what the window's agent last reported, if anything. It is the
 	// agent's word, shown beside Runtime and never folded into it.
 	Signal *task.Signal
+	// Pane is what the multiplexer saw of the window beyond Runtime: its bell
+	// and when it last printed. It is zero without a live window.
+	Pane runtime.PaneState
+	// Report is the window's most trusted account of what its agent is doing:
+	// Signal, the bell, or a long silence. It is nil when none says anything.
+	Report *Report
 	// Err is the error behind GitError, if any.
 	Err error
 }
@@ -95,6 +104,8 @@ type RootStatus struct {
 	Agent   string
 	Runtime RuntimeState
 	Signal  *task.Signal
+	Pane    runtime.PaneState
+	Report  *Report
 }
 
 // ExtraStatus is a window opened with `tspace window`, beside the root and
@@ -122,6 +133,13 @@ type RunReader interface {
 	Interrupted(taskName string) bool
 }
 
+// PublishedReader supplies what agents publish about themselves, keyed by
+// the directory each agent runs in. It is an opt-in integration with one
+// agent's own interface; core status never reads an agent by name.
+type PublishedReader interface {
+	Published(ctx context.Context) (map[string]Published, error)
+}
+
 // Aggregator collects status across git and the runtime.
 type Aggregator struct {
 	Git     *tsgit.Git
@@ -130,6 +148,13 @@ type Aggregator struct {
 	Signals SignalReader
 	// Run is optional; without it no task is interrupted, only no-session.
 	Run RunReader
+	// Now is the clock silence is measured by; nil is time.Now.
+	Now func() time.Time
+	// Published are the agent status integrations turned on, if any.
+	Published []PublishedReader
+	// TaskDir is the directory a task's root window runs in, for matching
+	// published status to it; without it, only repository windows match.
+	TaskDir func(taskName string) string
 }
 
 // New returns an Aggregator.
@@ -142,7 +167,53 @@ func New(g *tsgit.Git, rt runtime.Runtime) *Aggregator {
 // Repositories are queried concurrently: `git status` across several large
 // repositories is the dominant cost of this command, and they are independent.
 func (a *Aggregator) Task(ctx context.Context, t *task.Task) TaskStatus {
+	return a.task(ctx, t, a.published(ctx))
+}
+
+// published asks every integration once, for all tasks together: an agent's
+// own interface may take a while to answer. One that fails says nothing, as
+// an unreadable signal does.
+func (a *Aggregator) published(ctx context.Context) map[string]Published {
+	out := map[string]Published{}
+	for _, r := range a.Published {
+		got, err := r.Published(ctx)
+		if err != nil {
+			continue
+		}
+		for dir, p := range got {
+			if _, ok := out[DirKey(dir)]; !ok {
+				out[DirKey(dir)] = p
+			}
+		}
+	}
+	return out
+}
+
+// DirKey is the form directories are compared in, so that the path an
+// agent reports and the one tspace recorded match when they name the same
+// place.
+func DirKey(dir string) string {
+	if dir == "" {
+		return ""
+	}
+	if r, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = r
+	}
+	dir = filepath.Clean(dir)
+	if goruntime.GOOS == "windows" || goruntime.GOOS == "darwin" {
+		dir = strings.ToLower(dir)
+	}
+	return dir
+}
+
+func (a *Aggregator) task(ctx context.Context, t *task.Task, published map[string]Published) TaskStatus {
 	out := TaskStatus{Task: t.Name}
+	pub := func(dir string) *Published {
+		if p, ok := published[DirKey(dir)]; ok && dir != "" {
+			return &p
+		}
+		return nil
+	}
 
 	var sess runtime.SessionState
 	// A runtime we could not query is not the same as a runtime with nothing
@@ -175,12 +246,24 @@ func (a *Aggregator) Task(ctx context.Context, t *task.Task) TaskStatus {
 		return nil
 	}
 
+	now := time.Now()
+	if a.Now != nil {
+		now = a.Now()
+	}
+
 	if t.HasRootWindow() {
-		out.Root = &RootStatus{
+		root := &RootStatus{
 			Agent:   t.AgentLabel(),
 			Runtime: a.windowState(sess, task.RootWindowName, runtimeUnknown),
 			Signal:  signal(task.RootWindowName),
+			Pane:    a.livePane(sess, task.RootWindowName, runtimeUnknown),
 		}
+		var rootPub *Published
+		if a.TaskDir != nil {
+			rootPub = pub(a.TaskDir(t.Name))
+		}
+		root.Report = report(root.Signal, root.Runtime, root.Pane, rootPub, len(t.RootAgent()) > 0, now)
+		out.Root = root
 	}
 
 	names := t.RepoNames()
@@ -194,8 +277,11 @@ func (a *Aggregator) Task(ctx context.Context, t *task.Task) TaskStatus {
 		go func() {
 			defer wg.Done()
 			rows[i] = a.repoStatus(ctx, t.Name, name, repo, sess, runtimeUnknown)
-			rows[i].Agent = task.Repo{Agent: t.RepoAgent(name)}.AgentLabel()
+			agent := t.RepoAgent(name)
+			rows[i].Agent = task.Repo{Agent: agent}.AgentLabel()
 			rows[i].Signal = signal(name)
+			rows[i].Pane = a.livePane(sess, name, runtimeUnknown)
+			rows[i].Report = report(rows[i].Signal, rows[i].Runtime, rows[i].Pane, pub(repo.Worktree), len(agent) > 0, now)
 		}()
 	}
 	wg.Wait()
@@ -306,9 +392,23 @@ func (a *Aggregator) windowState(sess runtime.SessionState, window string, runti
 	}
 }
 
+// livePane is the multiplexer's view of a window whose process is alive, or
+// the zero PaneState: a dead window's bell and output are history.
+func (a *Aggregator) livePane(sess runtime.SessionState, window string, runtimeUnknown bool) runtime.PaneState {
+	if runtimeUnknown || !sess.Exists {
+		return runtime.PaneState{}
+	}
+	pane, ok := sess.Pane(a.Runtime.WindowName(window))
+	if !ok || pane.Dead {
+		return runtime.PaneState{}
+	}
+	return pane
+}
+
 // All reports the status of every task, sorted by name.
 func (a *Aggregator) All(ctx context.Context, tasks []*task.Task) []TaskStatus {
 	out := make([]TaskStatus, len(tasks))
+	published := a.published(ctx)
 
 	var wg sync.WaitGroup
 	for i, t := range tasks {
@@ -316,7 +416,7 @@ func (a *Aggregator) All(ctx context.Context, tasks []*task.Task) []TaskStatus {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			out[i] = a.Task(ctx, t)
+			out[i] = a.task(ctx, t, published)
 		}()
 	}
 	wg.Wait()

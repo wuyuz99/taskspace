@@ -21,6 +21,7 @@ task names.
 | `tspace config branch-prefix [PREFIX / --unset]` | Set the prefix of new task branches (default `agent/`) |
 | `tspace config ticket-pattern [REGEXP / --unset]` | Read new tasks' tickets from their names |
 | `tspace config terminal [CMD ARGS... / --unset]` | How dash's `t` opens a task in a new terminal tab |
+| `tspace config agent-status [AGENT... / --unset]` | Read an agent's own published status, such as `claude agents --json` |
 | `tspace config editor [CMD ARGS... / --unset]` | The editor `tspace editor` opens a task's workspace with |
 | `tspace config multiplexer [NAME [CMD ARGS...] / --unset]` | Choose tmux, zellij or an adapter; see [Multiplexers](MULTIPLEXERS.md) |
 | `tspace project save NAME --from TASK [--replace]` | Save a reusable repository recipe |
@@ -51,6 +52,7 @@ task names.
 | `tspace dash` | Live full-screen view of every task; create, attach, start, restart, stop, clean, delete, remove a repository, open a window, open in a new tab |
 | `tspace signal STATE [MESSAGE] [--task --repo / --root] [--quiet] [--clear]` | Report an agent as `working`, `blocked`, `done` or `failed` |
 | `tspace config hooks claude [--remove]` | Install the Claude Code hooks that call `tspace signal` |
+| `tspace config hooks gemini [--remove]` | Install the Gemini CLI hooks that call `tspace signal` |
 | `tspace clean TASK [REPO...] [--delete-branch] [--force] [--rm]` | Remove worktrees, safely, of every repository or only those named; `--rm` deletes the task record too |
 | `tspace import PATH [--task NAME] [--name REPO]` | Move a worktree made with `git worktree add` into a task |
 | `tspace editor [TASK] [--print]` | Write the task's `.code-workspace` and open it in your editor |

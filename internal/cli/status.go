@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	tsexec "github.com/wuyuz99/taskspace/internal/exec"
+	"github.com/wuyuz99/taskspace/internal/runtime"
 	"github.com/wuyuz99/taskspace/internal/status"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
@@ -38,6 +40,21 @@ type statusRootJSON struct {
 	Agent   string       `json:"agent"`
 	Runtime string       `json:"runtime"`
 	Signal  *task.Signal `json:"signal,omitempty"`
+	statusPaneJSON
+}
+
+// statusPaneJSON is what the multiplexer saw of a live window, and the report
+// status drew from it and the window's signal.
+type statusPaneJSON struct {
+	Bell   bool      `json:"bell,omitempty"`
+	Output time.Time `json:"output_at,omitzero"`
+	// AgentState is the most trusted of the signal, the bell and a long
+	// silence, with which one it was.
+	AgentState *status.Report `json:"agent_state,omitempty"`
+}
+
+func paneJSON(p runtime.PaneState, r *status.Report) statusPaneJSON {
+	return statusPaneJSON{Bell: p.Bell, Output: p.Output, AgentState: r}
 }
 
 type statusRepoJSON struct {
@@ -59,6 +76,7 @@ type statusRepoJSON struct {
 	Error      string `json:"error,omitempty"`
 	// Signal is what the agent last reported with `tspace signal`.
 	Signal *task.Signal `json:"signal,omitempty"`
+	statusPaneJSON
 }
 
 // jsonRuntime is a runtime state as --json gives it. "interrupted" came
@@ -91,7 +109,8 @@ func (a *App) printStatusJSON(tasks []*task.Task, results []status.TaskStatus) e
 		}
 		// A single-repo task has no root window: "root" is null.
 		if ts.Root != nil {
-			row.Root = &statusRootJSON{Agent: ts.Root.Agent, Runtime: jsonRuntime(ts.Root.Runtime), Signal: ts.Root.Signal}
+			row.Root = &statusRootJSON{Agent: ts.Root.Agent, Runtime: jsonRuntime(ts.Root.Runtime), Signal: ts.Root.Signal,
+				statusPaneJSON: paneJSON(ts.Root.Pane, ts.Root.Report)}
 		}
 		if ts.RuntimeErr != nil {
 			row.RuntimeError = ts.RuntimeErr.Error()
@@ -114,6 +133,8 @@ func (a *App) printStatusJSON(tasks []*task.Task, results []status.TaskStatus) e
 				Behind:     r.Detail.Behind,
 				Unpushed:   r.Unpushed,
 				Signal:     r.Signal,
+
+				statusPaneJSON: paneJSON(r.Pane, r.Report),
 			}
 			if r.Err != nil {
 				repo.Error = r.Err.Error()
@@ -131,6 +152,16 @@ func (a *App) aggregator() *status.Aggregator {
 	agg := status.New(a.Git, a.Runtime)
 	agg.Signals = a.Store
 	agg.Run = a.Store
+	agg.TaskDir = a.Store.TaskDir
+	// An unreadable config reads no agent's status; the command that needs
+	// the config reports it.
+	if c, err := a.Store.LoadConfig(); err == nil {
+		run := a.run
+		if run == nil {
+			run = tsexec.Real()
+		}
+		agg.Published = agentStatusReaders(c, run)
+	}
 	return agg
 }
 
@@ -175,9 +206,20 @@ func (a *App) newStatusCmd() *cobra.Command {
 			"GIT is missing (no worktree yet; see tspace start), error, clean or dirty,\n" +
 			"followed by stashes, commits ahead of and behind the upstream, and commits\n" +
 			"not pushed anywhere.\n\n" +
-			"A SIGNAL column appears once an agent has reported on itself with\n" +
-			"`tspace signal`: working, blocked, done or failed, and how long ago. It is\n" +
-			"the agent's word, not something tspace observed.\n\n" +
+			"A STATE column appears once any window has something to say about its\n" +
+			"agent, from the most trusted source that does:\n\n" +
+			"  working, blocked, done, failed  the agent's own word, from `tspace signal`\n" +
+			"  bell   the window rang the bell; this outranks only a working signal\n" +
+			"  quiet  an agent's window has printed nothing for 10 minutes: a hint\n" +
+			"         that it may be waiting, never a claim that it is\n\n" +
+			"An agent turned on with `tspace config agent-status` adds its own\n" +
+			"published status after the signal, as working, blocked or idle followed\n" +
+			"by the agent's name. Like the bell, it outranks a working signal it\n" +
+			"contradicts, and it outranks the bell.\n\n" +
+			"Each is followed by how long ago it was signalled, or the window last\n" +
+			"printed. The bell and silence are read only from live windows, where the\n" +
+			"multiplexer tracks them (tmux does). --json has the chosen one as\n" +
+			"agent_state, with its source, beside signal, bell and output_at.\n\n" +
 			"Without TASK, every task is shown. --watch redraws the table until\n" +
 			"interrupted; `tspace dash` is the interactive version. --json prints the\n" +
 			"same observations as an array of tasks, with the counts as separate\n" +
@@ -241,27 +283,27 @@ func printStatusTable(out, errOut io.Writer, results []status.TaskStatus) {
 		return
 	}
 
-	// The column is there only when an agent has said something, so a setup
-	// with no signals reads as it always has.
-	signals := false
+	// The column is there only when some window has a report, so a setup
+	// with nothing to say reads as it always has.
+	reports := false
 	for _, ts := range results {
-		signals = signals || (ts.Root != nil && ts.Root.Signal != nil)
+		reports = reports || (ts.Root != nil && ts.Root.Report != nil)
 		for _, r := range ts.Repos {
-			signals = signals || r.Signal != nil
+			reports = reports || r.Report != nil
 		}
 	}
 	now := time.Now()
-	row := func(tw io.Writer, sig *task.Signal, cells ...string) {
-		if signals {
-			cells = append(cells, signalSummary(sig, now))
+	row := func(tw io.Writer, rep *status.Report, cells ...string) {
+		if reports {
+			cells = append(cells, reportSummary(rep, now))
 		}
 		fmt.Fprintln(tw, strings.Join(cells, "\t"))
 	}
 
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 	header := "TASK\tREPO\tBRANCH\tAGENT\tRUNTIME\tGIT"
-	if signals {
-		header += "\tSIGNAL"
+	if reports {
+		header += "\tSTATE"
 	}
 	fmt.Fprintln(tw, header)
 
@@ -270,11 +312,11 @@ func printStatusTable(out, errOut io.Writer, results []status.TaskStatus) {
 		// The root window has a process but no worktree, so it has no
 		// branch or git state of its own; its repositories follow it.
 		if ts.Root != nil {
-			row(tw, ts.Root.Signal, ts.Task, "(root)", "-", ts.Root.Agent, string(ts.Root.Runtime), "-")
+			row(tw, ts.Root.Report, ts.Task, "(root)", "-", ts.Root.Agent, string(ts.Root.Runtime), "-")
 		}
 		for _, r := range ts.Repos {
 			empty = false
-			row(tw, r.Signal, r.Task, r.Repo, dash(r.Branch), r.Agent, string(r.Runtime), gitSummary(r))
+			row(tw, r.Report, r.Task, r.Repo, dash(r.Branch), r.Agent, string(r.Runtime), gitSummary(r))
 		}
 		for _, e := range ts.Extra {
 			row(tw, nil, ts.Task, extraLabel(e), "-", extraAgent(e), string(e.Runtime), "-")
@@ -318,12 +360,19 @@ func extraAgent(e status.ExtraStatus) string {
 	return "-"
 }
 
-// signalSummary renders the SIGNAL column: the state and how long it has stood.
-func signalSummary(s *task.Signal, now time.Time) string {
-	if s == nil {
+// reportSummary renders the STATE column: the state and, when it is known,
+// how long it has stood. An agent's published status names the agent, and
+// is current, so it has no age.
+func reportSummary(r *status.Report, now time.Time) string {
+	switch {
+	case r == nil:
 		return "-"
+	case r.Published():
+		return string(r.State) + " (" + string(r.Source) + ")"
+	case r.At.IsZero():
+		return string(r.State)
 	}
-	return string(s.State) + " " + age(now.Sub(s.At))
+	return string(r.State) + " " + age(now.Sub(r.At))
 }
 
 // age renders a duration to one unit, which is all a glance needs.

@@ -199,13 +199,15 @@ func TestDashStyles(t *testing.T) {
 	for _, s := range []status.RuntimeState{status.RuntimeRunning, status.RuntimeDead, status.RuntimeUnknown, status.RuntimeNoSession} {
 		_ = runtimeStyle(s).Render(string(s))
 	}
-	if signalStyle(nil).GetBold() {
-		t.Error("no signal is bold")
+	if reportStyle(nil).GetBold() {
+		t.Error("no report is bold")
 	}
-	for st, bold := range map[task.SignalState]bool{
-		task.SignalBlocked: true, task.SignalFailed: true, task.SignalDone: false, task.SignalWorking: false,
+	for st, bold := range map[status.ReportState]bool{
+		status.ReportState(task.SignalBlocked): true, status.ReportState(task.SignalFailed): true,
+		status.ReportState(task.SignalDone): false, status.ReportState(task.SignalWorking): false,
+		status.ReportAttention: true, status.ReportQuiet: false,
 	} {
-		if got := signalStyle(&task.Signal{State: st}).GetBold(); got != bold {
+		if got := reportStyle(&status.Report{State: st}).GetBold(); got != bold {
 			t.Errorf("%s bold = %v, want %v", st, got, bold)
 		}
 	}

@@ -12,7 +12,25 @@ upgrade.
   `--branches` also renames unpublished branches following the configured
   task-name convention. Dash offers the same operation with `N`. A warning
   names old directories where resumable agents leave their conversations.
-
+- **`tspace config agent-status claude`** has status and dash read Claude
+  Code's own `claude agents --json`, matching each interactive session to the
+  window in its directory: `working`, `blocked` (with what it waits for) or
+  `idle`, shown as `blocked (claude)`. It ranks after signals but outranks a
+  `working` signal it contradicts, so an agent interrupted before its Stop
+  hook no longer shows as working. Off unless turned on.
+- **Which agent needs you, without hooks.** `status` and dash read the tmux
+  bell and how long each window has gone without printing, so an agent with
+  no `tspace signal` hooks still shows up: `bell` when its window rang, and
+  `quiet` after 10 minutes of silence, a hint and never a claim that it is
+  blocked. Signals still come first, and a bell outranks only `working`.
+  The column is now `STATE`, and dash's detail line says where each state
+  came from. `status --json` adds `agent_state` (with its `source`), `bell`
+  and `output_at`. Adapters may add `BELL` and `OUTPUT` fields to `state`;
+  see [Multiplexers](docs/MULTIPLEXERS.md).
+- **`tspace config hooks gemini`** installs Gemini CLI hooks that report
+  `working`, `blocked` and `done`, as `config hooks claude` does for Claude
+  Code, in `~/.gemini/settings.json`. [Status](docs/STATUS.md#recipes-for-other-agents)
+  has the hooks to paste for Codex and how to wire up any other agent.
 - **`.` names the task you are in.** Inside a task's directory or one of its
   worktrees, `tspace task handoff . "API done"`, `tspace restart . backend`
   and the other per-task commands use that task; the directory decides, not
@@ -106,6 +124,11 @@ upgrade.
 
 ### Fixed
 
+- **`import` takes a worktree no task claims**, wherever it is, instead of
+  refusing everything under tspace's worktrees directory. A worktree left by
+  `repo rm --keep-worktree` can join another task, or its old task under the
+  same repository name, where it is adopted in place. One a task still lists
+  is refused, naming that task and repository.
 - **`repo update --shell` refuses on the repository that runs the task's
   agent**, instead of deleting the task's agent and its resume command with
   only a note. `tspace task update TASK --shell` still drops the agent on
