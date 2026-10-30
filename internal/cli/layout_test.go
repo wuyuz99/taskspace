@@ -406,6 +406,44 @@ func TestRepoUpdateShellRefusesToDropTheTaskAgent(t *testing.T) {
 	}
 }
 
+// With nothing to lose, --shell on the agent repository goes through, and
+// so does the rest of the update.
+func TestRepoUpdateShellOnTheAgentRepoWithoutAnAgent(t *testing.T) {
+	h := newHarness(t)
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--shell", "--repo", "backend="+h.repo); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newRepoCmd(), "update", "PAY-1", "backend", "--shell", "--post-create", "make"); err != nil {
+		t.Fatal(err)
+	}
+	if tk := h.load(t, "PAY-1"); tk.AgentRepo != "backend" || tk.Repos["backend"].PostCreate != "make" {
+		t.Fatalf("agent_repo=%q post_create=%q", tk.AgentRepo, tk.Repos["backend"].PostCreate)
+	}
+}
+
+// An agent of the repository's own, in the agent repository, is what --shell
+// clears; the window then runs the task's agent again.
+func TestRepoUpdateShellClearsTheAgentRepoOwnAgent(t *testing.T) {
+	h := newHarness(t)
+	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--agent", "claude", "--repo", "backend="+h.repo); err != nil {
+		t.Fatal(err)
+	}
+	tk := h.load(t, "PAY-1")
+	r := tk.Repos["backend"]
+	r.Agent = []string{"aider"}
+	tk.SetRepo("backend", r)
+	if err := h.app.Store.Save(tk); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newRepoCmd(), "update", "PAY-1", "backend", "--shell"); err != nil {
+		t.Fatal(err)
+	}
+	tk = h.load(t, "PAY-1")
+	if !slices.Equal(tk.Agent, []string{"claude"}) || len(tk.Repos["backend"].Agent) != 0 {
+		t.Fatalf("agent=%v repo agent=%v", tk.Agent, tk.Repos["backend"].Agent)
+	}
+}
+
 // A repository with an agent of its own keeps the root layout, so the
 // task's agent still has somewhere to run.
 func TestRepoWithItsOwnAgentKeepsTheRootWindow(t *testing.T) {

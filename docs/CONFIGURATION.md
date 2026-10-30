@@ -39,7 +39,7 @@ base refs are reused; no fetch is performed. An empty base is resolved at creati
 ```bash
 tspace repo update PAY-142 backend --agent codex
 tspace repo update PAY-142 backend --post-create 'pnpm install'
-tspace repo update PAY-142 backend --shell
+tspace repo update PAY-142 backend --shell   # not where the task's agent runs
 tspace repo update PAY-142 backend --post-create=''
 tspace task update PAY-142 --agent claude --agent=--model --agent opus
 tspace task update PAY-142 --shell

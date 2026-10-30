@@ -81,12 +81,12 @@ func (a *App) newRepoUpdateCmd() *cobra.Command {
 			if !ok {
 				return fmt.Errorf("task %q has no repo named %q (has: %s)", t.Name, args[1], joinNames(t.RepoNames()))
 			}
-			// The agent repository's window runs the task's agent, so that is
-			// what its agent flags change.
-			taskAgent := args[1] == t.AgentRepo
+			// The agent repository's window runs the task's agent, unless it
+			// has one of its own, so that is what its agent flags change.
+			taskAgent := args[1] == t.AgentRepo && len(r.Agent) == 0
 			// A shell there would leave the task with no agent anywhere, and
 			// take its resume command along.
-			if taskAgent && shell {
+			if taskAgent && shell && len(t.Agent) > 0 {
 				return fmt.Errorf("%s's window runs the task's agent, so --shell would drop it; to run a shell there, drop the task's agent with tspace task update %s --shell", args[1], t.Name)
 			}
 			before := t.RepoAgent(args[1])
