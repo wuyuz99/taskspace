@@ -90,8 +90,8 @@ func TestStatusShowsSignalsOnlyWhenThereAreSome(t *testing.T) {
 	if err := h.exec(t, h.app.newStatusCmd()); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(h.out.String(), "SIGNAL") {
-		t.Fatalf("signal column with no signals:\n%s", h.out.String())
+	if strings.Contains(h.out.String(), "STATE") {
+		t.Fatalf("state column with no signals:\n%s", h.out.String())
 	}
 
 	// Written the way an agent without tspace would write it.
@@ -110,7 +110,7 @@ func TestStatusShowsSignalsOnlyWhenThereAreSome(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSpace(h.out.String()), "\n")
-	if !strings.HasSuffix(lines[0], "SIGNAL") || !strings.HasSuffix(lines[1], " -") || !strings.Contains(lines[2], "blocked 0s") {
+	if !strings.HasSuffix(lines[0], "STATE") || !strings.HasSuffix(lines[1], " -") || !strings.Contains(lines[2], "blocked 0s") {
 		t.Fatalf("status:\n%s", h.out.String())
 	}
 
@@ -123,6 +123,9 @@ func TestStatusShowsSignalsOnlyWhenThereAreSome(t *testing.T) {
 	}
 	if s := got[0].Repos[0].Signal; s == nil || s.State != task.SignalBlocked || s.Message != "which column?" || got[0].Root.Signal != nil {
 		t.Fatalf("json: %s", h.out.String())
+	}
+	if r := got[0].Repos[0].AgentState; r == nil || r.Source != status.SourceSignal || r.State != "blocked" || r.Message != "which column?" || got[0].Root.AgentState != nil {
+		t.Fatalf("json agent_state: %s", h.out.String())
 	}
 }
 
@@ -403,5 +406,61 @@ func TestStartWarnsAboutWindowsThatExitedOnLaunch(t *testing.T) {
 		if !strings.Contains(h.errb.String(), want) {
 			t.Errorf("stderr lacks %q:\n%s", want, h.errb.String())
 		}
+	}
+}
+
+// Without any signal, the bell and a long silence still say which agent may
+// need a person, each labelled with where it came from.
+func TestStatusAndDashReadTheMultiplexer(t *testing.T) {
+	h := newHarness(t)
+	tk := h.startedRootTask(t, "PAY-142")
+	tk.Agent = []string{"codex"}
+	repo := tk.RepoNames()[0]
+	r := tk.Repos[repo]
+	r.Agent = []string{"codex"}
+	tk.Repos[repo] = r
+	if err := h.app.Store.Save(tk); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	h.app.Runtime = &windowRuntime{running: true, panes: map[string]runtime.PaneState{
+		"_root": {Bell: true, Output: now.Add(-2 * time.Minute)},
+		repo:    {Output: now.Add(-time.Hour)},
+	}}
+
+	if err := h.exec(t, h.app.newStatusCmd()); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(h.out.String()), "\n")
+	if !strings.HasSuffix(lines[0], "STATE") || !strings.HasSuffix(lines[1], "bell 2m") || !strings.HasSuffix(lines[2], "quiet 1h") {
+		t.Fatalf("status:\n%s", h.out.String())
+	}
+
+	if err := h.exec(t, h.app.newStatusCmd(), "--json"); err != nil {
+		t.Fatal(err)
+	}
+	var got []statusJSON
+	if err := json.Unmarshal(h.out.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if s := got[0].Root.AgentState; s == nil || s.Source != status.SourceBell || !got[0].Root.Bell {
+		t.Fatalf("root json: %s", h.out.String())
+	}
+	if s := got[0].Repos[0].AgentState; s == nil || s.Source != status.SourceSilence || got[0].Repos[0].Output.IsZero() {
+		t.Fatalf("repo json: %s", h.out.String())
+	}
+
+	m := newDashModel(context.Background(), h.app, time.Second)
+	m = drive(t, m, tea.WindowSizeMsg{Width: 200, Height: 40})
+	m = drive(t, m, dashDataMsg(h.app.dashLoad(context.Background())))
+	view := m.View()
+	for _, want := range []string{"1 bell", "bell: the window rang it, last output 2m ago"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("view lacks %q:\n%s", want, view)
+		}
+	}
+	m = drive(t, m, key("j"))
+	if view := m.View(); !strings.Contains(view, "quiet: no output for 1h, so it may be waiting (a guess)") {
+		t.Fatalf("view:\n%s", view)
 	}
 }

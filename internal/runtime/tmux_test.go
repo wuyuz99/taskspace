@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	tsexec "github.com/wuyuz99/taskspace/internal/exec"
 )
@@ -377,5 +378,17 @@ func TestHasSessionOnlyTrustsAMissingSession(t *testing.T) {
 		if ok || (err == nil) != missing {
 			t.Errorf("%q: HasSession = %v, %v", stderr, ok, err)
 		}
+	}
+}
+
+// The bell and the last output are the window's, whichever pane rang or
+// printed; a tmux too old to know them leaves them empty.
+func TestParsePanesReadsBellAndOutput(t *testing.T) {
+	panes := parsePanes("backend\t0\tclaude\t0\t1700000100\nbackend\t0\tbash\t1\t1700000000\nold\t0\tcodex\t\t\n")
+	if p := panes["backend"]; !p.Bell || !p.Output.Equal(time.Unix(1700000100, 0)) {
+		t.Errorf("backend = %+v, want its bell and its latest output", p)
+	}
+	if p := panes["old"]; p.Bell || !p.Output.IsZero() {
+		t.Errorf("old = %+v, want neither", p)
 	}
 }

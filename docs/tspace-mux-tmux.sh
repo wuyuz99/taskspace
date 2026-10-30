@@ -30,7 +30,7 @@ state)
 	fi
 	echo exists
 	tmux list-panes -s -t "$(target "$1")" \
-		-F '#{window_name}	#{?pane_dead,dead,live}	#{pane_current_command}'
+		-F '#{window_name}	#{?pane_dead,dead,live}	#{pane_current_command}	#{?window_bell_flag,bell,}	#{window_activity}'
 	;;
 
 new-session | new-window | respawn)
