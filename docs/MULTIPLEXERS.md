@@ -76,7 +76,7 @@ success. Any other status is a failure, and tspace shows the adapter's stderr.
 | Operation | Does |
 | --- | --- |
 | `check PROTOCOL` | Exit 0 if the multiplexer is usable and you speak `PROTOCOL` (currently `1`); otherwise explain on stderr. |
-| `state SESSION` | Print `exists` or `missing` on the first line, then one line per pane: `NAME<TAB>live\|dead<TAB>COMMAND`. Several lines for one window (split panes) are fine; the window is live if any pane is. COMMAND, the program currently running, is informational and may be empty. |
+| `state SESSION` | Print `exists` or `missing` on the first line, then one line per pane: `NAME<TAB>live\|dead<TAB>COMMAND`. Several lines for one window (split panes) are fine; the window is live if any pane is. COMMAND, the program currently running, is informational and may be empty. Two more fields may follow: `<TAB>BELL<TAB>OUTPUT`, where BELL is `bell` if the window rang the terminal bell since a person last looked at it, and OUTPUT is when it last printed, in seconds since the epoch. Leave either empty, or both out, if your multiplexer doesn't track them; they only feed the hints in [Agent status](STATUS.md). |
 | `new-session SESSION WIN` | Create a detached session whose first window is WIN. |
 | `new-window SESSION WIN` | Add WIN to an existing session. |
 | `respawn SESSION WIN` | Relaunch WIN, whose command has exited, in its existing window. |

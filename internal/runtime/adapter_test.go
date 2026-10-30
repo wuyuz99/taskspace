@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tsexec "github.com/wuyuz99/taskspace/internal/exec"
 )
@@ -172,5 +173,22 @@ func TestNotInstalled(t *testing.T) {
 	failing := NewAdapter("failing", []string{"x"}, tsexec.NewFake().Fail("x", "broken", 23))
 	if _, err := failing.HasSession(context.Background(), "s"); err == nil || NotInstalled(err) {
 		t.Fatalf("failing adapter: err %v", err)
+	}
+}
+
+// BELL and OUTPUT are optional, so adapters written before them still work.
+func TestAdapterStateBellAndOutput(t *testing.T) {
+	f := tsexec.NewFake().RespondOut("state", "exists\nweb\tlive\tvim\tbell\t1700000000\nold\tlive\tcodex\napi\tlive\tclaude\t\t\n")
+	st, err := NewAdapter("wez", nil, f).State(ctx(), "tspace@t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := st.Panes["web"]; !p.Bell || !p.Output.Equal(time.Unix(1700000000, 0)) || p.Command != "vim" {
+		t.Errorf("web = %+v", p)
+	}
+	for _, name := range []string{"old", "api"} {
+		if p := st.Panes[name]; p.Bell || !p.Output.IsZero() || p.Dead {
+			t.Errorf("%s = %+v, want live with neither", name, p)
+		}
 	}
 }

@@ -26,14 +26,16 @@ func (a *App) newDashCmd() *cobra.Command {
 		Use:   "dash",
 		Short: "Watch every task and step into the one that needs you",
 		Long: "dash is a live, full-screen view of every task: one row per window, with\n" +
-			"its runtime state, what its agent last reported with `tspace signal`, and its\n" +
-			"git state. Below the table it shows the selected row's directory, signal\n" +
-			"message and handoff. It is `tspace status` for a person supervising several\n" +
-			"agents; everything it does is also a command. Extra windows, opened with\n" +
-			"`tspace window`, are _NAME rows under their task: enter, X and r work on\n" +
-			"them as on any window, r only on a saved one.\n\n" +
+			"its runtime state, what its agent is doing, and its git state. STATE is\n" +
+			"the agent's own signal, else the window's bell, else a long silence, as\n" +
+			"in `tspace status --help`. Below the table it shows the selected row's\n" +
+			"directory, where its state came from, and its handoff. It is `tspace\n" +
+			"status` for a person supervising several agents; everything it does is\n" +
+			"also a command. Extra windows, opened with `tspace window`, are _NAME\n" +
+			"rows under their task: enter, X and r work on them as on any window, r\n" +
+			"only on a saved one.\n\n" +
 			"  up/down, j/k  select a row (mouse wheel moves one row)\n" +
-			"  space         expand/collapse a quiet task; failures stay expanded\n" +
+			"  space         expand/collapse a task; one that needs you stays expanded\n" +
 			"  enter         attach to that window; detaching returns here\n" +
 			"  s             start the task (tspace start)\n" +
 			"  r             restart a dead window (tspace restart)\n" +
@@ -109,7 +111,12 @@ type dashRow struct {
 	Runtime status.RuntimeState
 	Git     string
 	Signal  *task.Signal
-	Dir     string
+	// Report is what the STATE column shows: the signal, the bell, or a
+	// long silence, whichever is most trusted. Output is when the window
+	// last printed, if the multiplexer says.
+	Report *status.Report
+	Output time.Time
+	Dir    string
 	// Saved marks an extra window the task's record keeps; Repo is the
 	// repository it opens in, empty at the task root.
 	Saved bool
@@ -175,7 +182,8 @@ func (a *App) dashLoad(ctx context.Context) dashData {
 		if ts.Root != nil {
 			d.Rows = append(d.Rows, dashRow{
 				Task: ts.Task, Window: task.RootWindowName, Agent: ts.Root.Agent,
-				Runtime: ts.Root.Runtime, Git: "-", Signal: ts.Root.Signal, Dir: a.Store.TaskDir(ts.Task),
+				Runtime: ts.Root.Runtime, Git: "-", Signal: ts.Root.Signal, Report: ts.Root.Report, Output: ts.Root.Pane.Output,
+				Dir: a.Store.TaskDir(ts.Task),
 			})
 		}
 		for _, r := range ts.Repos {
@@ -184,7 +192,8 @@ func (a *App) dashLoad(ctx context.Context) dashData {
 			}
 			d.Rows = append(d.Rows, dashRow{
 				Task: r.Task, Window: r.Repo, Branch: r.Branch, Agent: r.Agent,
-				Runtime: r.Runtime, Git: gitSummary(r), Signal: r.Signal, Dir: byName[r.Task].Repos[r.Repo].Worktree,
+				Runtime: r.Runtime, Git: gitSummary(r), Signal: r.Signal, Report: r.Report, Output: r.Pane.Output,
+				Dir: byName[r.Task].Repos[r.Repo].Worktree,
 			})
 		}
 		for _, e := range ts.Extra {
@@ -755,23 +764,23 @@ func runtimeStyle(s status.RuntimeState) lipgloss.Style {
 	return dashFaint
 }
 
-func signalStyle(s *task.Signal) lipgloss.Style {
-	if s == nil {
+func reportStyle(r *status.Report) lipgloss.Style {
+	if r == nil {
 		return dashFaint
 	}
-	switch s.State {
-	case task.SignalBlocked:
+	switch r.State {
+	case status.ReportState(task.SignalBlocked), status.ReportAttention:
 		return dashYellow.Bold(true)
-	case task.SignalFailed:
+	case status.ReportState(task.SignalFailed):
 		return dashRed.Bold(true)
-	case task.SignalDone:
+	case status.ReportState(task.SignalDone), status.ReportIdle:
 		return dashGreen
 	}
 	return dashFaint
 }
 
 // dashDetailLines is the height kept for everything that is not the table.
-const dashDetailLines = 12
+const dashDetailLines = 13
 
 func (m dashModel) View() string {
 	if !m.loaded {
@@ -782,17 +791,19 @@ func (m dashModel) View() string {
 
 	// Header: what needs attention, counted, so the answer to "is anyone
 	// waiting on me" does not require reading the table.
-	tasks, blocked, failed, dead := map[string]bool{}, 0, 0, 0
+	tasks, blocked, bell, failed, dead := map[string]bool{}, 0, 0, 0, 0
 	for _, r := range m.data.Rows {
 		tasks[r.Task] = true
 		if r.Runtime == status.RuntimeDead {
 			dead++
 		}
-		if r.Signal != nil {
-			switch r.Signal.State {
-			case task.SignalBlocked:
+		if r.Report != nil {
+			switch r.Report.State {
+			case status.ReportState(task.SignalBlocked):
 				blocked++
-			case task.SignalFailed:
+			case status.ReportAttention:
+				bell++
+			case status.ReportState(task.SignalFailed):
 				failed++
 			}
 		}
@@ -800,6 +811,9 @@ func (m dashModel) View() string {
 	head := []string{fmt.Sprintf("%d task%s", len(tasks), plural(len(tasks)))}
 	if blocked > 0 {
 		head = append(head, dashYellow.Bold(true).Render(fmt.Sprintf("%d blocked", blocked)))
+	}
+	if bell > 0 {
+		head = append(head, dashYellow.Bold(true).Render(fmt.Sprintf("%d bell", bell)))
 	}
 	if failed > 0 {
 		head = append(head, dashRed.Bold(true).Render(fmt.Sprintf("%d failed", failed)))
@@ -847,7 +861,7 @@ func (m dashModel) View() string {
 
 func (m dashModel) table(b *strings.Builder, now time.Time) {
 	cells := make([][]string, 0, len(m.data.Rows)+1)
-	cells = append(cells, []string{"TASK", "REPO", "AGENT", "RUNTIME", "SIGNAL", "GIT"})
+	cells = append(cells, []string{"TASK", "REPO", "AGENT", "RUNTIME", "STATE", "GIT"})
 	for i, r := range m.data.Rows {
 		// The task is named once, on its first row, so each task reads as a group.
 		name, repo := "", r.Window
@@ -863,7 +877,7 @@ func (m dashModel) table(b *strings.Builder, now time.Time) {
 		if r.Summary > 1 {
 			repo = fmt.Sprintf("(%d windows)", r.Summary)
 		}
-		cells = append(cells, []string{name, repo, r.Agent, string(r.Runtime), signalSummary(r.Signal, now), r.Git})
+		cells = append(cells, []string{name, repo, r.Agent, string(r.Runtime), reportSummary(r.Report, now), r.Git})
 	}
 	widths := make([]int, len(cells[0]))
 	for _, row := range cells {
@@ -914,11 +928,49 @@ func (m dashModel) table(b *strings.Builder, now time.Time) {
 			mark, name = "> ", dashBold
 		}
 		b.WriteString(mark + name.Render(pad(0, c[0])) + name.Render(pad(1, c[1])) + pad(2, c[2]) +
-			runtimeStyle(r.Runtime).Render(pad(3, c[3])) + signalStyle(r.Signal).Render(pad(4, c[4])) + c[5] + "\n")
+			runtimeStyle(r.Runtime).Render(pad(3, c[3])) + reportStyle(r.Report).Render(pad(4, c[4])) + c[5] + "\n")
 	}
 	if rest := len(m.data.Rows) - first - visible; rest > 0 {
 		b.WriteString(dashFaint.Render(fmt.Sprintf("  ... %d more", rest)) + "\n")
 	}
+}
+
+// reportLines say where the selected row's state came from: the signal, with
+// its message; the bell; or a silence, offered as a guess. A signal the bell
+// outranked is still shown, and so is a working agent's long silence.
+func reportLines(row dashRow, now time.Time) []string {
+	var out []string
+	r := row.Report
+	if r != nil {
+		var text string
+		switch r.Source {
+		case status.SourceBell:
+			text = "  state    bell: the window rang it"
+			if !r.At.IsZero() {
+				text += fmt.Sprintf(", last output %s ago", age(now.Sub(r.At)))
+			}
+		case status.SourceSilence:
+			text = fmt.Sprintf("  state    quiet: no output for %s, so it may be waiting (a guess)", age(now.Sub(r.At)))
+		case status.SourceSignal:
+			text = fmt.Sprintf("  signal   %s, %s ago", r.State, age(now.Sub(r.At)))
+			if r.Message != "" {
+				text += ": " + oneLine(r.Message)
+			}
+		default:
+			text = fmt.Sprintf("  state    %s, as %s reports it now", r.State, r.Source)
+			if r.Message != "" {
+				text += ": " + oneLine(r.Message)
+			}
+		}
+		out = append(out, reportStyle(r).Render(text))
+	}
+	if s := row.Signal; s != nil && (r == nil || r.Source != status.SourceSignal) {
+		out = append(out, dashFaint.Render(fmt.Sprintf("  signal   %s, %s ago", s.State, age(now.Sub(s.At)))))
+	}
+	if r != nil && r.Source == status.SourceSignal && !row.Output.IsZero() && now.Sub(row.Output) >= status.QuietAfter {
+		out = append(out, dashFaint.Render(fmt.Sprintf("  quiet    no output for %s", age(now.Sub(row.Output)))))
+	}
+	return out
 }
 
 // detail describes the selected row: where it is, what its agent said, and
@@ -940,12 +992,8 @@ func (m dashModel) detail(b *strings.Builder, now time.Time) {
 	if row.Dir != "" {
 		b.WriteString(dashFaint.Render("  "+row.Dir) + "\n")
 	}
-	if s := row.Signal; s != nil {
-		text := fmt.Sprintf("  signal   %s, %s ago", s.State, age(now.Sub(s.At)))
-		if s.Message != "" {
-			text += ": " + oneLine(s.Message)
-		}
-		b.WriteString(signalStyle(s).Render(text) + "\n")
+	for _, l := range reportLines(row, now) {
+		b.WriteString(l + "\n")
 	}
 	if h := info.Handoff; h.Text != "" {
 		shown := 0
