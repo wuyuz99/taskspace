@@ -156,6 +156,31 @@ func eventsOf[E Event](events []Event) []E {
 	return out
 }
 
+func TestStartRefusesReplacedWorktree(t *testing.T) {
+	f := newFixture(t)
+	tk := f.task(t, "T", map[string]task.Repo{"a": {Path: gitRepo(t)}})
+	ctx := context.Background()
+	if _, err := f.svc.Start(ctx, "T", StartOptions{NoRuntime: true}); err != nil {
+		t.Fatal(err)
+	}
+	wt := tk.Repos["a"].Worktree
+	if err := os.Rename(wt, wt+"-saved"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(wt, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, noRuntime := range []bool{true, false} {
+		f.events = nil
+		if _, err := f.svc.Start(ctx, "T", StartOptions{NoRuntime: noRuntime}); err == nil {
+			t.Fatalf("Start(NoRuntime=%v) accepted replacement", noRuntime)
+		}
+		if len(eventsOf[WorktreeReady](f.events)) != 0 || len(f.rt.started) != 0 {
+			t.Fatalf("reported ready or launched runtime: %+v, %+v", f.events, f.rt.started)
+		}
+	}
+}
+
 func TestStartAndRepeat(t *testing.T) {
 	f := newFixture(t)
 	f.task(t, "T", map[string]task.Repo{"a": {Path: gitRepo(t)}, "b": {Path: gitRepo(t)}})

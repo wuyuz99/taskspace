@@ -59,6 +59,66 @@ func TestEnsureWorktreeIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestEnsureWorktreeRefusesReplacedDirectory(t *testing.T) {
+	for _, replacement := range []string{"directory", "file", "parent repository", "other repository", "other worktree"} {
+		t.Run(replacement, func(t *testing.T) {
+			g := testGit(t)
+			repo := initRepo(t)
+			parent := t.TempDir()
+			if replacement == "parent repository" {
+				parent = initRepo(t)
+			}
+			wt := filepath.Join(parent, "worktree")
+			if _, err := g.EnsureWorktree(ctx(), repo, wt, "agent/test", ""); err != nil {
+				t.Fatal(err)
+			}
+			writeFile(t, filepath.Join(wt, "saved.txt"), "original work")
+			moved := wt + "-saved"
+			if err := os.Rename(wt, moved); err != nil {
+				t.Fatal(err)
+			}
+			marker := filepath.Join(wt, "unrelated.txt")
+			switch replacement {
+			case "file":
+				marker = wt
+			case "other repository":
+				other := initRepo(t)
+				if err := os.Rename(other, wt); err != nil {
+					t.Fatal(err)
+				}
+			case "other worktree":
+				other := filepath.Join(parent, "other")
+				runGit(t, repo, "worktree", "add", "-b", "other", other)
+				if err := os.Rename(other, wt); err != nil {
+					t.Fatal(err)
+				}
+			default:
+				if err := os.Mkdir(wt, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			writeFile(t, marker, "unrelated work")
+			before := runGit(t, repo, "worktree", "list", "--porcelain")
+			res, err := g.EnsureWorktree(ctx(), repo, wt, "agent/test", "")
+			if err == nil || !strings.Contains(err.Error(), "registration") || !strings.Contains(err.Error(), "restore") {
+				t.Fatalf("expected actionable stale registration error, got %v", err)
+			}
+			if res.Created || res.Pruned {
+				t.Fatalf("refusal changed worktrees: %+v", res)
+			}
+			for name, want := range map[string]string{marker: "unrelated work", filepath.Join(moved, "saved.txt"): "original work"} {
+				got, err := os.ReadFile(name)
+				if err != nil || string(got) != want {
+					t.Errorf("%s changed: %q, %v", name, got, err)
+				}
+			}
+			if after := runGit(t, repo, "worktree", "list", "--porcelain"); after != before {
+				t.Fatalf("registration changed: before %s; after %s", before, after)
+			}
+		})
+	}
+}
+
 // A state root reached through a symlink, as every temp and home path on
 // macOS is, must still match the registration git recorded once the
 // worktree directory itself is gone.
@@ -72,6 +132,9 @@ func TestEnsureWorktreeRecreatesThroughSymlink(t *testing.T) {
 	wt := filepath.Join(link, "task", "backend")
 	if _, err := g.EnsureWorktree(ctx(), repo, wt, "agent/test", ""); err != nil {
 		t.Fatalf("EnsureWorktree: %v", err)
+	}
+	if res, err := g.EnsureWorktree(ctx(), repo, wt, "agent/test", ""); err != nil || res.Created {
+		t.Fatalf("reuse through symlink: %+v, %v", res, err)
 	}
 	if err := os.RemoveAll(wt); err != nil {
 		t.Fatalf("RemoveAll: %v", err)
