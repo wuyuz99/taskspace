@@ -29,7 +29,8 @@ const AdapterPrefix = "tspace-mux-"
 //
 //	ADAPTER check PROTOCOL           exit 0 if usable; otherwise explain on stderr
 //	ADAPTER state SESSION            print "exists" or "missing", then a line
-//	                                 per window: NAME<TAB>live|dead<TAB>COMMAND
+//	                                 per window: NAME<TAB>live|dead<TAB>COMMAND,
+//	                                 optionally followed by <TAB>BELL<TAB>OUTPUT
 //	ADAPTER new-session SESSION WIN  create a detached session running WIN
 //	ADAPTER new-window SESSION WIN   add WIN to an existing session
 //	ADAPTER respawn SESSION WIN      relaunch WIN, whose command has exited
@@ -47,6 +48,9 @@ const AdapterPrefix = "tspace-mux-"
 // WIN is the arguments NAME DIR keep|close -- COMMAND...: COMMAND is never
 // empty (tspace resolves the user's shell), and keep says the window must stay
 // open, showing its output, after COMMAND exits, where close lets it close.
+// BELL is "bell" when the window rang the terminal bell since a person last
+// looked at it, and OUTPUT is when it last printed, in seconds since the
+// epoch; either may be empty when the multiplexer does not track it.
 // SESSION and NAME only contain [A-Za-z0-9@_~-]. Any non-zero exit is a
 // failure, reported to the user with the adapter's stderr. Nothing needs
 // parsing beyond positional arguments, so an adapter can be a shell script;
@@ -130,19 +134,24 @@ func (a *Adapter) State(ctx context.Context, session string) (SessionState, erro
 		if line == "" {
 			continue
 		}
-		fields := strings.SplitN(line, "\t", 3)
+		fields := strings.Split(line, "\t")
 		if len(fields) < 2 || (fields[1] != "live" && fields[1] != "dead") {
-			return st, fmt.Errorf("%s state: bad window line %q, want NAME<TAB>live|dead<TAB>COMMAND", a.argv[0], line)
+			return st, fmt.Errorf("%s state: bad window line %q, want NAME<TAB>live|dead<TAB>COMMAND[<TAB>BELL<TAB>OUTPUT]", a.argv[0], line)
 		}
-		name, dead, command := fields[0], fields[1] == "dead", ""
-		if len(fields) == 3 {
-			command = fields[2]
+		p := PaneState{Window: fields[0], Dead: fields[1] == "dead"}
+		if len(fields) > 2 {
+			p.Command = fields[2]
+		}
+		// BELL and OUTPUT came later, so an adapter may leave them out, or
+		// empty when its multiplexer does not track them.
+		if len(fields) > 3 {
+			p.Bell = fields[3] == "bell"
+		}
+		if len(fields) > 4 {
+			p.Output = unixTime(fields[4])
 		}
 		// Several lines for one name are split panes: alive if any is.
-		if prev, ok := st.Panes[name]; ok && !prev.Dead {
-			continue
-		}
-		st.Panes[name] = PaneState{Window: name, Dead: dead, Command: command}
+		st.Panes[p.Window] = mergePane(st.Panes, p)
 	}
 	return st, nil
 }

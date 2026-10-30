@@ -34,7 +34,17 @@ func TestDashCollapseAndExpand(t *testing.T) {
 		t.Fatal("collapse lost selection")
 	}
 	rows[3].Runtime = status.RuntimeRunning
-	rows[3].Signal = &task.Signal{State: task.SignalBlocked}
+	rows[3].Report = &status.Report{State: status.ReportQuiet, Source: status.SourceSilence}
+	m = drive(t, m, dashDataMsg(dashData{Rows: rows}))
+	if len(m.data.Rows) != 2 {
+		t.Fatal("a quiet window kept its task open")
+	}
+	rows[3].Report = &status.Report{State: status.ReportAttention, Source: status.SourceBell}
+	m = drive(t, m, dashDataMsg(dashData{Rows: rows}))
+	if len(m.data.Rows) != 3 {
+		t.Fatal("ringing task was collapsed")
+	}
+	rows[3].Report = &status.Report{State: status.ReportState(task.SignalBlocked), Source: status.SourceSignal}
 	m = drive(t, m, dashDataMsg(dashData{Rows: rows}))
 	if len(m.data.Rows) != 3 {
 		t.Fatal("blocked task was collapsed")

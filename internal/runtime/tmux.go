@@ -414,7 +414,11 @@ func (t *Tmux) livePanes(ctx context.Context, session string) ([]string, error) 
 
 // stateFormat is a tmux format string. Formats are a stable interface; the
 // human-readable output of list-panes is not, and must never be parsed.
-const stateFormat = "#{window_name}\t#{pane_dead}\t#{pane_current_command}"
+//
+// window_bell_flag and window_activity are kept for every window whatever
+// the user's monitor-* options. A tmux too old to know one prints nothing for
+// it, which reads as no bell and no known output time.
+const stateFormat = "#{window_name}\t#{pane_dead}\t#{pane_current_command}\t#{window_bell_flag}\t#{window_activity}"
 
 // State implements Runtime.
 func (t *Tmux) State(ctx context.Context, session string) (SessionState, error) {
@@ -460,22 +464,17 @@ func parsePanes(out string) map[string]PaneState {
 		if len(fields) < 2 {
 			continue
 		}
-		name := fields[0]
-		dead := fields[1] == "1"
-		command := ""
+		p := PaneState{Window: fields[0], Dead: fields[1] == "1"}
 		if len(fields) > 2 {
-			command = fields[2]
+			p.Command = fields[2]
 		}
-
-		if prev, ok := panes[name]; ok {
-			if !prev.Dead || !dead {
-				dead = false
-			}
-			if command == "" {
-				command = prev.Command
-			}
+		if len(fields) > 3 {
+			p.Bell = fields[3] == "1"
 		}
-		panes[name] = PaneState{Window: name, Dead: dead, Command: command}
+		if len(fields) > 4 {
+			p.Output = unixTime(fields[4])
+		}
+		panes[p.Window] = mergePane(panes, p)
 	}
 	return panes
 }

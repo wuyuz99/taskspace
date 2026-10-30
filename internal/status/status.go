@@ -7,9 +7,9 @@ package status
 
 import (
 	"context"
-
 	"sort"
 	"sync"
+	"time"
 
 	tsgit "github.com/wuyuz99/taskspace/internal/git"
 	"github.com/wuyuz99/taskspace/internal/runtime"
@@ -67,6 +67,12 @@ type RepoStatus struct {
 	// Signal is what the window's agent last reported, if anything. It is the
 	// agent's word, shown beside Runtime and never folded into it.
 	Signal *task.Signal
+	// Pane is what the multiplexer saw of the window beyond Runtime: its bell
+	// and when it last printed. It is zero without a live window.
+	Pane runtime.PaneState
+	// Report is the window's most trusted account of what its agent is doing:
+	// Signal, the bell, or a long silence. It is nil when none says anything.
+	Report *Report
 	// Err is the error behind GitError, if any.
 	Err error
 }
@@ -95,6 +101,8 @@ type RootStatus struct {
 	Agent   string
 	Runtime RuntimeState
 	Signal  *task.Signal
+	Pane    runtime.PaneState
+	Report  *Report
 }
 
 // ExtraStatus is a window opened with `tspace window`, beside the root and
@@ -130,6 +138,8 @@ type Aggregator struct {
 	Signals SignalReader
 	// Run is optional; without it no task is interrupted, only no-session.
 	Run RunReader
+	// Now is the clock silence is measured by; nil is time.Now.
+	Now func() time.Time
 }
 
 // New returns an Aggregator.
@@ -175,12 +185,20 @@ func (a *Aggregator) Task(ctx context.Context, t *task.Task) TaskStatus {
 		return nil
 	}
 
+	now := time.Now()
+	if a.Now != nil {
+		now = a.Now()
+	}
+
 	if t.HasRootWindow() {
-		out.Root = &RootStatus{
+		root := &RootStatus{
 			Agent:   t.AgentLabel(),
 			Runtime: a.windowState(sess, task.RootWindowName, runtimeUnknown),
 			Signal:  signal(task.RootWindowName),
+			Pane:    a.livePane(sess, task.RootWindowName, runtimeUnknown),
 		}
+		root.Report = report(root.Signal, root.Runtime, root.Pane, len(t.RootAgent()) > 0, now)
+		out.Root = root
 	}
 
 	names := t.RepoNames()
@@ -194,8 +212,11 @@ func (a *Aggregator) Task(ctx context.Context, t *task.Task) TaskStatus {
 		go func() {
 			defer wg.Done()
 			rows[i] = a.repoStatus(ctx, t.Name, name, repo, sess, runtimeUnknown)
-			rows[i].Agent = task.Repo{Agent: t.RepoAgent(name)}.AgentLabel()
+			agent := t.RepoAgent(name)
+			rows[i].Agent = task.Repo{Agent: agent}.AgentLabel()
 			rows[i].Signal = signal(name)
+			rows[i].Pane = a.livePane(sess, name, runtimeUnknown)
+			rows[i].Report = report(rows[i].Signal, rows[i].Runtime, rows[i].Pane, len(agent) > 0, now)
 		}()
 	}
 	wg.Wait()
@@ -304,6 +325,19 @@ func (a *Aggregator) windowState(sess runtime.SessionState, window string, runti
 	default:
 		return RuntimeRunning
 	}
+}
+
+// livePane is the multiplexer's view of a window whose process is alive, or
+// the zero PaneState: a dead window's bell and output are history.
+func (a *Aggregator) livePane(sess runtime.SessionState, window string, runtimeUnknown bool) runtime.PaneState {
+	if runtimeUnknown || !sess.Exists {
+		return runtime.PaneState{}
+	}
+	pane, ok := sess.Pane(a.Runtime.WindowName(window))
+	if !ok || pane.Dead {
+		return runtime.PaneState{}
+	}
+	return pane
 }
 
 // All reports the status of every task, sorted by name.
