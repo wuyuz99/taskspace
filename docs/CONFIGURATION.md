@@ -46,8 +46,9 @@ tspace task update PAY-142 --shell
 tspace project save payments --from PAY-142 --replace
 ```
 
-`task update --agent` and `--shell` set the task-root window's command the same
-way `repo update` sets a repository's.
+`task update --agent` and `--shell` set the task agent's command the same
+way `repo update` sets a repository's. `--agent-at-root` and `--agent-in REPO`
+choose the window it runs in, keeping the command and its resume command.
 
 Only supplied settings change. Repeat `--agent` for command arguments; `--shell`
 clears the agent command, and an empty `--post-create` clears the hook. Existing
