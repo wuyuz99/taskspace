@@ -54,6 +54,9 @@ type App struct {
 	// hookOut, if set, takes what post_create hooks print instead of Out and
 	// Err, for dash, which shows only tspace's own words.
 	hookOut io.Writer
+	// run runs the agent CLIs that agent-status integrations read; nil is
+	// the real one.
+	run tsexec.Runner
 }
 
 // launchSettle is long enough for an agent that dies on launch, or a session
@@ -74,6 +77,7 @@ func NewApp() (*App, error) {
 		Out:     os.Stdout,
 		Err:     os.Stderr,
 		settle:  launchSettle,
+		run:     runner,
 	}, nil
 }
 

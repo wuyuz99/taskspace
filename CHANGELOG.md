@@ -7,6 +7,13 @@ upgrade.
 
 ### Added
 
+- **`tspace config agent-status claude`** has status and dash read Claude
+  Code's own `claude agents --json`, matching each interactive session to the
+  window in its directory: `working`, `blocked` (with what it waits for) or
+  `idle`, shown as `blocked (claude)`. It ranks after signals but outranks a
+  `working` signal it contradicts, so an agent interrupted before its Stop
+  hook no longer shows as working. Off unless turned on.
+
 - **Which agent needs you, without hooks.** `status` and dash read the tmux
   bell and how long each window has gone without printing, so an agent with
   no `tspace signal` hooks still shows up: `bell` when its window rang, and
