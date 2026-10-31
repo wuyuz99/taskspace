@@ -3,6 +3,16 @@
 What changed in each release of tspace; see [Installation](docs/INSTALL.md) to
 upgrade.
 
+## Unreleased
+
+### Fixed
+
+- Commands launched in task worktrees clear inherited Git repository context,
+  including `GIT_DIR` and `GIT_WORK_TREE`: `shell`, `exec`, `post_create`,
+  terminal/editor launchers, and tmux, zellij and adapter windows. New
+  multiplexer servers start clean; launched windows also clear context saved
+  by an existing server. Authentication and global Git settings are preserved.
+
 ## v0.2.0 — 2026-10-31
 
 ### Added

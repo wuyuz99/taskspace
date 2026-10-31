@@ -13,6 +13,7 @@ import (
 	"time"
 
 	tsexec "github.com/wuyuz99/taskspace/internal/exec"
+	"github.com/wuyuz99/taskspace/internal/git"
 )
 
 // Zellij implements Runtime on top of zellij (0.44 or later, for
@@ -50,7 +51,7 @@ func NewZellij(r tsexec.Runner) *Zellij {
 }
 
 func (z *Zellij) zellij(ctx context.Context, args ...string) (tsexec.Result, error) {
-	return z.run.Run(ctx, "", append([]string{"zellij"}, args...)...)
+	return z.run.Run(tsexec.WithEnv(ctx, git.RepositoryEnv(os.Environ())), "", append([]string{"zellij"}, args...)...)
 }
 
 // action runs a CLI action against one session. The session is always named:
@@ -215,7 +216,7 @@ func (z *Zellij) detached(ctx context.Context, args ...string) (tsexec.Result, e
 		return z.zellij(ctx, args...)
 	}
 	argv := append([]string{"env", "-u", "ZELLIJ", "-u", "ZELLIJ_SESSION_NAME", "-u", "ZELLIJ_PANE_ID", "zellij"}, args...)
-	return z.run.Run(ctx, "", argv...)
+	return z.run.Run(tsexec.WithEnv(ctx, git.RepositoryEnv(os.Environ())), "", argv...)
 }
 
 // layoutTimeout bounds the wait for a new session to apply its layout.
@@ -452,6 +453,7 @@ func (z *Zellij) Attach(ctx context.Context, session string) error {
 		return nil
 	}
 	cmd := osexec.CommandContext(ctx, "zellij", "attach", session)
+	cmd.Env = git.RepositoryEnv(cmd.Environ())
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if window != "" {
 		// Clients already attached elsewhere are not ours: wait for one more.

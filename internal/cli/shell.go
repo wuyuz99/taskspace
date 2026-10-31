@@ -3,11 +3,12 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"github.com/wuyuz99/taskspace/internal/task"
 	"os"
 	osexec "os/exec"
 
 	"github.com/spf13/cobra"
+	"github.com/wuyuz99/taskspace/internal/git"
+	"github.com/wuyuz99/taskspace/internal/task"
 )
 
 func (a *App) newShellCmd() *cobra.Command {
@@ -66,7 +67,7 @@ func (a *App) newShellCmd() *cobra.Command {
 			shell.Stdin, shell.Stdout, shell.Stderr = os.Stdin, os.Stdout, os.Stderr
 			// Not a window of the session: an empty TSPACE_WINDOW stops signal
 			// trusting the window this was run from, and it goes by directory.
-			shell.Env = append(os.Environ(),
+			shell.Env = append(git.RepositoryEnv(shell.Environ()),
 				"TSPACE_TASK="+t.Name,
 				envWindow+"=",
 				task.EnvRoot+"="+a.Store.Root(),
@@ -180,6 +181,7 @@ func (a *App) newExecCmd() *cobra.Command {
 				a.printf("=== %s\n", name)
 				sub := osexec.CommandContext(cmd.Context(), argv[0], argv[1:]...)
 				sub.Dir = r.Worktree
+				sub.Env = git.RepositoryEnv(sub.Environ())
 				sub.Stdin, sub.Stdout, sub.Stderr = os.Stdin, a.Out, a.Err
 				if err := sub.Run(); err != nil {
 					a.warnf("=== %s: %v\n", name, err)

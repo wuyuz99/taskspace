@@ -20,7 +20,7 @@ func TestRepositoryEnv(t *testing.T) {
 		env = append(env, key+"=poison")
 	}
 	env = append(env, "git_dir=case-insensitive-on-windows")
-	if got := repositoryEnv(env); !reflect.DeepEqual(got, keep) {
+	if got := RepositoryEnv(env); !reflect.DeepEqual(got, keep) {
 		t.Fatalf("environment = %v, want %v", got, keep)
 	}
 }

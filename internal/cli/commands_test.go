@@ -24,7 +24,7 @@ func TestMain(m *testing.M) {
 		wd, _ := os.Getwd()
 		env := []string{"PWD=" + wd}
 		for _, kv := range os.Environ() {
-			if strings.HasPrefix(kv, "TSPACE_") && !strings.HasPrefix(kv, "TSPACE_TEST_") {
+			if (strings.HasPrefix(kv, "TSPACE_") && !strings.HasPrefix(kv, "TSPACE_TEST_")) || strings.HasPrefix(kv, "GIT_") {
 				env = append(env, kv)
 			}
 		}
@@ -445,5 +445,39 @@ func TestRepoAddBackAfterRmDoesNotWarnStartWillRefuse(t *testing.T) {
 	}
 	if err := h.exec(t, h.app.newStartCmd(), tk.Name, "--no-runtime"); err != nil {
 		t.Fatalf("start after add back: %v", err)
+	}
+}
+
+func TestWorktreeCommandsClearRepositoryEnvironment(t *testing.T) {
+	h := newHarness(t)
+	tk := h.startedTask(t, "env")
+	other := mkRepo(t)
+	t.Setenv("GIT_DIR", filepath.Join(other, ".git"))
+	t.Setenv("GIT_WORK_TREE", other)
+	t.Setenv("GIT_INDEX_FILE", filepath.Join(other, ".git", "index"))
+	t.Setenv("GIT_SSH_COMMAND", "ssh custom")
+	out := fakeShell(t)
+	if err := h.exec(t, h.app.newShellCmd(), "env"); err != nil {
+		t.Fatal(err)
+	}
+	env := readShellEnv(t, out)
+	for _, key := range []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"} {
+		if _, ok := env[key]; ok {
+			t.Errorf("shell inherited %s", key)
+		}
+	}
+	if env["GIT_SSH_COMMAND"] != "ssh custom" {
+		t.Fatal("lost SSH configuration")
+	}
+	h.out.Reset()
+	if err := h.exec(t, h.app.newExecCmd(), "env", "--", "git", "rev-parse", "--show-toplevel"); err != nil {
+		t.Fatal(err)
+	}
+	wt := tk.Repos[tk.RepoNames()[0]].Worktree
+	if !strings.Contains(h.out.String(), wt) || strings.Contains(h.out.String(), other) {
+		t.Fatalf("exec used wrong repository: %s", h.out.String())
+	}
+	if os.Getenv("GIT_WORK_TREE") != other {
+		t.Fatal("changed parent environment")
 	}
 }

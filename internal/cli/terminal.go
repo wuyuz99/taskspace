@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wuyuz99/taskspace/internal/git"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
@@ -84,7 +85,7 @@ func newTabEnv(environ []string, root string) []string {
 	drop := []string{"TMUX=", "TMUX_PANE=", "ZELLIJ=", "ZELLIJ_SESSION_NAME=", "ZELLIJ_PANE_ID=",
 		envTask + "=", envWindow + "=", task.EnvLocked + "=", task.EnvRoot + "="}
 	var env []string
-	for _, kv := range environ {
+	for _, kv := range git.RepositoryEnv(environ) {
 		keep := true
 		for _, d := range drop {
 			if strings.HasPrefix(kv, d) {

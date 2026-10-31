@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/wuyuz99/taskspace/internal/git"
 )
 
 // Window is one pane's worth of work: a named shell in a directory, optionally
@@ -126,9 +128,9 @@ func unixTime(s string) time.Time {
 }
 
 // launchArgv is the argv a window runs: its command, or for an empty Command
-// the user's interactive shell (shell overrides $SHELL), behind env(1) when the
-// window has environment of its own. env execs the command, so the pane's
-// process is still the command itself.
+// the user's interactive shell (shell overrides $SHELL), behind env(1) to clear
+// repository context saved by an existing server and add the window environment.
+// env execs the command, so the pane's process is still the command itself.
 func launchArgv(w Window, shell string) []string {
 	var argv []string
 	switch {
@@ -141,10 +143,11 @@ func launchArgv(w Window, shell string) []string {
 	default:
 		argv = []string{"/bin/sh"}
 	}
-	if len(w.Env) == 0 {
-		return argv
+	clean := []string{"env"}
+	for _, key := range git.RepositoryEnvVars() {
+		clean = append(clean, "-u", key)
 	}
-	return append(append([]string{"env"}, w.Env...), argv...)
+	return append(append(clean, git.RepositoryEnv(w.Env)...), argv...)
 }
 
 // sessionName is the session a task runs in. Every runtime uses it: tspace

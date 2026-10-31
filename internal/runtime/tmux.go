@@ -10,6 +10,7 @@ import (
 	"time"
 
 	tsexec "github.com/wuyuz99/taskspace/internal/exec"
+	"github.com/wuyuz99/taskspace/internal/git"
 )
 
 // Tmux implements Runtime on top of tmux.
@@ -31,7 +32,7 @@ func NewTmux(r tsexec.Runner) *Tmux {
 }
 
 func (t *Tmux) tmux(ctx context.Context, args ...string) (tsexec.Result, error) {
-	return t.run.Run(ctx, "", append([]string{"tmux"}, args...)...)
+	return t.run.Run(tsexec.WithEnv(ctx, git.RepositoryEnv(os.Environ())), "", append([]string{"tmux"}, args...)...)
 }
 
 // Available implements Runtime.
@@ -375,6 +376,7 @@ func (t *Tmux) Attach(ctx context.Context, session string) error {
 	}
 
 	cmd := osexec.CommandContext(ctx, "tmux", args...)
+	cmd.Env = git.RepositoryEnv(cmd.Environ())
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("attach to %s: %w", session, err)

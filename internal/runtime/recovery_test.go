@@ -50,7 +50,7 @@ func TestRestartDeadWindowDoesNotForce(t *testing.T) {
 	if err := NewTmux(f).Restart(ctx(), "tspace-task", Window{Name: "backend", Dir: "/work", Command: []string{"sleep", "10"}}); err != nil {
 		t.Fatal(err)
 	}
-	if !f.Ran("respawn-pane -t =tspace-task:=backend -c /work sleep 10") || f.Ran("respawn-pane -k") || f.Ran("respawn-window") {
+	if !f.Ran("respawn-pane -t =tspace-task:=backend -c /work "+cleanLaunchPrefix()+" sleep 10") || f.Ran("respawn-pane -k") || f.Ran("respawn-window") {
 		t.Fatalf("unsafe argv: %v", f.Commands())
 	}
 }

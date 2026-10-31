@@ -435,3 +435,19 @@ func TestRestartNeedsRootSaidOutright(t *testing.T) {
 		t.Fatalf("restarted %+v", f.rt.restarted)
 	}
 }
+
+func TestPostCreateClearsRepositoryEnvironment(t *testing.T) {
+	f := newFixture(t)
+	repo, other := gitRepo(t), gitRepo(t)
+	t.Setenv("GIT_DIR", filepath.Join(other, ".git"))
+	t.Setenv("GIT_WORK_TREE", other)
+	var out bytes.Buffer
+	f.svc.Stdout = &out
+	r := task.Repo{Path: repo, Worktree: repo, PostCreate: "git rev-parse --show-toplevel"}
+	if err := f.svc.RunPostCreate(context.Background(), task.New("T"), "backend", r); err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(out.String()) != repo {
+		t.Fatalf("hook used %q, want %q", out.String(), repo)
+	}
+}
