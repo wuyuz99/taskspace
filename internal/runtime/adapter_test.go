@@ -23,7 +23,7 @@ func TestAdapterStartCreatesOnlyMissingWindows(t *testing.T) {
 	if strings.Contains(cmds, "new-session") || strings.Count(cmds, "new-window") != 1 {
 		t.Fatalf("want one new-window, got:\n%s", cmds)
 	}
-	if !strings.Contains(cmds, "tspace-mux-wez new-window tspace@t web /w keep -- /bin/zsh") {
+	if !strings.Contains(cmds, "tspace-mux-wez new-window tspace@t web /w keep -- "+cleanLaunchPrefix()+" /bin/zsh") {
 		t.Errorf("window arguments wrong:\n%s", cmds)
 	}
 }
@@ -39,8 +39,8 @@ func TestAdapterStartNewSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	cmds := strings.Join(f.Commands(), "\n")
-	if !strings.Contains(cmds, "/opt/wez-adapter --x new-session tspace@t _root  keep -- claude --model opus") ||
-		!strings.Contains(cmds, "new-window tspace@t a~2eb /d close -- sh") {
+	if !strings.Contains(cmds, "/opt/wez-adapter --x new-session tspace@t _root  keep -- "+cleanLaunchPrefix()+" claude --model opus") ||
+		!strings.Contains(cmds, "new-window tspace@t a~2eb /d close -- "+cleanLaunchPrefix()+" sh") {
 		t.Errorf("got:\n%s", cmds)
 	}
 }
@@ -61,7 +61,7 @@ func TestAdapterEnforcesSafetyRules(t *testing.T) {
 	if err := a.Restart(ctx(), "tspace@t", Window{Name: "backend", Command: []string{"codex"}}); err != nil {
 		t.Fatal(err)
 	}
-	if !f.Ran("respawn tspace@t backend  keep -- codex") {
+	if !f.Ran("respawn tspace@t backend  keep -- " + cleanLaunchPrefix() + " codex") {
 		t.Errorf("no respawn: %v", f.Commands())
 	}
 }

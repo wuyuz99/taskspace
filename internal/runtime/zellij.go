@@ -13,6 +13,7 @@ import (
 	"time"
 
 	tsexec "github.com/wuyuz99/taskspace/internal/exec"
+	"github.com/wuyuz99/taskspace/internal/git"
 )
 
 // Zellij implements Runtime on top of zellij (0.44 or later, for
@@ -50,7 +51,7 @@ func NewZellij(r tsexec.Runner) *Zellij {
 }
 
 func (z *Zellij) zellij(ctx context.Context, args ...string) (tsexec.Result, error) {
-	return z.run.Run(ctx, "", append([]string{"zellij"}, args...)...)
+	return z.run.Run(tsexec.WithEnv(ctx, git.RepositoryEnv(os.Environ())), "", append([]string{"zellij"}, args...)...)
 }
 
 // action runs a CLI action against one session. The session is always named:
@@ -215,7 +216,7 @@ func (z *Zellij) detached(ctx context.Context, args ...string) (tsexec.Result, e
 		return z.zellij(ctx, args...)
 	}
 	argv := append([]string{"env", "-u", "ZELLIJ", "-u", "ZELLIJ_SESSION_NAME", "-u", "ZELLIJ_PANE_ID", "zellij"}, args...)
-	return z.run.Run(ctx, "", argv...)
+	return z.run.Run(tsexec.WithEnv(ctx, git.RepositoryEnv(os.Environ())), "", argv...)
 }
 
 // layoutTimeout bounds the wait for a new session to apply its layout.
@@ -362,8 +363,9 @@ func (z *Zellij) Restart(ctx context.Context, session string, w Window) error {
 		older := w
 		older.Env = w.Env[:n]
 		want := strings.Join(z.launchArgv(older), " ")
+		legacy := strings.Join(z.legacyLaunchArgv(older), " ")
 		for _, p := range tab {
-			if p.Held && p.TerminalCommand == want {
+			if p.Held && (p.TerminalCommand == want || p.TerminalCommand == legacy) {
 				_, err := z.action(ctx, session, "send-keys", "--pane-id", p.target(), "Enter")
 				return err
 			}
@@ -452,6 +454,7 @@ func (z *Zellij) Attach(ctx context.Context, session string) error {
 		return nil
 	}
 	cmd := osexec.CommandContext(ctx, "zellij", "attach", session)
+	cmd.Env = git.RepositoryEnv(cmd.Environ())
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if window != "" {
 		// Clients already attached elsewhere are not ours: wait for one more.
@@ -688,9 +691,23 @@ const launchDelay = "0.25"
 // reports a pane's command space-joined and not its directory, so the
 // fingerprint is what lets Restart tell a held pane would rerun what w asks for.
 func (z *Zellij) launchArgv(w Window) []string {
-	argv := launchArgv(w, z.Shell)
+	return zellijLaunch(w.Dir, launchArgv(w, z.Shell))
+}
+
+// legacyLaunchArgv recognizes held panes created before repository filtering.
+// Rerunning preserves their original command and output, rather than replacing
+// the tab. It cannot retrofit the new filter into that stored command.
+func (z *Zellij) legacyLaunchArgv(w Window) []string {
+	argv := commandArgv(w, z.Shell)
+	if len(w.Env) > 0 {
+		argv = append(append([]string{"env"}, w.Env...), argv...)
+	}
+	return zellijLaunch(w.Dir, argv)
+}
+
+func zellijLaunch(dir string, argv []string) []string {
 	h := sha256.New()
-	h.Write([]byte(w.Dir))
+	h.Write([]byte(dir))
 	for _, a := range argv {
 		h.Write([]byte{0})
 		h.Write([]byte(a))

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wuyuz99/taskspace/internal/git"
 	"github.com/wuyuz99/taskspace/internal/runtime"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
@@ -481,7 +482,7 @@ func (s *Service) RunPostCreate(ctx context.Context, t *task.Task, name string, 
 	cmd := osexec.CommandContext(ctx, "sh", "-c", r.PostCreate)
 	cmd.Dir = r.Worktree
 	cmd.Stdout, cmd.Stderr = s.Stdout, s.Stderr
-	cmd.Env = append(os.Environ(),
+	cmd.Env = append(git.RepositoryEnv(cmd.Environ()),
 		EnvTask+"="+t.Name,
 		EnvWindow+"=",
 		task.EnvRoot+"="+s.Store.Root(),

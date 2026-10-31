@@ -68,7 +68,7 @@ func TestOpenInNewTab(t *testing.T) {
 
 // The tab does not inherit what says where dash runs.
 func TestNewTabEnv(t *testing.T) {
-	env := newTabEnv([]string{"TMUX=/tmp/x,1,0", "ZELLIJ=0", "TSPACE_TASK=PAY-1", "TSPACE_WINDOW=_root", "TSPACE_ROOT=/old", "HOME=/h"}, "/state")
+	env := newTabEnv([]string{"TMUX=/tmp/x,1,0", "ZELLIJ=0", "TSPACE_TASK=PAY-1", "TSPACE_WINDOW=_root", "TSPACE_ROOT=/old", "GIT_DIR=/wrong", "GIT_WORK_TREE=/wrong", "GIT_CONFIG_COUNT=1", "HOME=/h"}, "/state")
 	if !slices.Equal(env, []string{"HOME=/h", "TSPACE_ROOT=/state"}) {
 		t.Fatalf("env %q", env)
 	}

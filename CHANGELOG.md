@@ -3,6 +3,22 @@
 What changed in each release of tspace; see [Installation](docs/INSTALL.md) to
 upgrade.
 
+## Unreleased
+
+### Fixed
+
+- Commands launched in task worktrees clear inherited Git repository context,
+  including `GIT_DIR` and `GIT_WORK_TREE`: `shell`, `exec`, `post_create`,
+  terminal/editor launchers, and tmux, zellij and adapter windows. New
+  multiplexer servers start clean; launched windows also clear context saved
+  by an existing server. `GIT_EDITOR`, `GIT_SEQUENCE_EDITOR`,
+  `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_AUTHOR_DATE` and
+  `GIT_QUARANTINE_PATH` are cleared too, even if you exported them yourself:
+  set `core.editor`, `VISUAL` or `EDITOR` for the editor, and `user.name` and
+  `user.email` for identity. SSH/askpass settings and global/system config file
+  locations remain; `GIT_CONFIG_COUNT` and `GIT_CONFIG_PARAMETERS` are dropped,
+  including authentication injected through them (see #132).
+
 ## v0.2.0 — 2026-10-31
 
 ### Added
@@ -152,7 +168,9 @@ upgrade.
 - **Git operations use the requested repository**, even when tspace runs
   from a Git hook with another repository's environment. Status, cleanup
   safety checks, mutations and cloning ignore inherited repository context
-  while keeping authentication and global configuration (#91).
+  while keeping SSH/askpass settings and global/system config file locations
+  (#91). `GIT_CONFIG_COUNT` and `GIT_CONFIG_PARAMETERS` are dropped, including
+  authentication supplied through them (see #132).
 - **dash shows a refusal whole.** A long note takes as many lines as it needs,
   wrapped to the terminal, in place of table rows and if need be the detail
   pane, until the next key. A refused `D`, `R` or `-` names the command that

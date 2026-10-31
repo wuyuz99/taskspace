@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -60,14 +61,14 @@ func TestStartCreatesSessionThenWindows(t *testing.T) {
 	}
 	cmds := strings.Join(f.Commands(), "\n")
 
-	if !strings.Contains(cmds, "new-session -d -s tspace-task -n backend -c /wt/task/backend /bin/sh") || !strings.Contains(cmds, "respawn-pane -k -t =tspace-task:=backend -c /wt/task/backend claude") {
+	if !strings.Contains(cmds, "new-session -d -s tspace-task -n backend -c /wt/task/backend /bin/sh") || !strings.Contains(cmds, "respawn-pane -k -t =tspace-task:=backend -c /wt/task/backend "+cleanLaunchPrefix()+" claude") {
 		t.Errorf("missing correct new-session; got:\n%s", cmds)
 	}
-	if !strings.Contains(cmds, "respawn-pane -k -t =tspace-task:=frontend -c /wt/task/frontend codex --flag") {
+	if !strings.Contains(cmds, "respawn-pane -k -t =tspace-task:=frontend -c /wt/task/frontend "+cleanLaunchPrefix()+" codex --flag") {
 		t.Errorf("missing correct new-window for frontend; got:\n%s", cmds)
 	}
 	// A window with no agent gets an interactive shell.
-	if !strings.Contains(cmds, "respawn-pane -k -t =tspace-task:=infra -c /wt/task/infra /bin/bash") {
+	if !strings.Contains(cmds, "respawn-pane -k -t =tspace-task:=infra -c /wt/task/infra "+cleanLaunchPrefix()+" /bin/bash") {
 		t.Errorf("agent-less window did not launch a shell; got:\n%s", cmds)
 	}
 	// Without remain-on-exit, a crashed agent's traceback disappears with the window.
@@ -340,27 +341,22 @@ func TestParsePanesIgnoresMalformedLines(t *testing.T) {
 	}
 }
 
-func TestLaunchArgvFallsBackToShell(t *testing.T) {
+func TestLaunchArgv(t *testing.T) {
 	tm := NewTmux(tsexec.NewFake())
 	tm.Shell = "/bin/zsh"
-	if got := tm.launchArgv(Window{Name: "infra"}); len(got) != 1 || got[0] != "/bin/zsh" {
-		t.Errorf("launchArgv = %v, want [/bin/zsh]", got)
-	}
-	if got := tm.launchArgv(Window{Name: "backend", Command: []string{"claude", "-p"}}); strings.Join(got, " ") != "claude -p" {
-		t.Errorf("launchArgv = %v, want [claude -p]", got)
-	}
-}
-
-func TestLaunchArgvSetsWindowEnv(t *testing.T) {
-	tm := NewTmux(tsexec.NewFake())
-	tm.Shell = "/bin/zsh"
-	w := Window{Name: "infra", Env: []string{"TSPACE_TASK=PAY-142", "TSPACE_WINDOW=infra"}}
-	if got := strings.Join(tm.launchArgv(w), " "); got != "env TSPACE_TASK=PAY-142 TSPACE_WINDOW=infra /bin/zsh" {
-		t.Errorf("launchArgv = %q", got)
-	}
-	w.Command = []string{"claude", "-p"}
-	if got := strings.Join(tm.launchArgv(w), " "); got != "env TSPACE_TASK=PAY-142 TSPACE_WINDOW=infra claude -p" {
-		t.Errorf("launchArgv = %q", got)
+	for _, tc := range []struct {
+		w    Window
+		want string
+	}{
+		{Window{}, "/bin/zsh"},
+		{Window{Command: []string{"claude", "-p"}}, "claude -p"},
+		{Window{Env: []string{"TSPACE_TASK=PAY-142", "TSPACE_WINDOW=infra"}}, "TSPACE_TASK=PAY-142 TSPACE_WINDOW=infra /bin/zsh"},
+		{Window{Command: []string{"claude", "-p"}, Env: []string{"TSPACE_TASK=PAY-142", "TSPACE_WINDOW=infra"}}, "TSPACE_TASK=PAY-142 TSPACE_WINDOW=infra claude -p"},
+	} {
+		want := strings.Fields(cleanLaunchPrefix() + " " + tc.want)
+		if got := tm.launchArgv(tc.w); !slices.Equal(got, want) {
+			t.Errorf("launchArgv = %q, want %q", got, want)
+		}
 	}
 }
 

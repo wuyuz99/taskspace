@@ -235,6 +235,38 @@ func TestZellijLaunchFingerprintKeepsArgvApart(t *testing.T) {
 	}
 }
 
+func TestZellijRestartPreFilterPane(t *testing.T) {
+	// Literal v0.2.0 terminal_command values, including the old fingerprint.
+	// Do not generate these with the current launch code.
+	for _, tc := range []struct {
+		command string
+		env     []string
+	}{
+		{`sh -c sleep 0.25; exec "$@" tspace-98b2ab181af0 codex`, nil},
+		{`sh -c sleep 0.25; exec "$@" tspace-362851e4a027 env TSPACE_TASK=T codex`, []string{"TSPACE_TASK=T", "TSPACE_ROOT=/state"}},
+	} {
+		for _, clients := range []string{"CLIENT_ID ZELLIJ_PANE_ID RUNNING_COMMAND\n", "CLIENT_ID ZELLIJ_PANE_ID RUNNING_COMMAND\n1 terminal_0 sh\n"} {
+			f := tsexec.NewFake().RespondOut("list-sessions", "tspace@t [Created 1s ago]\n").
+				RespondOut("list-clients", clients).
+				RespondOut("list-panes", fmt.Sprintf(`[{"id":2,"is_plugin":false,"exited":true,"is_held":true,"tab_id":1,"tab_position":1,"tab_name":"backend","terminal_command":%q}]`, tc.command))
+			z := zellijWith(f)
+			w := backend
+			w.Env = tc.env
+			if err := z.Restart(ctx(), "tspace@t", w); err != nil {
+				t.Fatal(err)
+			}
+			if !f.Ran("send-keys --pane-id terminal_2 Enter") || f.Ran("close-tab-by-id") || f.Ran("new-tab") || f.Ran("list-clients") {
+				t.Fatalf("legacy pane not preserved: %v", f.Commands())
+			}
+			// The old fingerprint must still reject a genuinely changed directory.
+			w.Dir = "/elsewhere"
+			if err := z.Restart(ctx(), "tspace@t", w); err == nil && clients == "CLIENT_ID ZELLIJ_PANE_ID RUNNING_COMMAND\n" {
+				t.Fatal("changed directory accepted")
+			}
+		}
+	}
+}
+
 func TestZellijStateListsSessionsOnlyWhenNeeded(t *testing.T) {
 	f := tsexec.NewFake().RespondOut("list-panes", zellijPanesJSON)
 	if _, err := zellijWith(f).State(ctx(), "tspace@t"); err != nil {
