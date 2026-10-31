@@ -19,7 +19,7 @@ func (a *App) newRepoCmd() *cobra.Command {
 		Use:   "repo",
 		Short: "Attach, configure, and detach repositories",
 	}
-	cmd.AddCommand(a.newRepoAddCmd(), a.newRepoRmCmd(), a.newRepoUpdateCmd())
+	cmd.AddCommand(a.newRepoAddCmd(), a.newRepoRmCmd(), a.newRepoUpdateCmd(), a.newRepoMoveCmd())
 	return cmd
 }
 
@@ -483,12 +483,13 @@ func (a *App) newRepoAddCmd() *cobra.Command {
 			if err := a.addRepoSpec(ctx, t, c, args[1], opts); err != nil {
 				return err
 			}
-			openRoot := a.settleLayout(ctx, t, first)
+			ws := a.workspace()
+			openRoot := ws.SettleLayout(ctx, t, first)
 			if err := a.Store.Save(t); err != nil {
 				return err
 			}
 			if openRoot {
-				a.openRootWindow(ctx, t)
+				ws.OpenRootWindow(ctx, t)
 			}
 			return nil
 		},
@@ -501,60 +502,6 @@ func (a *App) newRepoAddCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.PostCreate, "post-create", "",
 		`shell command run once in a new worktree, e.g. 'cp "$TSPACE_REPO_PATH/.env" . && pnpm install'`)
 	return cmd
-}
-
-// settleLayout decides where the task's agent runs once a repository has
-// been added: in a first repository's worktree, when nothing has run in a
-// root window yet, and with a root window again once there is a second. It
-// reports whether that root window should be opened now, in the running
-// session.
-func (a *App) settleLayout(ctx context.Context, t *task.Task, first bool) (openRoot bool) {
-	movable := first && t.HasRootWindow() && !t.RootWindow && t.CanRunAgentIn(t.RepoNames()[0])
-	needsRoot := !t.HasRootWindow() && len(t.Repos) > 1
-	if !movable && !needsRoot {
-		return false
-	}
-	// A session that cannot be checked may be running the agent in the root
-	// window: the agent is not moved out of it, and a new root window is left
-	// for the next start to open.
-	running, err := a.workspace().SessionUp(ctx, t.Name)
-	if err != nil {
-		if movable {
-			a.warnf("tspace: %v; the task's agent stays in the root window\n", err)
-		} else {
-			a.warnf("tspace: %v; if it is running, the root window opens when the task next starts\n", err)
-		}
-	}
-	switch {
-	case movable && err == nil && !running:
-		// Nothing has run in a root window that the agent could be moved out
-		// of, so this task starts as a single-repo one.
-		t.AgentRepo = t.RepoNames()[0]
-		a.printf("  agent:    %s (runs in this worktree)\n", agentDisplay(task.Repo{Agent: t.RepoAgent(t.AgentRepo)}))
-	case needsRoot:
-		t.RootWindow = true
-		openRoot = running
-		if !running {
-			a.printf("the next start opens a root window for %s; its agent stays in %s\n", t.Name, t.AgentRepo)
-		}
-	}
-	return openRoot
-}
-
-// openRootWindow adds the task-root window to a running session, for a task
-// that just gained one. Failing is only a warning: the record says the
-// window exists, so the next start creates it.
-func (a *App) openRootWindow(ctx context.Context, t *task.Task) {
-	w := a.rootWindow(t)
-	err := os.MkdirAll(w.Dir, 0o755)
-	if err == nil {
-		err = a.Runtime.OpenWindow(ctx, a.Runtime.SessionName(t.Name), w)
-	}
-	if err != nil {
-		a.warnf("could not open the root window now (%v); the next tspace start %s will\n", err, t.Name)
-		return
-	}
-	a.printf("opened the root window for %s (a shell at %s); its agent stays in %s\n", t.Name, w.Dir, t.AgentRepo)
 }
 
 // repoSpec is one repository as typed on the command line:
@@ -796,6 +743,61 @@ func fetchNote(err error) string {
 		return ""
 	}
 	return fmt.Sprintf(" (fetch failed: %v)", err)
+}
+
+// movedRepoText is repo move's first line, which dash shows too. name is what
+// the repository is called in to, if not what it was.
+func movedRepoText(repo, old, to, name string) string {
+	text := fmt.Sprintf("moved %s from %s to %s", repo, old, to)
+	if name != "" && name != repo {
+		text += " as " + name
+	}
+	return text
+}
+
+func (a *App) newRepoMoveCmd() *cobra.Command {
+	var to, name string
+	cmd := &cobra.Command{
+		Use:   "move OLD REPO --to NEW [--name NAME]",
+		Short: "Move a repository, and its worktree, to another task",
+		Long: "move takes a repository from one task to another: its worktree goes to the\n" +
+			"new task's directory, with `git worktree move`, so uncommitted, untracked\n" +
+			"and ignored files go with it. Its branch, base, agent, resume command and\n" +
+			"setup stay as they are, and so do the saved windows that open in it.\n" +
+			"--name calls it something else in the new task; `tspace repo update\n" +
+			"--branch` renames the branch.\n\n" +
+			"  tspace repo move PAY-142 backend --to PAY-150\n\n" +
+			"Both tasks may be running, but it refuses while the repository's window or\n" +
+			"one of its saved windows is open: close those with `tspace stop OLD REPO`.\n" +
+			"It also refuses while OLD's session has a window with no saved repository,\n" +
+			"which may be working in the worktree, and while OLD runs at all if this\n" +
+			"repository's window runs OLD's agent, which moves to the root window. Run it\n" +
+			"from outside the worktree. If anything fails, the worktree moves back.\n\n" +
+			"An agent that resumes by directory leaves its conversation at the old path,\n" +
+			"and a note names it, unless `tspace config carry-conversations` moves it\n" +
+			"along; left behind, the agent starts fresh. The task's own agent stays with\n" +
+			"its task. Nothing is started: `tspace start NEW REPO` opens the window.",
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if to == "" {
+				return fmt.Errorf("name the task to move it to with --to")
+			}
+			for _, n := range []string{args[0], to} {
+				if err := explicitTask(n); err != nil {
+					return err
+				}
+			}
+			if err := a.workspaceFor(cmd).MoveRepo(cmd.Context(), args[0], args[1], to, name); err != nil {
+				return err
+			}
+			a.printf("%s\n", movedRepoText(args[1], args[0], to, name))
+			a.printf("start its window with: tspace start %s %s\n", to, firstNonEmpty(name, args[1]))
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&to, "to", "", "the task to move it to")
+	cmd.Flags().StringVar(&name, "name", "", "repo name in the new task (default: its name now)")
+	return cmd
 }
 
 func (a *App) newRepoRmCmd() *cobra.Command {

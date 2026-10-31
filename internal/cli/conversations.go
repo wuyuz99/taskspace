@@ -94,9 +94,9 @@ func (a *App) newConfigCarryConversationsCmd() *cobra.Command {
 		Use:   "carry-conversations [AGENT... | --unset]",
 		Short: "Show or choose the agents whose conversations move with their directory",
 		Long: "Many agents keep a conversation by the directory it ran in, so moving a\n" +
-			"task root or worktree, as task rename does, leaves it behind. Naming an\n" +
-			"agent here has tspace move that agent's history along, once the move is\n" +
-			"done. Each agent stores it its own way, so each is an integration of its\n" +
+			"task root or worktree, as task rename and repo move do, leaves it behind.\n" +
+			"Naming an agent here has tspace move that agent's history along, once the\n" +
+			"move is done. Each agent stores it its own way, so each is an integration of its\n" +
 			"own, off unless chosen. Known: " + strings.Join(names, ", ") + ".\n\n" +
 			"  claude  renames the folder under ~/.claude/projects (under\n" +
 			"          $CLAUDE_CONFIG_DIR if that is set) named after the directory;\n" +

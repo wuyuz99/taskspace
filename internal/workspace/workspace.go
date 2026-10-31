@@ -152,6 +152,17 @@ type Cleaned struct {
 // task.RootWindowName for the task root.
 type ConversationCarried struct{ Task, Window, Agent, From, To string }
 
+// AgentPlaced reports SettleLayout gave a task's first repository, Repo, its
+// agent, Command. RootWindowPending reports it gave the task a root window
+// for the next start to open, and RootWindowOpened that OpenRootWindow opened
+// one at Dir; either way the task's agent stays in AgentRepo.
+type AgentPlaced struct {
+	Task, Repo string
+	Command    []string
+}
+type RootWindowPending struct{ Task, AgentRepo string }
+type RootWindowOpened struct{ Task, Dir, AgentRepo string }
+
 // RecordRemoved and NotesRemoved report Delete.
 type RecordRemoved struct{ Task string }
 type NotesRemoved struct {
@@ -181,6 +192,9 @@ func (Cleaned) event()             {}
 func (RecordRemoved) event()       {}
 func (NotesRemoved) event()        {}
 func (ConversationCarried) event() {}
+func (AgentPlaced) event()         {}
+func (RootWindowPending) event()   {}
+func (RootWindowOpened) event()    {}
 
 func (s *Service) report(e Event) {
 	if s.Progress != nil {

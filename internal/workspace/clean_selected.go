@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/wuyuz99/taskspace/internal/runtime"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
@@ -21,23 +22,16 @@ func (s *Service) stopSelectedForClean(ctx context.Context, t, selected *task.Ta
 	if err != nil {
 		return false, err
 	}
-	known := map[string]bool{task.RootWindowName: true}
 	windows := selected.RepoNames()
-	for _, name := range t.RepoNames() {
-		known[s.Runtime.WindowName(name)] = true
-	}
 	for _, w := range t.Windows {
-		known[s.Runtime.WindowName(w.SessionName())] = true
 		if _, ok := selected.Repos[w.Repo]; ok {
 			windows = append(windows, w.SessionName())
 		}
 	}
 	// Ad-hoc windows have no recorded repository. Never remove a directory
 	// from under one or guess ownership from a mutable process cwd.
-	for name := range st.Panes {
-		if !known[name] {
-			return false, fmt.Errorf("window %s has no saved repository; stop the task before cleaning individual repositories, or save that window with its repository", name)
-		}
+	if name := s.unsavedWindow(t, st); name != "" {
+		return false, fmt.Errorf("window %s has no saved repository; stop the task before cleaning individual repositories, or save that window with its repository", name)
 	}
 	for _, window := range windows {
 		if _, exists := st.Panes[s.Runtime.WindowName(window)]; !exists {
@@ -49,4 +43,22 @@ func (s *Service) stopSelectedForClean(ctx context.Context, t, selected *task.Ta
 		closed = true
 	}
 	return closed, nil
+}
+
+// unsavedWindow names a window of t's session whose repository was never
+// recorded, or "" if there is none.
+func (s *Service) unsavedWindow(t *task.Task, st runtime.SessionState) string {
+	known := map[string]bool{task.RootWindowName: true}
+	for _, name := range t.RepoNames() {
+		known[s.Runtime.WindowName(name)] = true
+	}
+	for _, w := range t.Windows {
+		known[s.Runtime.WindowName(w.SessionName())] = true
+	}
+	for name := range st.Panes {
+		if !known[name] {
+			return name
+		}
+	}
+	return ""
 }

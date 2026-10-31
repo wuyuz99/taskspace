@@ -180,12 +180,13 @@ func (a *App) newImportCmd() *cobra.Command {
 			if err := a.addRepo(ctx, t, c, main, addRepoOptions{Name: name, Branch: branch, Base: base}); err != nil {
 				return back(err)
 			}
-			openRoot := a.settleLayout(ctx, t, first)
+			ws := a.workspace()
+			openRoot := ws.SettleLayout(ctx, t, first)
 			if err := a.Store.Save(t); err != nil {
 				return back(err)
 			}
 			if openRoot {
-				a.openRootWindow(ctx, t)
+				ws.OpenRootWindow(ctx, t)
 			}
 			if inPlace {
 				a.printf("adopted %s in place\n", top)

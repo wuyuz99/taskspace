@@ -45,6 +45,8 @@ func (a *App) newDashCmd() *cobra.Command {
 			"  R             delete the task, after confirming (tspace clean --rm)\n" +
 			"  -             remove the selected repository from the task, after\n" +
 			"                confirming (tspace repo rm)\n" +
+			"  m             move the selected repository to another task, in a form\n" +
+			"                (tspace repo move)\n" +
 			"  t             open the task in a new terminal tab (tspace config terminal)\n" +
 			"  c             clear the row's signal\n" +
 			"  N             rename the selected task (tspace task rename)\n" +
@@ -586,7 +588,7 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.clean(row.Task, workspace.CleanOptions{Remove: true},
 			fmt.Sprintf("delete %s: remove worktrees, record and notes? branches are kept (y/N)", row.Task),
 			"deleted "+row.Task+"; its branches are kept, with no task referring to them")
-	case "-":
+	case "-", "m":
 		switch {
 		case row.Summary > 1:
 			m.note = "expand the task with space to choose a repository"
@@ -596,6 +598,10 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case row.extra():
 			m.note = row.Window + " isn't a repository; X closes it"
+			return m, nil
+		}
+		if msg.String() == "m" {
+			m.form = m.moveRepoForm(row.Task, row.Window)
 			return m, nil
 		}
 		if os.Getenv(envTask) == row.Task {
@@ -730,11 +736,17 @@ func (m dashModel) act(do func(*workspace.Service) (string, error)) tea.Cmd {
 		ws.Progress = func(e workspace.Event) {
 			// Said on the CLI's standard output, which dash drops, but worth
 			// the note line: the agent came back with its conversation.
-			if r, ok := e.(workspace.Resumed); ok {
-				notes = append(notes, "resumed "+dashRow{Task: r.Task, Window: r.Window}.label())
-			}
-			if c, ok := e.(workspace.ConversationCarried); ok {
-				notes = append(notes, "carried "+dashRow{Task: c.Task, Window: c.Window}.label()+"'s conversation")
+			switch e := e.(type) {
+			case workspace.Resumed:
+				notes = append(notes, "resumed "+dashRow{Task: e.Task, Window: e.Window}.label())
+			case workspace.ConversationCarried:
+				notes = append(notes, "carried "+dashRow{Task: e.Task, Window: e.Window}.label()+"'s conversation")
+			case workspace.AgentPlaced:
+				notes = append(notes, e.Task+"'s agent runs in "+e.Repo)
+			case workspace.RootWindowPending:
+				notes = append(notes, "the next start opens a root window for "+e.Task)
+			case workspace.RootWindowOpened:
+				notes = append(notes, "opened the root window for "+e.Task)
 			}
 			warning.Reset()
 			sub.render(e)
@@ -855,7 +867,7 @@ func (m dashModel) View() string {
 		b.WriteString(m.note + "\n")
 	}
 	if m.form == nil {
-		b.WriteString(dashFaint.Render("enter attach · space expand · s/x task · S/X window · r restart · D clean · R delete · - remove repo · t tab · c clear · n new · N rename · w window · I interrupted · q quit"))
+		b.WriteString(dashFaint.Render("enter attach · space expand · s/x task · S/X window · r restart · D clean · R delete · - remove repo · m move repo · t tab · c clear · n new · N rename · w window · I interrupted · q quit"))
 	}
 
 	// Nothing may wrap: a wrapped line pushes the rest off the alt screen.

@@ -264,6 +264,16 @@ out="$(git -C "$wt" push -u origin HEAD 2>&1)" \
 out="$($AW status new-y 2>&1)"
 check "nothing unpushed after the push" "web  *agent/new-y  *shell  *no-session  *clean\$" "$out"
 
+say "tspace repo move takes a repository and its uncommitted work to another task"
+echo wip > "$wt/wip.txt"
+$AW task create move-z >/dev/null 2>&1
+out="$($AW repo move new-y web --to move-z 2>&1)"
+check "repository moved" "moved web from new-y to move-z" "$out"
+[ -f "$TSPACE_ROOT/worktrees/move-z/web/wip.txt" ] && [ ! -e "$wt" ] \
+  && pass "uncommitted file moved with the worktree" || fail "worktree did not move"
+out="$(git -C "$TSPACE_ROOT/worktrees/move-z/web" branch --show-current 2>&1)"
+check "branch kept" "agent/new-y" "$out"
+
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
   printf '\033[1mall end-to-end checks passed\033[0m\n'
