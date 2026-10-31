@@ -106,7 +106,7 @@ func TestDashTitleUsesSpareWidth(t *testing.T) {
 	m.width = 110
 	m.data = dashData{Rows: []dashRow{{Task: "PAY-1", Window: "api", Runtime: status.RuntimeRunning, Git: "clean"}}, Tasks: map[string]dashTask{"PAY-1": {Title: strings.Repeat("Long title ", 50)}}}
 	var b strings.Builder
-	m.table(&b, time.Now())
+	m.table(&b, time.Now(), 0)
 	if !strings.Contains(b.String(), "Long title") || !strings.Contains(b.String(), "clean") {
 		t.Fatal(b.String())
 	}

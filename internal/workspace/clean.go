@@ -10,6 +10,10 @@ import (
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
+// ForceAdvice is the part of a refusal that says how to override it. dash
+// runs no --force of its own, so it names the command there instead.
+const ForceAdvice = "re-run with --force"
+
 // CleanOptions shape Clean.
 type CleanOptions struct {
 	// Repos limits cleanup to these repositories and their saved windows.
@@ -67,8 +71,8 @@ func (s *Service) Clean(ctx context.Context, name string, opts CleanOptions) err
 	}
 	if blocked := blockers(plans); len(blocked) > 0 && !opts.Force {
 		return fmt.Errorf("refusing to clean %s; work would be lost:\n\n%s\n\n"+
-			"commit, push or stash it, or re-run with --force to discard it",
-			t.Name, strings.Join(blocked, "\n"))
+			"commit, push or stash it, or %s to discard it",
+			t.Name, strings.Join(blocked, "\n"), ForceAdvice)
 	}
 
 	// Stop the runtime only once the safety checks have passed, so a refused
@@ -91,8 +95,8 @@ func (s *Service) Clean(ctx context.Context, name string, opts CleanOptions) err
 		}
 		if blocked := blockers(plans); len(blocked) > 0 && !opts.Force {
 			return fmt.Errorf("%s, but kept the worktrees; work appeared as its agents stopped:\n\n%s\n\n"+
-				"commit, push or stash it, or re-run with --force to discard it; tspace start %s brings the windows back",
-				stoppedWhat, strings.Join(blocked, "\n"), t.Name)
+				"commit, push or stash it, or %s to discard it; tspace start %s brings the windows back",
+				stoppedWhat, strings.Join(blocked, "\n"), ForceAdvice, t.Name)
 		}
 	}
 
