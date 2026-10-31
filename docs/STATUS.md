@@ -117,7 +117,8 @@ hooks, and a root agent that `cd`s into a worktree still reports for the root.
 
 Wiring an agent up takes three of its hook events: one when a prompt is
 submitted (`working`), one when it needs a person (`blocked`), and one when it
-finishes a turn (`done`). tspace installs them for Claude Code and Gemini CLI.
+finishes a turn (`done`). A fourth, after each tool, restores `working` once a
+permission is granted. tspace installs them for Claude Code and Gemini CLI.
 For other agents, [Recipes for other agents](#recipes-for-other-agents) has the
 snippets to paste. For Claude Code, install the hooks once:
 

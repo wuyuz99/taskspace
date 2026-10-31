@@ -111,14 +111,14 @@ func (a *App) newConfigHooksAgentCmd(agent hookAgent) *cobra.Command {
 	var table strings.Builder
 	var help strings.Builder
 	for _, h := range agent.hooks {
-		fmt.Fprintf(&table, "  %-17s %s\n", h.event, h.command)
+		fmt.Fprintf(&table, "  %-18s %s\n", h.event, h.command)
 		if h.note != "" {
-			fmt.Fprintf(&help, "  %-17s %s  (%s)\n", h.event, h.command, h.note)
+			fmt.Fprintf(&help, "  %-18s %s  (%s)\n", h.event, h.command, h.note)
 		} else {
-			fmt.Fprintf(&help, "  %-17s %s\n", h.event, h.command)
+			fmt.Fprintf(&help, "  %-18s %s\n", h.event, h.command)
 		}
 	}
-	long := fmt.Sprintf("%s adds three hooks to %s's user settings,\n%s:\n\n", agent.name, agent.product, agent.settingsHelp) +
+	long := fmt.Sprintf("%s adds these hooks to %s's user settings,\n%s:\n\n", agent.name, agent.product, agent.settingsHelp) +
 		help.String() + "\n" +
 		"They are user-wide rather than in each worktree, where the settings file\n" +
 		"would be an untracked file that clean refuses to remove. So they run in\n" +
