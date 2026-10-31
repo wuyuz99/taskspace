@@ -153,7 +153,12 @@ upgrade.
   from a Git hook with another repository's environment. Status, cleanup
   safety checks, mutations and cloning ignore inherited repository context
   while keeping authentication and global configuration (#91).
-
+- **dash shows a refusal whole.** A long note takes as many lines as it needs,
+  wrapped to the terminal, in place of table rows and if need be the detail
+  pane, until the next key. A refused `D`, `R` or `-` names the command that
+  discards the work, since dash has no `--force`.
+- **`repo rm --force`** exists. `repo rm` already told people to re-run with
+  it when it refused.
 - **`import` takes a worktree no task claims**, wherever it is, instead of
   refusing everything under tspace's worktrees directory. A worktree left by
   `repo rm --keep-worktree` can join another task, or its old task under the
