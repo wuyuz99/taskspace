@@ -107,8 +107,12 @@ func TestStopClosesOneExtraWindow(t *testing.T) {
 
 func TestRestartExtraWindow(t *testing.T) {
 	h, rt, repo := extraWindowTask(t)
-	if err := h.exec(t, h.app.newRestartCmd(), "T", "_mon"); err == nil || !strings.Contains(err.Error(), "not saved") {
-		t.Fatalf("restart of an unsaved window: %v", err)
+	// _mon was opened behind tspace's back.
+	if err := h.exec(t, h.app.newRestartCmd(), "T", "_mon"); err == nil || !strings.Contains(err.Error(), "does not know what _mon ran") {
+		t.Fatalf("restart of an unknown window: %v", err)
+	}
+	if err := h.exec(t, h.app.newRestartCmd(), "T", "_../../x"); err == nil {
+		t.Fatal("restarted a path-like name")
 	}
 	rt.started = append(rt.started, runtime.Window{Name: "_git"})
 	if err := h.exec(t, h.app.newRestartCmd(), "T", "_git"); err != nil {

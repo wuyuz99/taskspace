@@ -318,6 +318,23 @@ func ExtraWindow(st *task.Store, t *task.Task, w task.Window) runtime.Window {
 	return runtime.Window{Name: w.SessionName(), Dir: dir, Command: argv, Transient: len(argv) == 0, Env: WindowEnv(st, t.Name, "")}
 }
 
+// KnownWindow is the extra window named name as tspace knows it: saved with
+// t, or remembered from when it was opened. A window tspace did not open is
+// not known, nor is one whose repository has since left the task.
+func KnownWindow(st *task.Store, t *task.Task, name string) (task.Window, bool) {
+	if i, ok := t.SavedWindow(name); ok {
+		return t.Windows[i], true
+	}
+	w, ok := st.OpenedWindow(t.Name, name)
+	if !ok {
+		return task.Window{}, false
+	}
+	if _, ok := t.Repo(w.Repo); w.Repo != "" && !ok {
+		return task.Window{}, false
+	}
+	return w, true
+}
+
 // ExpandArgv fills in the task's directories where an agent command names
 // them, so any agent can be pointed at them with its own flag, such as
 // `claude --add-dir {context_dir}`, without tspace knowing about that agent:

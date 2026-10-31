@@ -286,9 +286,10 @@ REPO` and `tspace stop TASK REPO` (or `--root`) do; `s` and `x` act on the
 whole task. Extra windows in a stopped window's worktree stay open.
 
 Extra windows have rows of their own, under their task. `enter` goes to one,
-`X` closes it (`tspace stop TASK _NAME`) and `r` relaunches a dead saved one
-with its saved command. A closed saved window stays saved and comes back on
-the next start; `tspace window TASK --forget NAME` drops it.
+`X` closes it (`tspace stop TASK _NAME`), `r` relaunches a dead one with the
+command it was opened with, and `W` saves an open one as it stands (`tspace
+window TASK --save _NAME`). A closed saved window stays saved and comes back
+on the next start; `tspace window TASK --forget NAME` drops it.
 
 For moving between a task's windows once inside it, see
 [Task window navigation](TMUX_NAVIGATION.md).

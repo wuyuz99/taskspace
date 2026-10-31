@@ -66,6 +66,9 @@ func (s *Service) markStopped(name string) {
 	if err := s.Store.ClearRunning(name); err != nil {
 		s.warnf("tspace: %v", err)
 	}
+	if err := s.Store.ForgetWindows(name); err != nil {
+		s.warnf("tspace: %v", err)
+	}
 }
 
 // RestartOptions choose the window Restart relaunches, and how.
@@ -103,16 +106,14 @@ func (s *Service) Restart(ctx context.Context, name string, opts RestartOptions)
 	} else if opts.Repo == task.RootWindowName {
 		return "", false, fmt.Errorf("%s is the root window; restart it with: tspace restart %s --root", opts.Repo, t.Name)
 	} else if strings.HasPrefix(opts.Repo, task.ExtraWindowPrefix) {
-		// Only a saved window's command is known; an unsaved one's was typed
-		// once and never recorded.
-		i, ok := t.SavedWindow(opts.Repo)
+		known, ok := KnownWindow(s.Store, t, opts.Repo)
 		if !ok {
-			return "", false, fmt.Errorf("%s is not saved, so tspace does not know what it ran; close it with: tspace stop %s %s", opts.Repo, t.Name, opts.Repo)
+			return "", false, fmt.Errorf("tspace does not know what %s ran; it remembers only unsaved windows it opened. Close it with: tspace stop %s %s", opts.Repo, t.Name, opts.Repo)
 		}
 		if opts.Resume {
 			return "", false, fmt.Errorf("%s is an extra window; there is no agent to resume", opts.Repo)
 		}
-		w = ExtraWindow(s.Store, t, t.Windows[i])
+		w = ExtraWindow(s.Store, t, known)
 		if info, err := os.Stat(w.Dir); err != nil || !info.IsDir() {
 			return "", false, fmt.Errorf("%s is missing; run: tspace start %s", w.Dir, t.Name)
 		}

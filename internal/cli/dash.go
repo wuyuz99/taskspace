@@ -55,6 +55,7 @@ func (a *App) newDashCmd() *cobra.Command {
 			"                dash offers it on launch when there are any\n" +
 			"  w             open another window at the row's place, in a form: a shell,\n" +
 			"                the task's agent or a command (tspace window -d)\n" +
+			"  W             save the selected open extra window (tspace window --save)\n" +
 			"  q             quit\n\n" +
 			"Inside the multiplexer, enter switches the client to the window and\n" +
 			"dash keeps running in its own.\n\n" +
@@ -630,6 +631,18 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.form = m.windowForm(row)
 		return m, nil
+	case "W":
+		switch {
+		case !row.extra() || row.Summary > 1:
+			m.note = "W saves an extra window; select its row"
+		case row.Saved:
+			m.note = row.label() + " is already saved"
+		case row.Runtime != status.RuntimeRunning && row.Runtime != status.RuntimeDead:
+			m.note = fmt.Sprintf("%s is %s; only an open window can be saved", row.label(), row.Runtime)
+		default:
+			return m, m.saveWindow(row)
+		}
+		return m, nil
 	case "c":
 		if row.Summary > 1 {
 			m.note = "expand the task with space to clear a window's signal"
@@ -867,7 +880,7 @@ func (m dashModel) View() string {
 		b.WriteString(m.note + "\n")
 	}
 	if m.form == nil {
-		b.WriteString(dashFaint.Render("enter attach · space expand · s/x task · S/X window · r restart · D clean · R delete · - remove repo · m move repo · t tab · c clear · n new · N rename · w window · I interrupted · q quit"))
+		b.WriteString(dashFaint.Render("enter attach · space expand · s/x task · S/X window · r restart · D clean · R delete · - remove repo · m move repo · t tab · c clear · n new · N rename · w window · W save window · I interrupted · q quit"))
 	}
 
 	// Nothing may wrap: a wrapped line pushes the rest off the alt screen.
