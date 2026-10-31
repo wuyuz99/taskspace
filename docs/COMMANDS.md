@@ -46,6 +46,7 @@ require explicit task names.
 | `tspace stop TASK [REPO / _WINDOW / --root]` | Interrupt agents, end the session (or only that window), keep worktrees |
 | `tspace attach [TASK]` | Attach (or switch the client when already inside the multiplexer) |
 | `tspace window TASK [REPO / --root] [--agent / -- CMD] [--name N [--save]] [-d]` | Open another window in the running session, and with `--save` on every start |
+| `tspace window TASK --save N` | Save an open extra window as it was opened. Dash: `W` |
 | `tspace window TASK --forget N` / `tspace window TASK --rename OLD NEW` | Forget a saved window; rename an extra window |
 | `tspace shell TASK [REPO / --root]` | Interactive shell in a worktree or the task root |
 | `tspace path TASK [REPO / --root]` | Print a worktree or task-root path, for `cd "$(...)"` |

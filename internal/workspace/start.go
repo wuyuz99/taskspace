@@ -206,9 +206,12 @@ func (s *Service) launch(ctx context.Context, t *task.Task, opts StartOptions) (
 	// signals are cleared on a guess.
 	before, stateErr := s.Runtime.State(ctx, result.Session)
 	// Signals left by a session that is gone describe agents that are no
-	// longer there.
+	// longer there, and windows remembered from it are not coming back.
 	if stateErr == nil && !before.Exists {
 		if err := s.Store.ClearSignals(t.Name); err != nil {
+			s.warnf("tspace: %v", err)
+		}
+		if err := s.Store.ForgetWindows(t.Name); err != nil {
 			s.warnf("tspace: %v", err)
 		}
 	}

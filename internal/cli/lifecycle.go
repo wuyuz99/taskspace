@@ -169,8 +169,8 @@ func (a *App) newRestartCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "restart TASK [REPO | _WINDOW | --root]", Short: "Relaunch a dead agent or shell",
 		Long: "restart relaunches a dead repository window, or with --root the task-root\n" +
 			"window, using its configured command. A window is dead when `tspace status`\n" +
-			"shows it as such: its command has exited. A saved extra window, named with\n" +
-			"its leading '_', is relaunched with its saved command.\n\n" +
+			"shows it as such: its command has exited. An extra window, named with its\n" +
+			"leading '_', is relaunched with the command it was saved or opened with.\n\n" +
 			"It refuses live panes. It replaces the old pane's output, so inspect that\n" +
 			"first. It never reruns setup hooks.\n\n" +
 			"--resume runs the window's resume command instead, which brings the agent\n" +

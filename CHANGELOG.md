@@ -7,6 +7,11 @@ upgrade.
 
 ### Added
 
+- **tspace remembers what every extra window runs.** `restart TASK _NAME`
+  relaunches an unsaved window from how `window` opened it, and `tspace window
+  TASK --save NAME`, or `W` in dash, saves one that is already open. Unsaved
+  windows are remembered only while their session lasts: `start` does not
+  reopen them and recipes do not carry them.
 - **Rename a stopped task.** `tspace task rename OLD NEW` moves its worktrees,
   notes and session metadata while preserving uncommitted files and settings.
   `--branches` also renames unpublished branches following the configured

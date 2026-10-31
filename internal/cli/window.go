@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/wuyuz99/taskspace/internal/runtime"
 	"github.com/wuyuz99/taskspace/internal/task"
 	"github.com/wuyuz99/taskspace/internal/workspace"
 )
@@ -19,7 +18,7 @@ func (a *App) newWindowCmd() *cobra.Command {
 	var root, useAgent, detach, save bool
 	var name, forget, rename string
 	cmd := &cobra.Command{
-		Use:   "window TASK [REPO | --root] [--agent | -- COMMAND [ARGS...]] | TASK --forget NAME | TASK --rename OLD NEW",
+		Use:   "window TASK [REPO | --root] [--agent | -- COMMAND [ARGS...]] | TASK --save NAME | TASK --forget NAME | TASK --rename OLD NEW",
 		Short: "Open another window in a task's running session",
 		Long: "window adds a window to the task's session, in a repository's worktree or\n" +
 			"at the task root, without touching the windows already there:\n\n" +
@@ -34,7 +33,10 @@ func (a *App) newWindowCmd() *cobra.Command {
 			"rest of the session. --save, with --name, keeps the window with the task,\n" +
 			"and in project recipes saved from it: start and open recreate it whenever\n" +
 			"it is not there. Without a running session, --save only saves it.\n\n" +
+			"tspace remembers what an unsaved window runs while its session lasts, so\n" +
+			"restart can relaunch it and --save NAME can keep it once it is open.\n\n" +
 			"  tspace window PAY-142 backend --name git --save -- lazygit\n" +
+			"  tspace window PAY-142 --save _main-lazygit  keep a window already open\n" +
 			"  tspace window PAY-142 --forget git         start no longer opens it\n" +
 			"  tspace window PAY-142 --rename git lg      open and saved alike",
 		Args: func(cmd *cobra.Command, args []string) error {
@@ -73,8 +75,10 @@ func (a *App) newWindowCmd() *cobra.Command {
 			if forget != "" && rename != "" {
 				return fmt.Errorf("choose either --forget or --rename")
 			}
-			if save && name == "" {
-				return fmt.Errorf("--save needs --name, which the window is saved and recreated by")
+			// With nothing to open, the name after TASK is a window that is.
+			saveOpen := save && name == "" && len(pos) == 2 && cmd.ArgsLenAtDash() < 0 && !root && !useAgent && !detach
+			if save && name == "" && !saveOpen {
+				return fmt.Errorf("--save needs --name, which the window is saved and recreated by; to keep a window already open: tspace window TASK --save NAME")
 			}
 			// Opening a window changes the session, so it waits for whatever
 			// is changing the task, such as a clean removing the worktree.
@@ -89,6 +93,8 @@ func (a *App) newWindowCmd() *cobra.Command {
 				return a.forgetWindow(t, forget)
 			case rename != "":
 				return a.renameWindow(cmd.Context(), t, rename, pos[1])
+			case saveOpen:
+				return a.saveOpenWindow(cmd.Context(), t, pos[1])
 			}
 			repoArg := ""
 			if len(pos) == 2 {
@@ -112,7 +118,7 @@ func (a *App) newWindowCmd() *cobra.Command {
 			// only needs its repository to be the task's: start makes the
 			// worktree.
 			later := !running
-			place, dir := "root", a.Store.TaskDir(t.Name)
+			place, repo, dir := "root", "", a.Store.TaskDir(t.Name)
 			if !root && !defaultsToRoot(t, repoArg) {
 				resolve := a.worktreeDir
 				if later {
@@ -122,7 +128,7 @@ func (a *App) newWindowCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				place, dir = repoName, r.Worktree
+				place, repo, dir = repoName, repoName, r.Worktree
 			} else if !isDir(dir) && !later {
 				return fmt.Errorf("task directory %s is missing; run: tspace start %s", dir, t.Name)
 			}
@@ -148,10 +154,7 @@ func (a *App) newWindowCmd() *cobra.Command {
 				if extraWindowPrefix+name == task.RootWindowName {
 					return fmt.Errorf("%q names the task's root window; choose another name", name)
 				}
-				saved = task.Window{Name: name, Command: raw}
-				if place != "root" {
-					saved.Repo = place
-				}
+				saved = task.Window{Name: name, Repo: repo, Command: raw}
 			}
 			saveWindow := func() error {
 				t.Windows = append(t.Windows, saved)
@@ -191,14 +194,15 @@ func (a *App) newWindowCmd() *cobra.Command {
 				}
 			}
 
-			// An extra window has no signal of its own, so its agent falls back to the directory.
-			w := runtime.Window{Name: window, Dir: dir, Command: argv, Transient: len(argv) == 0, Env: a.windowEnv(t.Name, "")}
-			if save {
-				// Exactly as start will recreate it.
-				w = workspace.ExtraWindow(a.Store, t, saved)
-			}
-			if err := a.Runtime.OpenWindow(ctx, session, w); err != nil {
+			// Opened exactly as restart and start will open it again.
+			opened := task.Window{Name: strings.TrimPrefix(window, extraWindowPrefix), Repo: repo, Command: raw}
+			if err := a.Runtime.OpenWindow(ctx, session, workspace.ExtraWindow(a.Store, t, opened)); err != nil {
 				return err
+			}
+			if !save {
+				if err := a.Store.RememberWindow(t.Name, opened); err != nil {
+					a.warnf("tspace: %v\n", err)
+				}
 			}
 			what := "shell"
 			if len(argv) > 0 {
@@ -247,6 +251,39 @@ func windowLabel(command string) string {
 		return "cmd"
 	}
 	return label
+}
+
+// saveOpenWindow keeps with the task an unsaved window that is open, as it
+// was opened: the window itself is not touched.
+func (a *App) saveOpenWindow(ctx context.Context, t *task.Task, name string) error {
+	name = strings.TrimPrefix(name, extraWindowPrefix)
+	window := extraWindowPrefix + name
+	if !task.IsExtraWindow(window) {
+		return fmt.Errorf("%q is not a window name tspace gives", window)
+	}
+	if _, ok := t.SavedWindow(name); ok {
+		return fmt.Errorf("%s is already saved with %s", window, t.Name)
+	}
+	st, err := a.Runtime.State(ctx, a.Runtime.SessionName(t.Name))
+	if err != nil {
+		return err
+	}
+	if _, open := st.Pane(a.Runtime.WindowName(window)); !open {
+		return fmt.Errorf("%s has no open window %s; to open a window and save it: tspace window %s [REPO] --name %s --save -- COMMAND", t.Name, window, t.Name, name)
+	}
+	w, ok := workspace.KnownWindow(a.Store, t, name)
+	if !ok {
+		return fmt.Errorf("tspace does not know what %s runs; it remembers only unsaved windows it opened. Close it and open it saved: tspace stop %s %s, then tspace window %s [REPO] --name %s --save -- COMMAND", window, t.Name, window, t.Name, name)
+	}
+	t.Windows = append(t.Windows, w)
+	if err := a.Store.Save(t); err != nil {
+		return err
+	}
+	if err := a.Store.ForgetWindow(t.Name, name); err != nil {
+		a.warnf("tspace: %v\n", err)
+	}
+	a.printf("saved %s of %s: start opens it again whenever it is not there\n", window, t.Name)
+	return nil
 }
 
 // forgetWindow drops a saved window from the task. A window of that name
@@ -310,6 +347,8 @@ func (a *App) renameWindow(ctx context.Context, t *task.Task, from, to string) e
 		if err := a.Store.Save(t); err != nil {
 			return err
 		}
+	} else if err := a.Store.RenameWindow(t.Name, from, to); err != nil {
+		a.warnf("tspace: %v\n", err)
 	}
 	where := "open and saved"
 	switch {

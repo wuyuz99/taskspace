@@ -92,6 +92,18 @@ windows, and `repo rm` forgets the ones that opened in the repository it
 removes. `task show` lists them. `--rename` works on any extra window, saved
 or not; the root and repository windows are named by the task.
 
+An unsaved window is remembered while its session lasts, so `tspace restart
+TASK _NAME` relaunches it when it is dead, and one worth keeping can be saved
+as it stands:
+
+```bash
+tspace window PAY-142 --save _backend-lazygit   # start opens it from now on
+```
+
+`start` never reopens an unsaved window, and recipes never carry one. tspace
+cannot know what runs in a window opened by an older tspace or with the
+multiplexer's own keys; close it and open it with `--save -- COMMAND` instead.
+
 `tspace shell` is the other way to get a terminal: a plain subshell in the terminal
 you are already in, labelled and with `TSPACE_*` variables set, whether or not the
 session is running.

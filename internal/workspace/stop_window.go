@@ -66,6 +66,8 @@ func (s *Service) closeWindow(ctx context.Context, name, window string) error {
 		s.markStopped(name)
 	} else if !task.IsExtraWindow(window) {
 		s.forgetRunning(name, window)
+	} else if err := s.Store.ForgetWindow(name, window); err != nil {
+		s.warnf("tspace: %v", err)
 	}
 	return s.Store.ClearSignal(name, window)
 }
@@ -91,9 +93,12 @@ func (s *Service) forgetRunning(name, window string) {
 	} else {
 		r.Repos = slices.DeleteFunc(r.Repos, func(repo string) bool { return repo == window })
 	}
-	// Only extra windows left: nothing an interruption would bring back.
+	// Only extra windows left: nothing an interruption would bring back, but
+	// the session is up, so they are still remembered.
 	if !r.Root && len(r.Repos) == 0 {
-		s.markStopped(name)
+		if err := s.Store.ClearRunning(name); err != nil {
+			s.warnf("tspace: %v", err)
+		}
 		return
 	}
 	if err := s.Store.MarkRunning(name, r); err != nil {

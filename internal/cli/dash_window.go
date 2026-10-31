@@ -127,6 +127,19 @@ func (m dashModel) openWindow(taskName, place string, f *dashForm) tea.Cmd {
 	}
 }
 
+// saveWindow runs `tspace window TASK --save _NAME` on an open extra window.
+func (m dashModel) saveWindow(row dashRow) tea.Cmd {
+	return func() tea.Msg {
+		var out, warn bytes.Buffer
+		sub := *m.app
+		sub.Out, sub.Err = &out, &warn
+		sub.noWait = true
+		err := sub.runCmd(m.ctx, (*App).newWindowCmd, row.Task, "--save", row.Window)
+		text := append(lines(out.String()), lines(warn.String())...)
+		return dashDoneMsg{text: strings.Join(text, "; "), err: err}
+	}
+}
+
 // splitWords splits a command line typed into dash into argv as a POSIX
 // shell would split its words: on blanks, with '...' taken literally and
 // "..." and backslash escaping. Nothing is expanded; tspace runs no shell.

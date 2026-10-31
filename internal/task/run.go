@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 )
 
 // What tspace remembers about a task's session between runs, beside the
@@ -50,6 +51,82 @@ func (s *Store) ForgetLaunched(taskName, window string) error {
 		return fmt.Errorf("forget launch: %w", err)
 	}
 	return nil
+}
+
+func (s *Store) openedWindowPath(taskName, name string) string {
+	return filepath.Join(s.RunDir(taskName), "windows", strings.TrimPrefix(name, ExtraWindowPrefix))
+}
+
+// RememberWindow records what an unsaved extra window was opened with, so
+// restart can relaunch it and `window --save` can keep it. Nothing but those
+// reads it: it is not a saved window, so start does not open it and a recipe
+// does not carry it.
+func (s *Store) RememberWindow(taskName string, w Window) error {
+	b, err := json.Marshal(w)
+	if err != nil {
+		return fmt.Errorf("record window: %w", err)
+	}
+	p := s.openedWindowPath(taskName, w.Name)
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		return fmt.Errorf("record window: %w", err)
+	}
+	// A typed command can hold a secret; the record is private for the same reason.
+	if err := os.WriteFile(p, b, 0o600); err != nil {
+		return fmt.Errorf("record window: %w", err)
+	}
+	return nil
+}
+
+// OpenedWindow is what RememberWindow recorded for the window named name,
+// with or without its prefix. The name may be anything typed, so one that no
+// window could have is simply not known.
+func (s *Store) OpenedWindow(taskName, name string) (Window, bool) {
+	if ValidateName("window", strings.TrimPrefix(name, ExtraWindowPrefix)) != nil {
+		return Window{}, false
+	}
+	b, err := os.ReadFile(s.openedWindowPath(taskName, name))
+	if err != nil {
+		return Window{}, false
+	}
+	var w Window
+	if json.Unmarshal(b, &w) != nil {
+		return Window{}, false
+	}
+	return w, true
+}
+
+// ForgetWindow drops what RememberWindow recorded for one window.
+func (s *Store) ForgetWindow(taskName, name string) error {
+	if err := os.Remove(s.openedWindowPath(taskName, name)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("forget window: %w", err)
+	}
+	return nil
+}
+
+// ForgetWindows drops what RememberWindow recorded for every window, once the
+// session that held them is gone.
+func (s *Store) ForgetWindows(taskName string) error {
+	if err := os.RemoveAll(filepath.Join(s.RunDir(taskName), "windows")); err != nil {
+		return fmt.Errorf("forget windows: %w", err)
+	}
+	return nil
+}
+
+// RenameWindow carries what RememberWindow recorded to the window's new name.
+// Whatever was recorded for that name belonged to some earlier window.
+func (s *Store) RenameWindow(taskName, from, to string) error {
+	w, ok := s.OpenedWindow(taskName, from)
+	// Both go first: on a case-insensitive disk they can be one file.
+	for _, name := range []string{from, to} {
+		if err := s.ForgetWindow(taskName, name); err != nil {
+			return err
+		}
+	}
+	if !ok {
+		return nil
+	}
+	w.Name = strings.TrimPrefix(to, ExtraWindowPrefix)
+	return s.RememberWindow(taskName, w)
 }
 
 func (s *Store) runningPath(taskName string) string {
