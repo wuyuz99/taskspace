@@ -12,6 +12,8 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -83,6 +85,10 @@ func (real) Run(ctx context.Context, dir string, argv ...string) (Result, error)
 	cmd.Dir = dir
 	if env, ok := ctx.Value(envKey{}).([]string); ok {
 		cmd.Env = env
+		// Go updates PWD to match Dir only for an inherited environment.
+		if abs, err := filepath.Abs(dir); dir != "" && err == nil {
+			cmd.Env = append(slices.Clip(env), "PWD="+abs)
+		}
 	}
 
 	var stdout, stderr bytes.Buffer
