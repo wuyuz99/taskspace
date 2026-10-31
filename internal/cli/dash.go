@@ -394,11 +394,12 @@ func (m dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.confirm != nil || m.form != nil || msg.Action != tea.MouseActionPress {
 			return m, nil
 		}
-		m = m.foldNote()
 		switch msg.Button {
 		case tea.MouseButtonWheelUp:
+			m = m.foldNote()
 			m.cursor = max(m.cursor-1, 0)
 		case tea.MouseButtonWheelDown:
+			m = m.foldNote()
 			m.cursor = max(min(m.cursor+1, len(m.data.Rows)-1), 0)
 		}
 		return m, nil
@@ -428,7 +429,13 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	}
-	m = m.foldNote()
+	// Esc on a long note puts it away; it quits only once nothing is open.
+	if len(m.noteLines()) > 1 {
+		m = m.foldNote()
+		if msg.String() == "esc" {
+			return m, nil
+		}
+	}
 
 	switch msg.String() {
 	case "q", "esc", "ctrl+c":
@@ -614,12 +621,12 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.confirm = &dashConfirm{
 			prompt: fmt.Sprintf("remove %s from %s: clean its worktree and close its window? branch is kept (y/N)", row.Window, row.Task),
 			run: m.act(func(ws *workspace.Service) (string, error) {
-				left, err := ws.RemoveRepo(m.ctx, row.Task, row.Window, false)
+				left, err := ws.RemoveRepo(m.ctx, row.Task, row.Window, false, false)
 				text := removedRepoText(row.Window, row.Task)
 				if left != "" {
 					text += "; note: the worktree at " + left + " was left in place"
 				}
-				return text, nameForce(err, fmt.Sprintf("tspace clean %s %s --force", row.Task, row.Window))
+				return text, nameForce(err, fmt.Sprintf("tspace repo rm %s %s --force", row.Task, row.Window))
 			}),
 		}
 		return m, nil
@@ -836,21 +843,25 @@ const (
 
 // noteLines is the note as it will be drawn, keeping the lines it has and
 // wrapping them to the screen, so that a refusal is read whole. One too long
-// for the screen loses its middle: the advice comes last.
+// for the screen loses its middle: the advice comes last, on the last line it
+// has. A tab becomes a space, since widths count it as nothing.
 func (m dashModel) noteLines() []string {
 	if m.form != nil || m.confirm != nil {
 		return nil
 	}
 	var out []string
-	for _, l := range strings.Split(displayText(m.note), "\n") {
-		if l = strings.TrimSpace(l); l != "" {
-			out = append(out, strings.Split(ansi.Wrap(l, m.width, ""), "\n")...)
+	last := 0
+	for _, l := range strings.Split(strings.ReplaceAll(displayText(m.note), "\t", " "), "\n") {
+		if l = strings.TrimRight(l, " "); l != "" {
+			wrapped := strings.Split(ansi.Wrap(l, m.width, ""), "\n")
+			out, last = append(out, wrapped...), len(wrapped)
 		}
 	}
 	room := max(m.height-dashTableLines-len(m.data.Warn), 4)
 	if len(out) > room {
+		tail := min(last, room-2)
 		cut := fmt.Sprintf("... %d more lines", len(out)-room+1)
-		out = slices.Concat(out[:room-3], []string{cut}, out[len(out)-2:])
+		out = slices.Concat(out[:room-1-tail], []string{cut}, out[len(out)-tail:])
 	}
 	return out
 }

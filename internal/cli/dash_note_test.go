@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/wuyuz99/taskspace/internal/task"
 	"github.com/wuyuz99/taskspace/internal/workspace"
@@ -90,8 +91,8 @@ func TestDashRefusalIsReadWhole(t *testing.T) {
 	}
 }
 
-// The refusal of - names clean: repo rm has no --force.
-func TestDashRemoveRepoRefusalNamesClean(t *testing.T) {
+// The refusal of - names the command that finishes the job.
+func TestDashRemoveRepoRefusalNamesRepoRm(t *testing.T) {
 	h := newHarness(t)
 	tk := h.startedRootTask(t, "T")
 	repo := tk.RepoNames()[0]
@@ -104,7 +105,7 @@ func TestDashRemoveRepoRefusalNamesClean(t *testing.T) {
 	m.cursor = 1
 	m = drive(t, m, key("-"))
 	m = drive(t, m, key("y"))
-	if want := "tspace clean T " + repo + " --force"; !strings.Contains(unwrapped(screen(t, m)), unwrapped(want)) {
+	if want := "tspace repo rm T " + repo + " --force"; !strings.Contains(unwrapped(screen(t, m)), unwrapped(want)) {
 		t.Fatalf("%q missing:\n%s", want, screen(t, m))
 	}
 }
@@ -170,4 +171,57 @@ func TestDashNoteTallerThanTheScreen(t *testing.T) {
 func noted(m dashModel, msg dashDoneMsg) dashModel {
 	next, _ := m.Update(msg)
 	return next.(dashModel)
+}
+
+// The advice survives the cut whole however it wraps, and a click, unlike the
+// wheel or esc, leaves the note where it is; esc doesn't quit from under it.
+func TestDashTallNoteKeepsItsAdviceAndYieldsToKeys(t *testing.T) {
+	m := newDashModel(t.Context(), nil, time.Second)
+	m = drive(t, m, dashDataMsg(dashData{Rows: []dashRow{{Task: "A", Window: "r"}}}))
+	m.width = 30
+	advice := strings.TrimSpace(strings.Repeat("advice ", 20))
+	note := "  lost\tone\n" + strings.Repeat("repo\n", 30) + advice
+	m = noted(m, dashDoneMsg{err: errors.New(note)})
+	view := screen(t, m)
+	if !strings.Contains(unwrapped(view), unwrapped(advice)) || !strings.Contains(view, "  lost one") {
+		t.Fatalf("note damaged:\n%s", view)
+	}
+
+	next, _ := m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft})
+	if m = next.(dashModel); m.note == "" {
+		t.Fatal("a click dropped the note")
+	}
+	next, cmd := m.Update(key("esc"))
+	if m = next.(dashModel); m.note != "" || cmd != nil {
+		t.Fatalf("esc: note=%q cmd=%v", m.note, cmd != nil)
+	}
+	if _, cmd = m.Update(key("esc")); cmd == nil {
+		t.Fatal("esc with no note does not quit")
+	}
+}
+
+// repo rm --force does what the refusal says: the work goes and so does the
+// repository. --keep-worktree, which keeps the work, can't go with it.
+func TestRepoRmForce(t *testing.T) {
+	h := newHarness(t)
+	tk := h.startedTask(t, "T")
+	repo := tk.RepoNames()[0]
+	if err := os.WriteFile(filepath.Join(tk.Repos[repo].Worktree, "dirty"), []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.exec(t, h.app.newRepoCmd(), "rm", "T", repo); err == nil || !strings.Contains(err.Error(), workspace.ForceAdvice) {
+		t.Fatalf("refusal: %v", err)
+	}
+	if err := h.exec(t, h.app.newRepoCmd(), "rm", "T", repo, "--force", "--keep-worktree"); err == nil {
+		t.Fatal("--force with --keep-worktree accepted")
+	}
+	if err := h.exec(t, h.app.newRepoCmd(), "rm", "T", repo, "--force"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := h.load(t, "T").Repo(repo); ok {
+		t.Fatal("repository kept")
+	}
+	if _, err := os.Stat(tk.Repos[repo].Worktree); !os.IsNotExist(err) {
+		t.Fatal("worktree kept")
+	}
 }

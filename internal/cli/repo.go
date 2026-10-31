@@ -801,19 +801,20 @@ func (a *App) newRepoMoveCmd() *cobra.Command {
 }
 
 func (a *App) newRepoRmCmd() *cobra.Command {
-	var keep bool
+	var keep, force bool
 	cmd := &cobra.Command{
 		Use:   "rm TASK REPO",
 		Short: "Detach a repository from a task",
 		Long: "rm safely cleans the repository's worktree and closes its windows before\n" +
 			"forgetting it. --keep-worktree only forgets it, leaving its files and windows\n" +
-			"under your control; clean can no longer find them afterward.",
+			"under your control; clean can no longer find them afterward. --force discards\n" +
+			"the work clean would refuse to lose.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := explicitTask(args[0]); err != nil {
 				return err
 			}
-			left, err := a.workspaceFor(cmd).RemoveRepo(cmd.Context(), args[0], args[1], keep)
+			left, err := a.workspaceFor(cmd).RemoveRepo(cmd.Context(), args[0], args[1], keep, force)
 			if err != nil {
 				return err
 			}
@@ -825,5 +826,7 @@ func (a *App) newRepoRmCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&keep, "keep-worktree", false, "forget the repository without removing its worktree or windows")
+	cmd.Flags().BoolVar(&force, "force", false, "discard uncommitted work and unmerged commits in the worktree")
+	cmd.MarkFlagsMutuallyExclusive("keep-worktree", "force")
 	return cmd
 }
