@@ -142,6 +142,7 @@ A worktree you made yourself with `git worktree add` can become a task's:
 ```bash
 tspace import ../backend-fix                   # a new task, named backend-fix
 tspace import ~/wt/api-login --task PAY-142    # into an existing task
+tspace import ../api ../web --task PAY-142     # several, all or none
 ```
 
 `import` moves the worktree into the task's directory with `git worktree move`,
@@ -156,6 +157,13 @@ repository's main checkout, which cannot be moved: register that with
 is joined only by naming it. Commits not pushed or not pulled are reported and
 kept. The base is the branch's upstream when that is another branch, and
 otherwise, as after `git push -u`, the repository's default branch.
+
+Several paths need `--task`, and each repository is named after its source, so
+`--name` is for one path. All are checked before any moves, and a failure after
+that, such as a base that no longer resolves, moves back the ones already moved. The layout is decided once, after all of them, as
+for `task create`: a task with no repositories gets its agent in the worktree of
+a single import, and at the task root with several, or with `--with-root`, which
+is for a new task. A task that has repositories keeps its agent where it is.
 
 ## Fresh worktrees are empty: `post_create`
 
