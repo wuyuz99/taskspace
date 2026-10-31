@@ -17,14 +17,15 @@ func (a *App) newImportCmd() *cobra.Command {
 		Short: "Adopt an existing git worktree into a task",
 		Long: "import makes a worktree you created yourself, with `git worktree add`, a\n" +
 			"task's: it moves it into the task's directory, with `git worktree move`,\n" +
-			"and records its repository, keeping its branch. Untracked and ignored\n" +
-			"files go with it, so a .env or node_modules is still there.\n\n" +
+			"and records its repository, keeping its branch. Uncommitted changes, and\n" +
+			"untracked and ignored files, go with it, so a .env or node_modules is\n" +
+			"still there; nothing is committed.\n\n" +
 			"  tspace import ../backend-fix                  a new task named backend-fix\n" +
 			"  tspace import ~/wt/api-login --task PAY-142   into an existing task\n\n" +
-			"It refuses a worktree with uncommitted changes to tracked files, a detached\n" +
-			"HEAD, an unfinished merge or rebase, or a lock; one that is already a\n" +
-			"task's; and a repository's main checkout, which cannot move: register that\n" +
-			"with `tspace config repo` and let a task make its own worktree. Run it from\n" +
+			"It refuses a worktree with conflicted files, a detached HEAD, an unfinished\n" +
+			"merge or rebase, or a lock; one that is already a task's; and a repository's\n" +
+			"main checkout, which cannot move: register that with `tspace config repo`\n" +
+			"and let a task make its own worktree. Run it from\n" +
 			"outside the worktree. Commits not pushed, or not pulled, are reported, and\n" +
 			"kept. The branch's base is its upstream if that is another branch, else the\n" +
 			"repository's default; `tspace repo update` changes it.\n\n" +
@@ -95,8 +96,8 @@ func (a *App) newImportCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if n := st.Staged + st.Modified + st.Conflicted; n > 0 {
-				return fmt.Errorf("%s has %d uncommitted change%s to tracked files; commit or stash them first", top, n, plural(n))
+			if n := st.Conflicted; n > 0 {
+				return fmt.Errorf("%s has %d conflicted file%s; resolve them first", top, n, plural(n))
 			}
 			// Its own remote copy, as after git push -u, is where the work
 			// is published, not where it started.
@@ -192,6 +193,9 @@ func (a *App) newImportCmd() *cobra.Command {
 				a.printf("adopted %s in place\n", top)
 			} else {
 				a.printf("moved %s to %s\n", top, dest)
+			}
+			if n := st.Staged + st.Modified; n > 0 {
+				a.printf("  %d uncommitted change%s kept; nothing was committed\n", n, plural(n))
 			}
 			if st.Upstream != "" && (st.Ahead > 0 || st.Behind > 0) {
 				a.printf("  %s is %d ahead and %d behind %s; nothing was pushed or pulled\n", branch, st.Ahead, st.Behind, st.Upstream)
