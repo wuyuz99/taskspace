@@ -12,6 +12,8 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -64,6 +66,14 @@ func IsExit(err error) bool {
 
 type real struct{}
 
+type envKey struct{}
+
+// WithEnv supplies the complete environment for a subprocess without changing
+// the parent process. Runners that only record arguments may ignore it.
+func WithEnv(ctx context.Context, env []string) context.Context {
+	return context.WithValue(ctx, envKey{}, env)
+}
+
 // Real returns a Runner that actually executes commands.
 func Real() Runner { return real{} }
 
@@ -73,6 +83,13 @@ func (real) Run(ctx context.Context, dir string, argv ...string) (Result, error)
 	}
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = dir
+	if env, ok := ctx.Value(envKey{}).([]string); ok {
+		cmd.Env = env
+		// Go updates PWD to match Dir only for an inherited environment.
+		if abs, err := filepath.Abs(dir); dir != "" && err == nil {
+			cmd.Env = append(slices.Clip(env), "PWD="+abs)
+		}
+	}
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

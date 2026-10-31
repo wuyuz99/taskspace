@@ -36,7 +36,7 @@ require explicit task names.
 | `tspace task rename OLD NEW [--branches]` | Rename a stopped task, moving worktrees and notes; optionally rename unpublished default branches. Directory-based agent conversations stay at the old paths unless carried (`config carry-conversations`). Dash: `N` |
 | `tspace task rm NAME [--force]` | Delete the record; refuses while worktrees exist unless `--force` |
 | `tspace repo add TASK REPO [--name --branch --base --agent --post-create]` | Attach a repository, by registered name or path |
-| `tspace repo rm TASK REPO [--keep-worktree]` | Clean the repository's worktree and windows safely, then detach it; `--keep-worktree` only forgets it |
+| `tspace repo rm TASK REPO [--force \| --keep-worktree]` | Clean the repository's worktree and windows safely, then detach it; `--force` discards work clean would refuse to lose; `--keep-worktree` only forgets it |
 | `tspace repo update TASK REPO [--agent CMD / --shell] [--post-create SH] [--branch NAME] [--base REF [--rebase]]` | Update a repository's agent, setup, branch or base |
 | `tspace repo move OLD REPO --to NEW [--name NAME]` | Move a repository to another task with its worktree, uncommitted files, settings and saved windows; rolls back on failure. Refuses while its windows are open. Directory-based agent conversations stay at the old path unless carried (`config carry-conversations`). Dash: `m` |
 | `tspace start TASK [REPO... / --root] [--no-runtime] [--fresh]` | Create worktrees, launch the session, resuming agents' conversations where they ran before; naming REPOs or `--root` starts only those windows; `--no-runtime` stops after the worktrees |

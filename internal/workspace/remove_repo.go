@@ -12,10 +12,11 @@ import (
 // RemoveRepo takes a repository out of a task. It cleans the repository
 // first, refusing as clean does when work could be lost, so its worktree and
 // windows go with it; then it forgets the repository and the saved windows
-// that open in it. keepWorktree only forgets it, leaving its files and
-// windows under the user's control. It returns the worktree it left in
-// place, if any, for the caller to mention after saying it is done.
-func (s *Service) RemoveRepo(ctx context.Context, name, repo string, keepWorktree bool) (left string, err error) {
+// that open in it. force discards its work, as clean does. keepWorktree only
+// forgets it, leaving its files and windows under the user's control. It
+// returns the worktree it left in place, if any, for the caller to mention
+// after saying it is done.
+func (s *Service) RemoveRepo(ctx context.Context, name, repo string, keepWorktree, force bool) (left string, err error) {
 	t, ctx, unlock, err := s.Lock(ctx, name, s.command("tspace repo rm"), true)
 	if err != nil {
 		return "", err
@@ -38,7 +39,7 @@ func (s *Service) RemoveRepo(ctx context.Context, name, repo string, keepWorktre
 	}
 	if !keepWorktree {
 		// Under the lock already held, so nothing changes in between.
-		if err := s.Clean(ctx, t.Name, CleanOptions{Repos: []string{repo}}); err != nil {
+		if err := s.Clean(ctx, t.Name, CleanOptions{Repos: []string{repo}, Force: force}); err != nil {
 			return "", err
 		}
 		// What is saved is what clean left.
