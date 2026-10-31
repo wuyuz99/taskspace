@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/wuyuz99/taskspace/internal/git"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
@@ -46,6 +47,7 @@ func (a *App) editTaskNote(ctx context.Context, t *task.Task, noteFile string) e
 	// The editor is a user-configured shell command (e.g. code --wait).
 	// Pass the path separately, never interpolate it into shell code.
 	cmd := exec.CommandContext(ctx, "sh", "-c", editor+` "$1"`, "tspace-editor", path)
+	cmd.Env = git.RepositoryEnv(cmd.Environ())
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("editor failed: %w; the note is at %s", err, path)

@@ -121,3 +121,26 @@ by this version. Start/restart refuse if a possible legacy session exists. Inspe
 that session using tmux, then stop or rename it manually before starting a new
 session. Old names were ambiguous, so automatic migration could affect another
 task. Worktree paths, branches, and task records do not change.
+
+## Git hook environments and existing sessions
+
+New tspace launches clear inherited Git repository and hook context, including
+`GIT_DIR`, `GIT_INDEX_FILE`, `GIT_PREFIX`, `GIT_EDITOR`, `GIT_SEQUENCE_EDITOR`,
+`GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_AUTHOR_DATE`, and quarantine paths.
+They also drop `GIT_CONFIG_COUNT` and `GIT_CONFIG_PARAMETERS`; tokens or other
+settings injected through those variables are not retained (issue #132).
+SSH/askpass settings and global/system config file locations remain available.
+tspace can't tell who set these, so values you exported are cleared too. Set
+`core.editor`, `VISUAL`, or `EDITOR` for the editor, and `user.name` and
+`user.email` for identity.
+
+This does not repair already-running processes or an existing server's saved
+environment. On a server started with an older tspace from a hook, panes you
+create directly with tmux (splits or prefix-c) can still inherit that context.
+New tspace-managed windows and tmux restarts clear it inside the pane. Finish
+or stop the old sessions and start a clean server before using manual panes.
+
+A held zellij pane created before this fix restarts its original command in
+place, preserving its output and working without an attached client. That
+stored command does not gain the new environment filter; recreate the session
+from a clean environment to apply the fix to those legacy panes.

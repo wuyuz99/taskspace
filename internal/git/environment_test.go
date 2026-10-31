@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -19,7 +20,10 @@ func TestRepositoryEnv(t *testing.T) {
 	for _, key := range keys {
 		env = append(env, key+"=poison")
 	}
-	env = append(env, "git_dir=case-insensitive-on-windows")
+	env = append(env, "GIT_EDITOR=:", "GIT_QUARANTINE_PATH=/quarantine", "git_dir=user-variable")
+	if runtime.GOOS != "windows" {
+		keep = append(keep, "git_dir=user-variable")
+	}
 	if got := RepositoryEnv(env); !reflect.DeepEqual(got, keep) {
 		t.Fatalf("environment = %v, want %v", got, keep)
 	}

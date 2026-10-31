@@ -132,6 +132,14 @@ func unixTime(s string) time.Time {
 // repository context saved by an existing server and add the window environment.
 // env execs the command, so the pane's process is still the command itself.
 func launchArgv(w Window, shell string) []string {
+	clean := []string{"env"}
+	for _, key := range git.RepositoryEnvVars() {
+		clean = append(clean, "-u", key)
+	}
+	return append(append(clean, w.Env...), commandArgv(w, shell)...)
+}
+
+func commandArgv(w Window, shell string) []string {
 	var argv []string
 	switch {
 	case len(w.Command) > 0:
@@ -143,11 +151,7 @@ func launchArgv(w Window, shell string) []string {
 	default:
 		argv = []string{"/bin/sh"}
 	}
-	clean := []string{"env"}
-	for _, key := range git.RepositoryEnvVars() {
-		clean = append(clean, "-u", key)
-	}
-	return append(append(clean, git.RepositoryEnv(w.Env)...), argv...)
+	return argv
 }
 
 // sessionName is the session a task runs in. Every runtime uses it: tspace

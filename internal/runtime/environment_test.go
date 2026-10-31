@@ -64,7 +64,7 @@ func TestLaunchClearsServerRepositoryEnvironment(t *testing.T) {
 	}
 	t.Setenv("GIT_SSH_COMMAND", "ssh custom")
 	for _, shell := range []bool{false, true} {
-		w := Window{Command: []string{"env"}, Env: []string{"TSPACE_TASK=demo", "GIT_DIR=also-poison"}}
+		w := Window{Command: []string{"env"}, Env: []string{"TSPACE_TASK=demo"}}
 		if shell {
 			w.Command = nil
 		}

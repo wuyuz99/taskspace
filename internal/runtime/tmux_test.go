@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -340,27 +341,22 @@ func TestParsePanesIgnoresMalformedLines(t *testing.T) {
 	}
 }
 
-func TestLaunchArgvFallsBackToShell(t *testing.T) {
+func TestLaunchArgv(t *testing.T) {
 	tm := NewTmux(tsexec.NewFake())
 	tm.Shell = "/bin/zsh"
-	if got := tm.launchArgv(Window{Name: "infra"}); got[len(got)-1] != "/bin/zsh" {
-		t.Errorf("launchArgv = %v, want [/bin/zsh]", got)
-	}
-	if got := tm.launchArgv(Window{Name: "backend", Command: []string{"claude", "-p"}}); !strings.HasSuffix(strings.Join(got, " "), " claude -p") {
-		t.Errorf("launchArgv = %v, want [claude -p]", got)
-	}
-}
-
-func TestLaunchArgvSetsWindowEnv(t *testing.T) {
-	tm := NewTmux(tsexec.NewFake())
-	tm.Shell = "/bin/zsh"
-	w := Window{Name: "infra", Env: []string{"TSPACE_TASK=PAY-142", "TSPACE_WINDOW=infra"}}
-	if got := strings.Join(tm.launchArgv(w), " "); !strings.HasSuffix(got, " TSPACE_TASK=PAY-142 TSPACE_WINDOW=infra /bin/zsh") {
-		t.Errorf("launchArgv = %q", got)
-	}
-	w.Command = []string{"claude", "-p"}
-	if got := strings.Join(tm.launchArgv(w), " "); !strings.HasSuffix(got, " TSPACE_TASK=PAY-142 TSPACE_WINDOW=infra claude -p") {
-		t.Errorf("launchArgv = %q", got)
+	for _, tc := range []struct {
+		w    Window
+		want string
+	}{
+		{Window{}, "/bin/zsh"},
+		{Window{Command: []string{"claude", "-p"}}, "claude -p"},
+		{Window{Env: []string{"TSPACE_TASK=PAY-142", "TSPACE_WINDOW=infra"}}, "TSPACE_TASK=PAY-142 TSPACE_WINDOW=infra /bin/zsh"},
+		{Window{Command: []string{"claude", "-p"}, Env: []string{"TSPACE_TASK=PAY-142", "TSPACE_WINDOW=infra"}}, "TSPACE_TASK=PAY-142 TSPACE_WINDOW=infra claude -p"},
+	} {
+		want := strings.Fields(cleanLaunchPrefix() + " " + tc.want)
+		if got := tm.launchArgv(tc.w); !slices.Equal(got, want) {
+			t.Errorf("launchArgv = %q, want %q", got, want)
+		}
 	}
 }
 
