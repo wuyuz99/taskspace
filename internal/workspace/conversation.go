@@ -41,6 +41,20 @@ func (s *Service) carriers(c *task.Config) []string {
 	return out
 }
 
+// conversationConfig is the config for choosing carriers. Carrying
+// conversations is a convenience, so a config it cannot read is a warning: it
+// must not stop a move that needs nothing else from it.
+func (s *Service) conversationConfig() *task.Config {
+	if len(s.Carriers) > 0 {
+		c, err := s.Store.LoadConfig()
+		if err == nil {
+			return c
+		}
+		s.warnf("carrying no conversations: %v", err)
+	}
+	return &task.Config{}
+}
+
 // carryConversations has each chosen carrier move the history kept for the
 // moved directories, now that they have moved, under both spellings of a
 // path through a symbolic link, and returns the windows whose history went

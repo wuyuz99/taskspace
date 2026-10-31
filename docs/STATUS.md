@@ -251,6 +251,12 @@ shows on the note line and nothing changes; `repo rm`'s notes, such as a
 saved window it forgot, follow the result. It works only on a repository
 row: on a collapsed task, expand it first.
 
+`m` moves the selected repository to another task, through a form below the
+table: `tspace repo move TASK REPO --to NEW`. Pick the task, and optionally
+give the repository another name there. Like `-`, it works only on a
+repository row. Its refusals, such as a window still open, show on the note
+line and nothing changes; once it is done the cursor goes to the new task.
+
 `n` creates a task, through a form below the table: its name, checked as
 you type it (a bad or taken name is refused before anything is written),
 its repositories, picked from the registered ones, with more typed as

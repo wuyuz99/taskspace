@@ -12,8 +12,14 @@ upgrade.
   `--branches` also renames unpublished branches following the configured
   task-name convention. Dash offers the same operation with `N`. A warning
   names old directories where resumable agents leave their conversations.
-- **`tspace config carry-conversations claude`** has task rename move Claude
-  Code's history along with the task root and worktrees it moves, by renaming
+- **Move a repository between tasks.** `tspace repo move OLD REPO --to NEW
+  [--name NAME]`, or `m` in dash, moves its worktree with uncommitted and
+  untracked files, and keeps its branch, base, agent, resume command, setup
+  and saved windows. It refuses while the repository's windows are open, and
+  moves the worktree back if anything fails. The task's agent and root window
+  settle as they do for `repo add` and `repo rm`.
+- **`tspace config carry-conversations claude`** has task rename and repo move
+  take Claude Code's history along with the directories they move, by renaming
   the folder under `~/.claude/projects` named after each directory, so
   `restart --resume` finds the conversation at the new path. A conversation
   that is not carried, because the new path already has one or for any other

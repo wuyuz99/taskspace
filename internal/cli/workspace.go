@@ -117,6 +117,12 @@ func (a *App) render(e workspace.Event) {
 		a.printf("removed task %s\n", e.Task)
 	case workspace.ConversationCarried:
 		a.printf("%-12s carried its %s conversation from %s\n", windowCell(e.Window), e.Agent, e.From)
+	case workspace.AgentPlaced:
+		a.printf("  agent:    %s (runs in this worktree)\n", agentDisplay(task.Repo{Agent: e.Command}))
+	case workspace.RootWindowPending:
+		a.printf("the next start opens a root window for %s; its agent stays in %s\n", e.Task, e.AgentRepo)
+	case workspace.RootWindowOpened:
+		a.printf("opened the root window for %s (a shell at %s); its agent stays in %s\n", e.Task, e.Dir, e.AgentRepo)
 	case workspace.NotesRemoved:
 		a.printf("deleted its notes (%s)\n", joinNames(e.Files))
 	}

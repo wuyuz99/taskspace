@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/wuyuz99/taskspace/internal/task"
 )
 
 // RemoveRepo takes a repository out of a task. It cleans the repository
@@ -44,9 +46,7 @@ func (s *Service) RemoveRepo(ctx context.Context, name, repo string, keepWorktre
 			return "", err
 		}
 	}
-	if repo == t.AgentRepo && len(t.Resume) > 0 {
-		s.warnf("note: the task's agent moves to the root window, at %s; a resume command that finds its conversation by directory will not find the one from %s", s.Store.TaskDir(t.Name), repo)
-	}
+	s.noteAgentToRoot(t, repo)
 	for _, w := range t.RemoveRepo(repo) {
 		s.warnf("note: forgot saved window %s, which opened in %s", w.SessionName(), repo)
 	}
@@ -62,4 +62,12 @@ func (s *Service) RemoveRepo(ctx context.Context, name, repo string, keepWorktre
 		return r.Worktree, nil
 	}
 	return "", nil
+}
+
+// noteAgentToRoot warns, when repo is leaving t and runs its agent, that a
+// resume in the root window will not find the conversation it had there.
+func (s *Service) noteAgentToRoot(t *task.Task, repo string) {
+	if repo == t.AgentRepo && len(t.Resume) > 0 {
+		s.warnf("note: the task's agent moves to the root window, at %s; a resume command that finds its conversation by directory will not find the one from %s", s.Store.TaskDir(t.Name), repo)
+	}
 }

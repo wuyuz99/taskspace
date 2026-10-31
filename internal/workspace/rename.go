@@ -26,19 +26,11 @@ func (s *Service) Rename(ctx context.Context, old, name string, opts RenameOptio
 	if old == name {
 		return fmt.Errorf("task is already named %s", old)
 	}
-	names := []string{old, name}
-	sort.Strings(names)
-	for _, n := range names {
-		next, lock, err := s.Acquire(ctx, n, s.command("tspace task rename"))
-		if err != nil {
-			return err
-		}
-		defer lock.Unlock()
-		if lock.Inherited() {
-			return fmt.Errorf("task rename cannot run from a hook changing %s", n)
-		}
-		ctx = next
+	ctx, unlock, err := s.acquireBoth(ctx, s.command("tspace task rename"), old, name)
+	if err != nil {
+		return err
 	}
+	defer unlock()
 	t, err := s.Store.Load(old)
 	if err != nil {
 		return err
@@ -66,20 +58,14 @@ func (s *Service) Rename(ctx context.Context, old, name string, opts RenameOptio
 	if cwd, err := os.Getwd(); err == nil && pathInside(cwd, from) {
 		return fmt.Errorf("run task rename from outside %s", from)
 	}
-	cfg := &task.Config{}
+	var cfg *task.Config
 	if opts.Branches {
 		cfg, err = s.Store.LoadConfig()
 		if err != nil {
 			return err
 		}
-	} else if len(s.Carriers) > 0 {
-		// Carrying conversations is a convenience; a config it cannot read
-		// must not stop a rename that needs nothing else from it.
-		if c, err := s.Store.LoadConfig(); err == nil {
-			cfg = c
-		} else {
-			s.warnf("carrying no conversations: %v", err)
-		}
+	} else {
+		cfg = s.conversationConfig()
 	}
 	type plan struct {
 		repo, from, to, branch        string
@@ -96,35 +82,8 @@ func (s *Service) Rename(ctx context.Context, old, name string, opts RenameOptio
 			return fmt.Errorf("%s's worktree is outside its expected path %s", repo, expected)
 		}
 		p := plan{repo: repo, from: r.Worktree, to: s.Store.WorktreePath(name, repo), branch: r.Branch}
-		if info, err := os.Lstat(p.from); err == nil {
-			if !info.IsDir() {
-				return fmt.Errorf("%s is not a worktree directory", p.from)
-			}
-			p.present = true
-			wt, err := s.Git.FindWorktree(ctx, r.Path, p.from)
-			if err != nil {
-				return err
-			}
-			if wt == nil || wt.Bare || wt.Locked {
-				return fmt.Errorf("%s is missing from git's worktrees or is locked", p.from)
-			}
-			all, err := s.Git.Worktrees(ctx, r.Path)
-			if err != nil {
-				return err
-			}
-			if len(all) > 0 && sameDirectory(all[0].Path, p.from) {
-				return fmt.Errorf("%s is a main checkout", p.from)
-			}
-		} else if !os.IsNotExist(err) {
+		if p.present, err = s.movableWorktree(ctx, r.Path, p.from); err != nil {
 			return err
-		} else {
-			wt, err := s.Git.FindWorktree(ctx, r.Path, p.from)
-			if err != nil {
-				return err
-			}
-			if wt != nil {
-				return fmt.Errorf("%s is missing but still registered with git; restore it or prune its registration before renaming", p.from)
-			}
 		}
 		if opts.Branches && r.Branch == cfg.Branch(old) {
 			p.branch = cfg.Branch(name)
@@ -235,15 +194,7 @@ func (s *Service) Rename(ctx context.Context, old, name string, opts RenameOptio
 			moved = append(moved, newMovedDir(p.repo, p.from, p.to))
 		}
 	}
-	var undo []func() error
-	rollback := func(cause error) error {
-		for i := len(undo) - 1; i >= 0; i-- {
-			if err := undo[i](); err != nil {
-				cause = errors.Join(cause, fmt.Errorf("rollback: %w", err))
-			}
-		}
-		return cause
-	}
+	var undo undoLog
 	if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
 		return err
 	}
@@ -262,13 +213,13 @@ func (s *Service) Rename(ctx context.Context, old, name string, opts RenameOptio
 		oldBranch := r.Branch
 		if p.present {
 			if err := s.Git.MoveWorktree(ctx, r.Path, p.from, p.to); err != nil {
-				return rollback(err)
+				return undo.rollback(err)
 			}
 			undo = append(undo, func() error { return s.Git.MoveWorktree(backCtx, r.Path, p.to, p.from) })
 		}
 		if p.rename && p.branchExists {
 			if err := s.Git.RenameBranch(ctx, r.Path, r.Branch, p.branch); err != nil {
-				return rollback(err)
+				return undo.rollback(err)
 			}
 			undo = append(undo, func() error { return s.Git.RenameBranch(backCtx, r.Path, p.branch, oldBranch) })
 		}
@@ -277,35 +228,35 @@ func (s *Service) Rename(ctx context.Context, old, name string, opts RenameOptio
 	}
 	entries, err := os.ReadDir(from)
 	if err != nil && !os.IsNotExist(err) {
-		return rollback(err)
+		return undo.rollback(err)
 	}
 	for _, entry := range entries {
 		src, dst := filepath.Join(from, entry.Name()), filepath.Join(to, entry.Name())
 		if _, err := os.Lstat(dst); err == nil {
-			return rollback(fmt.Errorf("%s already exists", dst))
+			return undo.rollback(fmt.Errorf("%s already exists", dst))
 		} else if !os.IsNotExist(err) {
-			return rollback(err)
+			return undo.rollback(err)
 		}
 		if err := os.Rename(src, dst); err != nil {
-			return rollback(err)
+			return undo.rollback(err)
 		}
 		undo = append(undo, func() error { return os.Rename(dst, src) })
 	}
 	oldRun, newRun := s.Store.RunDir(old), s.Store.RunDir(name)
 	if _, err := os.Lstat(oldRun); err == nil {
 		if err := os.Rename(oldRun, newRun); err != nil {
-			return rollback(err)
+			return undo.rollback(err)
 		}
 		undo = append(undo, func() error { return os.Rename(newRun, oldRun) })
 	} else if !os.IsNotExist(err) {
-		return rollback(err)
+		return undo.rollback(err)
 	}
 	t.Name = name
 	if err := ctx.Err(); err != nil {
-		return rollback(err)
+		return undo.rollback(err)
 	}
 	if err := s.Store.CommitRename(old, t); err != nil {
-		return rollback(err)
+		return undo.rollback(err)
 	}
 	if err := os.Remove(from); err != nil && !os.IsNotExist(err) {
 		s.warnf("renamed task, but could not remove empty directory %s: %v", from, err)
@@ -315,6 +266,81 @@ func (s *Service) Rename(ctx context.Context, old, name string, opts RenameOptio
 		s.warnConversationsLeft(name, resumed, s.carryConversations(name, carriers, moved))
 	}
 	return nil
+}
+
+// acquireBoth takes two tasks' locks for a lifecycle operation, always in the
+// same order, so two operations on the same pair cannot deadlock. Both stay
+// held until unlock, which is what carries an operation through its rollback.
+func (s *Service) acquireBoth(ctx context.Context, command, x, y string) (context.Context, func(), error) {
+	names := []string{x, y}
+	sort.Strings(names)
+	var held []*task.Lock
+	unlock := func() {
+		for i := len(held) - 1; i >= 0; i-- {
+			held[i].Unlock()
+		}
+	}
+	for _, n := range names {
+		next, lock, err := s.Acquire(ctx, n, command)
+		if err != nil {
+			unlock()
+			return ctx, nil, err
+		}
+		held = append(held, lock)
+		if lock.Inherited() {
+			unlock()
+			return ctx, nil, fmt.Errorf("%s cannot run from a hook changing %s", command, n)
+		}
+		ctx = next
+	}
+	return ctx, unlock, nil
+}
+
+// movableWorktree reports whether a worktree of repo is at path, refusing
+// what git would not move, or what would leave its registration behind.
+func (s *Service) movableWorktree(ctx context.Context, repo, path string) (present bool, err error) {
+	info, err := os.Lstat(path)
+	if err != nil && !os.IsNotExist(err) {
+		return false, err
+	}
+	wt, ferr := s.Git.FindWorktree(ctx, repo, path)
+	if ferr != nil {
+		return false, ferr
+	}
+	if err != nil {
+		if wt != nil {
+			return false, fmt.Errorf("%s is missing but still registered with git; restore it or prune its registration first", path)
+		}
+		return false, nil
+	}
+	if !info.IsDir() {
+		return false, fmt.Errorf("%s is not a worktree directory", path)
+	}
+	if wt == nil || wt.Bare || wt.Locked {
+		return false, fmt.Errorf("%s is missing from git's worktrees or is locked", path)
+	}
+	all, err := s.Git.Worktrees(ctx, repo)
+	if err != nil {
+		return false, err
+	}
+	if len(all) > 0 && sameDirectory(all[0].Path, path) {
+		return false, fmt.Errorf("%s is a main checkout", path)
+	}
+	return true, nil
+}
+
+// undoLog holds how to undo each step of an operation done so far.
+type undoLog []func() error
+
+// rollback undoes the steps, last first, and returns cause with anything that
+// could not be undone.
+func (u undoLog) rollback(cause error) error {
+	for i := len(u) - 1; i >= 0; i-- {
+		if err := u[i](); err != nil {
+			cause = errors.Join(cause, fmt.Errorf("rollback: %w", err))
+		}
+	}
+	return cause
 }
 
 func pathInside(path, root string) bool {
