@@ -149,6 +149,10 @@ upgrade.
 
 ### Fixed
 
+- **Git operations use the requested repository**, even when tspace runs
+  from a Git hook with another repository's environment. Status, cleanup
+  safety checks, mutations and cloning ignore inherited repository context
+  while keeping authentication and global configuration (#91).
 - **dash shows a refusal whole.** A long note takes as many lines as it needs,
   wrapped to the terminal, in place of table rows and if need be the detail
   pane, until the next key. A refused `D`, `R` or `-` names the command that

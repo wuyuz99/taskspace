@@ -31,7 +31,28 @@ func New(r tsexec.Runner) *Git {
 }
 
 func (g *Git) git(ctx context.Context, dir string, args ...string) (tsexec.Result, error) {
+	ctx = tsexec.WithEnv(ctx, repositoryEnv(os.Environ()))
 	return g.run.Run(ctx, dir, append([]string{"git"}, args...)...)
+}
+
+// repositoryEnv clears Git's repository-local context (git rev-parse
+// --local-env-vars), as required when a hook operates on another repository.
+// Authentication, global/system configuration and other user settings survive.
+func repositoryEnv(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, entry := range env {
+		key, _, _ := strings.Cut(entry, "=")
+		switch strings.ToUpper(key) {
+		case "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CONFIG", "GIT_CONFIG_PARAMETERS",
+			"GIT_CONFIG_COUNT", "GIT_OBJECT_DIRECTORY", "GIT_DIR", "GIT_WORK_TREE",
+			"GIT_IMPLICIT_WORK_TREE", "GIT_GRAFT_FILE", "GIT_INDEX_FILE",
+			"GIT_NO_REPLACE_OBJECTS", "GIT_REPLACE_REF_BASE", "GIT_PREFIX",
+			"GIT_SHALLOW_FILE", "GIT_COMMON_DIR":
+			continue
+		}
+		out = append(out, entry)
+	}
+	return out
 }
 
 // ok runs a git command and reports whether it exited zero, discarding the
@@ -460,6 +481,7 @@ func (g *Git) FullRefName(ctx context.Context, repo, ref string) (string, error)
 // leaves url out, as it may hold a token.
 func (g *Git) Clone(ctx context.Context, url, dest string, in io.Reader, out io.Writer) error {
 	cmd := osexec.CommandContext(ctx, "git", "clone", "--origin", "origin", "--", url, dest)
+	cmd.Env = repositoryEnv(os.Environ())
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = in, out, out
 	return cmd.Run()
 }
