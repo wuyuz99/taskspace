@@ -149,6 +149,11 @@ upgrade.
 
 ### Fixed
 
+- **Git operations use the requested repository**, even when tspace runs
+  from a Git hook with another repository's environment. Status, cleanup
+  safety checks, mutations and cloning ignore inherited repository context
+  while keeping authentication and global configuration (#91).
+
 - **`import` takes a worktree no task claims**, wherever it is, instead of
   refusing everything under tspace's worktrees directory. A worktree left by
   `repo rm --keep-worktree` can join another task, or its old task under the

@@ -64,6 +64,14 @@ func IsExit(err error) bool {
 
 type real struct{}
 
+type envKey struct{}
+
+// WithEnv supplies the complete environment for a subprocess without changing
+// the parent process. Runners that only record arguments may ignore it.
+func WithEnv(ctx context.Context, env []string) context.Context {
+	return context.WithValue(ctx, envKey{}, env)
+}
+
 // Real returns a Runner that actually executes commands.
 func Real() Runner { return real{} }
 
@@ -73,6 +81,9 @@ func (real) Run(ctx context.Context, dir string, argv ...string) (Result, error)
 	}
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = dir
+	if env, ok := ctx.Value(envKey{}).([]string); ok {
+		cmd.Env = env
+	}
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
