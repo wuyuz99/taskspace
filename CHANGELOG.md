@@ -15,6 +15,11 @@ upgrade.
 - **`import` accepts uncommitted changes.** Work in progress moves with the
   worktree and is reported, and nothing is committed. Conflicted files, an
   unfinished merge or rebase, a lock and a detached HEAD are still refused.
+- **`import` takes several worktrees.** `tspace import PATH... --task NAME`
+  checks them all before moving any, moves back the ones already moved if one
+  fails, and decides the layout once, as `task create` does: with several, a
+  task that had no repositories gets its agent at the root, not in the first.
+  `--with-root` asks for that with one.
 - **Move a repository between tasks.** `tspace repo move OLD REPO --to NEW
   [--name NAME]`, or `m` in dash, moves its worktree with uncommitted and
   untracked files, and keeps its branch, base, agent, resume command, setup

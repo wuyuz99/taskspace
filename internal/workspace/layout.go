@@ -7,13 +7,13 @@ import (
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
-// SettleLayout decides where the task's agent runs once a repository has
-// been added: in a first repository's worktree, when nothing has run in a
-// root window yet, and with a root window again once there is a second. It
-// reports whether that root window should be opened now, in the running
-// session.
+// SettleLayout decides where the task's agent runs once repositories have been
+// added, first if the task had none: in a sole repository's worktree, when
+// nothing has run in a root window yet, and with a root window again once
+// there is a second. It reports whether that root window should be opened now,
+// in the running session.
 func (s *Service) SettleLayout(ctx context.Context, t *task.Task, first bool) (openRoot bool) {
-	movable := first && t.HasRootWindow() && !t.RootWindow && t.CanRunAgentIn(t.RepoNames()[0])
+	movable := first && len(t.Repos) == 1 && t.HasRootWindow() && !t.RootWindow && t.CanRunAgentIn(t.RepoNames()[0])
 	needsRoot := !t.HasRootWindow() && len(t.Repos) > 1
 	if !movable && !needsRoot {
 		return false

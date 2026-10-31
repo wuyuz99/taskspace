@@ -56,7 +56,7 @@ require explicit task names.
 | `tspace config hooks claude [--remove]` | Install the Claude Code hooks that call `tspace signal` |
 | `tspace config hooks gemini [--remove]` | Install the Gemini CLI hooks that call `tspace signal` |
 | `tspace clean TASK [REPO...] [--delete-branch] [--force] [--rm]` | Remove worktrees, safely, of every repository or only those named; `--rm` deletes the task record too |
-| `tspace import PATH [--task NAME] [--name REPO]` | Move a worktree made with `git worktree add` into a task, with any uncommitted changes |
+| `tspace import PATH... [--task NAME] [--name REPO] [--with-root]` | Move worktrees made with `git worktree add` into a task, with any uncommitted changes |
 | `tspace editor [TASK] [--print]` | Write the task's `.code-workspace` and open it in your editor |
 | `tspace completion SHELL` | Generate a shell completion script |
 

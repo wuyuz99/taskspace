@@ -91,7 +91,7 @@ func TestImportKeepsUncommittedChanges(t *testing.T) {
 	gitIn(t, wt, "add", "staged.txt")
 	before := gitIn(t, wt, "status", "--porcelain")
 
-	// Already attached to T, the repository is refused after the move.
+	// Already attached to T, the repository is refused before the move.
 	h.startedTask(t, "T")
 	if err := h.exec(t, h.app.newImportCmd(), wt, "--task", "T", "--name", "second"); err == nil || !strings.Contains(err.Error(), "already attached") {
 		t.Fatalf("import into a task with the repository = %v", err)
@@ -109,6 +109,178 @@ func TestImportKeepsUncommittedChanges(t *testing.T) {
 	moved := h.load(t, "wip")
 	if got := gitIn(t, moved.Repos[moved.RepoNames()[0]].Worktree, "status", "--porcelain"); got != before {
 		t.Fatalf("after the move %q; want %q", got, before)
+	}
+}
+
+// repoNamed makes a repository in a directory called name.
+func repoNamed(t *testing.T, name string) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), name)
+	gitIn(t, mkRepo(t), "clone", "-q", ".", dir)
+	if r, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = r
+	}
+	return dir
+}
+
+// Several worktrees get the layout task create gives them: nothing has run,
+// so the agent is at the root rather than in whichever came first.
+func TestImportSeveralIntoANewTask(t *testing.T) {
+	h := newHarness(t)
+	api := linkedWorktree(t, repoNamed(t, "api"), "fix-api")
+	web := linkedWorktree(t, repoNamed(t, "web"), "fix-web")
+
+	if err := h.exec(t, h.app.newImportCmd(), api, web, "--task", "both"); err != nil {
+		t.Fatalf("import: %v\n%s", err, h.errb.String())
+	}
+	tk := h.load(t, "both")
+	if len(tk.Repos) != 2 || tk.Repos["api"].Branch != "fix-api" || tk.Repos["web"].Branch != "fix-web" {
+		t.Fatalf("repos %+v", tk.Repos)
+	}
+	if tk.AgentRepo != "" || !tk.HasRootWindow() {
+		t.Fatalf("agent in %q, root window %v", tk.AgentRepo, tk.HasRootWindow())
+	}
+	for _, old := range []string{api, web} {
+		if _, err := os.Stat(old); !os.IsNotExist(err) {
+			t.Fatalf("%s is still there: %v", old, err)
+		}
+	}
+	if out := h.out.String(); strings.Count(out, "moved ") != 2 || strings.Count(out, "start it with") != 1 {
+		t.Fatalf("output: %s", out)
+	}
+}
+
+func TestImportSeveralIntoATaskWithAnAgent(t *testing.T) {
+	h := newHarness(t)
+	if err := h.exec(t, h.app.newImportCmd(), linkedWorktree(t, h.repo, "single")); err != nil {
+		t.Fatal(err)
+	}
+	agentRepo := h.load(t, "single").AgentRepo
+	if agentRepo == "" {
+		t.Fatal("one worktree: the agent is not in it")
+	}
+	api := linkedWorktree(t, repoNamed(t, "api"), "fix-api")
+	web := linkedWorktree(t, repoNamed(t, "web"), "fix-web")
+	if err := h.exec(t, h.app.newImportCmd(), api, web, "--task", "single"); err != nil {
+		t.Fatal(err)
+	}
+	if tk := h.load(t, "single"); tk.AgentRepo != agentRepo || !tk.RootWindow || len(tk.Repos) != 3 {
+		t.Fatalf("after joining: %+v", tk)
+	}
+}
+
+func TestImportWithRoot(t *testing.T) {
+	h := newHarness(t)
+	if err := h.exec(t, h.app.newImportCmd(), linkedWorktree(t, h.repo, "rooted"), "--with-root"); err != nil {
+		t.Fatal(err)
+	}
+	if tk := h.load(t, "rooted"); tk.AgentRepo != "" || !tk.RootWindow {
+		t.Fatalf("task %+v", tk)
+	}
+	again := linkedWorktree(t, mkRepo(t), "again")
+	err := h.exec(t, h.app.newImportCmd(), again, "--task", "rooted", "--with-root")
+	if err == nil || !strings.Contains(err.Error(), "--with-root is for a new task") {
+		t.Fatalf("--with-root into an existing task = %v", err)
+	}
+	if _, err := os.Stat(again); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Nothing moves until every path is known to be good.
+func TestImportSeveralRefusesBeforeMoving(t *testing.T) {
+	h := newHarness(t)
+	good := linkedWorktree(t, h.repo, "good")
+	other := linkedWorktree(t, h.repo, "other")
+	sameName := linkedWorktree(t, repoNamed(t, filepath.Base(h.repo)), "same-name")
+	detached := filepath.Join(t.TempDir(), "detached")
+	gitIn(t, mkRepo(t), "worktree", "add", "-q", "--detach", detached)
+	lower := linkedWorktree(t, repoNamed(t, "api"), "lower")
+	upper := linkedWorktree(t, repoNamed(t, "API"), "upper")
+	taken := linkedWorktree(t, repoNamed(t, "taken"), "wt-taken")
+	if err := os.MkdirAll(h.app.Store.WorktreePath("blocked", "taken"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, c := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"no task", []string{good, sameName}, "--task"},
+		{"one name for two", []string{good, sameName, "--task", "T", "--name", "x"}, "--name names one"},
+		{"a bad path after a good one", []string{good, detached, "--task", "T"}, "detached"},
+		{"the same repository twice", []string{good, other, "--task", "T"}, "both worktrees of"},
+		{"the same path twice", []string{good, good, "--task", "T"}, "both worktrees of"},
+		{"the same repository name", []string{good, sameName, "--task", "T"}, "would both be repository"},
+		{"names differing in case", []string{lower, upper, "--task", "T"}, "would both be repository"},
+		{"a place already taken", []string{good, taken, "--task", "blocked"}, "already exists"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if err := h.exec(t, h.app.newImportCmd(), c.args...); err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("import = %v", err)
+			}
+			if _, err := os.Stat(good); err != nil {
+				t.Fatalf("the good worktree moved: %v", err)
+			}
+			if h.app.Store.Exists("T") || h.app.Store.Exists("blocked") {
+				t.Fatal("a refused import left its task")
+			}
+		})
+	}
+}
+
+// A failure partway takes back what already moved. An upstream that no longer
+// exists is found only when the repository is recorded, after its move.
+func TestImportSeveralRollsBack(t *testing.T) {
+	cases := []struct {
+		name  string
+		setup func(t *testing.T, h *harness) (taskName string)
+		repos int
+	}{
+		{"a new task", func(*testing.T, *harness) string { return "T" }, 0},
+		{"an existing task", func(t *testing.T, h *harness) string { return h.startedTask(t, "T").Name }, 1},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			h := newHarness(t)
+			taskName := c.setup(t, h)
+			good := linkedWorktree(t, repoNamed(t, "a-good"), "good")
+			if err := os.WriteFile(filepath.Join(good, ".env"), []byte("keep\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			stuck := linkedWorktree(t, repoNamed(t, "b-stuck"), "stuck")
+			gitIn(t, stuck, "config", "branch.stuck.remote", "origin")
+			gitIn(t, stuck, "config", "branch.stuck.merge", "refs/heads/gone")
+
+			err := h.exec(t, h.app.newImportCmd(), good, stuck, "--task", taskName)
+			if err == nil {
+				t.Fatal("import of a worktree with no base succeeded")
+			}
+			if strings.Contains(err.Error(), "moved back") {
+				t.Fatalf("rollback failed: %v", err)
+			}
+			for _, wt := range []string{good, stuck} {
+				if _, err := os.Stat(wt); err != nil {
+					t.Fatalf("not moved back: %v", err)
+				}
+			}
+			if b, err := os.ReadFile(filepath.Join(good, ".env")); err != nil || string(b) != "keep\n" {
+				t.Fatalf("the first worktree is not back: %q, %v", b, err)
+			}
+			if strings.Contains(h.out.String(), "added a-good") {
+				t.Fatalf("reported a repository it took back:\n%s", h.out.String())
+			}
+			if c.repos == 0 {
+				if h.app.Store.Exists(taskName) {
+					t.Fatal("the failed import left its new task")
+				}
+				return
+			}
+			if tk := h.load(t, taskName); len(tk.Repos) != c.repos {
+				t.Fatalf("task changed: %+v", tk.Repos)
+			}
+		})
 	}
 }
 
