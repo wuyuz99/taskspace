@@ -394,6 +394,7 @@ func (m dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.confirm != nil || m.form != nil || msg.Action != tea.MouseActionPress {
 			return m, nil
 		}
+		m = m.foldNote()
 		switch msg.Button {
 		case tea.MouseButtonWheelUp:
 			m.cursor = max(m.cursor-1, 0)
@@ -427,6 +428,7 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	}
+	m = m.foldNote()
 
 	switch msg.String() {
 	case "q", "esc", "ctrl+c":
@@ -617,7 +619,7 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if left != "" {
 					text += "; note: the worktree at " + left + " was left in place"
 				}
-				return text, err
+				return text, nameForce(err, fmt.Sprintf("tspace clean %s %s --force", row.Task, row.Window))
 			}),
 		}
 		return m, nil
@@ -703,8 +705,12 @@ func (m dashModel) clean(name string, opts workspace.CleanOptions, prompt, done 
 		}
 		return m, nil
 	}
+	force := "tspace clean " + name + " --force"
+	if opts.Remove {
+		force = "tspace clean " + name + " --rm --force"
+	}
 	act := m.act(func(ws *workspace.Service) (string, error) {
-		return done, ws.Clean(m.ctx, name, opts)
+		return done, nameForce(ws.Clean(m.ctx, name, opts), force)
 	})
 	m.confirm = &dashConfirm{prompt: prompt, run: func() tea.Msg {
 		msg := act().(dashDoneMsg)
@@ -714,6 +720,15 @@ func (m dashModel) clean(name string, opts workspace.CleanOptions, prompt, done 
 		return msg
 	}}
 	return m, nil
+}
+
+// nameForce puts the command in a refusal's advice: dash has no --force to
+// re-run with.
+func nameForce(err error, command string) error {
+	if err == nil || !strings.Contains(err.Error(), workspace.ForceAdvice) {
+		return err
+	}
+	return errors.New(strings.ReplaceAll(err.Error(), workspace.ForceAdvice, "run "+command))
 }
 
 // focus shows a window: by switching the client when dash is inside the
@@ -811,15 +826,51 @@ func reportStyle(r *status.Report) lipgloss.Style {
 	return dashFaint
 }
 
-// dashDetailLines is the height kept for everything that is not the table.
-const dashDetailLines = 13
+const (
+	// dashDetailLines is the height kept for everything that is not the table.
+	dashDetailLines = 13
+	// dashTableLines is the least a long note leaves for the rest: the header,
+	// the table at its smallest, and the keys.
+	dashTableLines = 8
+)
+
+// noteLines is the note as it will be drawn, keeping the lines it has and
+// wrapping them to the screen, so that a refusal is read whole. One too long
+// for the screen loses its middle: the advice comes last.
+func (m dashModel) noteLines() []string {
+	if m.form != nil || m.confirm != nil {
+		return nil
+	}
+	var out []string
+	for _, l := range strings.Split(displayText(m.note), "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			out = append(out, strings.Split(ansi.Wrap(l, m.width, ""), "\n")...)
+		}
+	}
+	room := max(m.height-dashTableLines-len(m.data.Warn), 4)
+	if len(out) > room {
+		cut := fmt.Sprintf("... %d more lines", len(out)-room+1)
+		out = slices.Concat(out[:room-3], []string{cut}, out[len(out)-2:])
+	}
+	return out
+}
+
+// foldNote drops a note of several lines once a key says it has been read,
+// giving its room back to the table and the detail pane.
+func (m dashModel) foldNote() dashModel {
+	if len(m.noteLines()) > 1 {
+		m.note, m.noteErr = "", false
+	}
+	return m
+}
 
 func (m dashModel) View() string {
 	if !m.loaded {
 		return "tspace dash: loading...\n"
 	}
-	var b strings.Builder
+	var b, detail, foot strings.Builder
 	now := time.Now()
+	note := m.noteLines()
 
 	// Header: what needs attention, counted, so the answer to "is anyone
 	// waiting on me" does not require reading the table.
@@ -859,29 +910,40 @@ func (m dashModel) View() string {
 	if len(m.data.Rows) == 0 {
 		b.WriteString("no tasks yet; press n to create one (tspace task create NAME)\n")
 	} else {
-		m.table(&b, now)
+		m.table(&b, now, max(len(note)-1, 0))
 		// The form takes the detail pane's room.
 		if m.form == nil {
-			m.detail(&b, now)
+			m.detail(&detail, now)
 		}
 	}
 
 	for _, w := range m.data.Warn {
-		b.WriteString(dashYellow.Render(oneLine(w)) + "\n")
+		foot.WriteString(dashYellow.Render(oneLine(w)) + "\n")
 	}
 	switch {
 	case m.form != nil:
-		b.WriteString(m.form.view(m.width))
+		foot.WriteString(m.form.view(m.width))
 	case m.confirm != nil:
-		b.WriteString(dashBold.Render(m.confirm.prompt) + "\n")
-	case m.noteErr:
-		b.WriteString(dashRed.Render(oneLine(m.note)) + "\n")
+		foot.WriteString(dashBold.Render(m.confirm.prompt) + "\n")
+	case len(note) == 0:
+		foot.WriteString("\n")
 	default:
-		b.WriteString(m.note + "\n")
+		for _, l := range note {
+			if m.noteErr {
+				l = dashRed.Render(l)
+			}
+			foot.WriteString(l + "\n")
+		}
 	}
 	if m.form == nil {
-		b.WriteString(dashFaint.Render("enter attach · space expand · s/x task · S/X window · r restart · D clean · R delete · - remove repo · m move repo · t tab · c clear · n new · N rename · w window · W save window · I interrupted · q quit"))
+		foot.WriteString(dashFaint.Render("enter attach · space expand · s/x task · S/X window · r restart · D clean · R delete · - remove repo · m move repo · t tab · c clear · n new · N rename · w window · W save window · I interrupted · q quit"))
 	}
+
+	// A long note takes the detail pane's room too, if the screen can't hold both.
+	if len(note) > 1 && strings.Count(b.String()+detail.String()+foot.String(), "\n")+1 > m.height {
+		detail.Reset()
+	}
+	b.WriteString(detail.String() + foot.String())
 
 	// Nothing may wrap: a wrapped line pushes the rest off the alt screen.
 	lines := strings.Split(b.String(), "\n")
@@ -891,7 +953,8 @@ func (m dashModel) View() string {
 	return strings.Join(lines, "\n")
 }
 
-func (m dashModel) table(b *strings.Builder, now time.Time) {
+// table draws the rows, shrink fewer than usual to leave room for a long note.
+func (m dashModel) table(b *strings.Builder, now time.Time, shrink int) {
 	cells := make([][]string, 0, len(m.data.Rows)+1)
 	cells = append(cells, []string{"TASK", "REPO", "AGENT", "RUNTIME", "STATE", "GIT"})
 	for i, r := range m.data.Rows {
@@ -939,7 +1002,7 @@ func (m dashModel) table(b *strings.Builder, now time.Time) {
 	pad := func(i int, s string) string { return s + strings.Repeat(" ", widths[i]-lipgloss.Width(s)+2) }
 
 	// Scroll so the cursor stays on screen.
-	visible := max(m.height-dashDetailLines, 3)
+	visible := max(m.height-dashDetailLines-shrink, 3)
 	first := 0
 	if m.cursor >= visible {
 		first = m.cursor - visible + 1
