@@ -22,7 +22,7 @@ Without Go, download a binary for Linux or macOS (amd64 or arm64) from the
 [releases page](https://github.com/wuyuz99/taskspace/releases):
 
 ```bash
-VERSION=v0.1.1   # the release you downloaded
+VERSION=v0.2.0   # the release you downloaded
 tar -xzf tspace_${VERSION}_linux_amd64.tar.gz
 sudo install -m 0755 tspace_${VERSION}_linux_amd64/tspace /usr/local/bin/tspace   # or anywhere on PATH
 tspace --version
