@@ -125,14 +125,16 @@ snippets to paste. For Claude Code, install the hooks once:
 tspace config hooks claude            # --remove takes them out again
 ```
 
-That adds three hooks to your user settings, `~/.claude/settings.json`, and
+That adds five hooks to your user settings, `~/.claude/settings.json`, and
 leaves everything else in the file alone:
 
 ```json
 {
   "hooks": {
     "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet working" }] }],
-    "Notification":     [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet blocked" }] }],
+    "Notification":     [{ "matcher": "permission_prompt|elicitation_dialog", "hooks": [{ "type": "command", "command": "tspace signal --quiet blocked" }] }],
+    "PostToolUse":      [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet working" }] }],
+    "PostToolUseFailure": [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet working" }] }],
     "Stop":             [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet done" }] }]
   }
 }
@@ -144,10 +146,17 @@ Code session: `--quiet` makes `tspace signal` do nothing outside a task, and
 print nothing inside one, since what a `UserPromptSubmit` hook prints is shown
 to the agent.
 
+Tool completion restores `working` after a permission prompt, including a
+tool that fails and returns control to Claude. Until that tool returns, a
+long-running approved tool can still show `blocked`. Each tool runs one short
+signal command. To upgrade an existing installation, run the installer again
+and start a new agent session; your other hooks are kept.
+
 For Gemini CLI, `tspace config hooks gemini` does the same in
 `~/.gemini/settings.json` (under `$GEMINI_CLI_HOME` if that is set), with
 Gemini's events: `BeforeAgent` for `working`, `Notification` (tool permission
-prompts) for `blocked`, and `AfterAgent` for `done`. Gemini's hooks are on
+prompts) for `blocked`, `AfterTool` to restore `working`, and `AfterAgent`
+for `done`. Gemini's hooks are on
 unless `hooksConfig.enabled` is `false`. Gemini allows comments in that file
 and tspace can't rewrite one that has them, so it refuses; add the hooks by
 hand instead, in the same shape as the Claude Code example above.

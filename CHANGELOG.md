@@ -177,6 +177,11 @@ upgrade.
 - **A repository with no default branch** gets the branch it is on as the
   base, or its commit when detached, not `HEAD`, which `status`, `clean
   --delete-branch` and `repo update --rebase` read in the wrong place.
+- **Agents recover from permission prompts in status and dash.** Claude's
+  tool completion and failure hooks, and Gemini's `AfterTool`, restore
+  `working` after a tool returns instead of leaving `blocked` until the turn
+  ends. Run `tspace config hooks claude` or `tspace config hooks gemini`
+  again and start a new agent session to install the additional hooks (#117).
 - **`config hooks claude` run again changes nothing**, even with hooks of
   yours after tspace's; it used to move tspace's to the end and rewrite the
   file.

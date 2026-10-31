@@ -46,6 +46,8 @@ var claudeAgent = hookAgent{
 	hooks: []signalHook{
 		{"UserPromptSubmit", "", "tspace signal --quiet working", ""},
 		{"Notification", "permission_prompt|elicitation_dialog", "tspace signal --quiet blocked", "permission prompts and questions"},
+		{"PostToolUse", "", "tspace signal --quiet working", "a tool completed after any approval"},
+		{"PostToolUseFailure", "", "tspace signal --quiet working", "a tool failed and the agent continues"},
 		{"Stop", "", "tspace signal --quiet done", ""},
 	},
 	settings:     claudeSettingsPath,
@@ -60,6 +62,7 @@ var geminiAgent = hookAgent{
 	hooks: []signalHook{
 		{"BeforeAgent", "", "tspace signal --quiet working", "a prompt was submitted"},
 		{"Notification", "", "tspace signal --quiet blocked", "tool permission prompts"},
+		{"AfterTool", "", "tspace signal --quiet working", "a tool completed after any approval"},
 		{"AfterAgent", "", "tspace signal --quiet done", "the turn's answer is done"},
 	},
 	settings:     geminiSettingsPath,

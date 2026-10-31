@@ -61,7 +61,8 @@ func (a *App) newSignalCmd() *cobra.Command {
 			"  tspace signal working --task PAY-142 --repo backend\n\n" +
 			"It is meant to be called by the agent's own hooks rather than typed. For\n" +
 			"Claude Code, for example: UserPromptSubmit runs `tspace signal working`,\n" +
-			"Notification runs `tspace signal blocked`, and Stop runs `tspace signal done`;\n" +
+			"Notification runs `tspace signal blocked`, PostToolUse and PostToolUseFailure\n" +
+			"restore `working`, and Stop runs `tspace signal done`;\n" +
 			"`tspace config hooks claude` installs exactly these.\n\n" +
 			"--quiet is for hooks that run in every session, inside a task or not: it\n" +
 			"prints nothing, and outside a task it does nothing and succeeds. A hook's\n" +
