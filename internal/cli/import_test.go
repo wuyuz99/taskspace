@@ -2,6 +2,7 @@ package cli
 
 import (
 	"os"
+	osexec "os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -74,6 +75,43 @@ func TestImportAdoptsAWorktree(t *testing.T) {
 	}
 }
 
+// Work in progress comes along as it is: nothing is committed or staged, and
+// a failure takes it back the same way.
+func TestImportKeepsUncommittedChanges(t *testing.T) {
+	h := newHarness(t)
+	gitIdentity(t)
+	wt := linkedWorktree(t, h.repo, "wip")
+	commitFile(t, wt, "staged.txt", "old\n", "a file to stage")
+	if err := os.WriteFile(filepath.Join(wt, "README.md"), []byte("changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wt, "staged.txt"), []byte("new\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, wt, "add", "staged.txt")
+	before := gitIn(t, wt, "status", "--porcelain")
+
+	// Already attached to T, the repository is refused after the move.
+	h.startedTask(t, "T")
+	if err := h.exec(t, h.app.newImportCmd(), wt, "--task", "T", "--name", "second"); err == nil || !strings.Contains(err.Error(), "already attached") {
+		t.Fatalf("import into a task with the repository = %v", err)
+	}
+	if got := gitIn(t, wt, "status", "--porcelain"); got != before {
+		t.Fatalf("moved back as %q; want %q", got, before)
+	}
+
+	if err := h.exec(t, h.app.newImportCmd(), wt); err != nil {
+		t.Fatalf("import: %v\n%s", err, h.errb.String())
+	}
+	if !strings.Contains(h.out.String(), "2 uncommitted changes kept; nothing was committed") {
+		t.Fatalf("output: %s", h.out.String())
+	}
+	moved := h.load(t, "wip")
+	if got := gitIn(t, moved.Repos[moved.RepoNames()[0]].Worktree, "status", "--porcelain"); got != before {
+		t.Fatalf("after the move %q; want %q", got, before)
+	}
+}
+
 func TestImportRefuses(t *testing.T) {
 	h := newHarness(t)
 	gitIdentity(t)
@@ -82,13 +120,30 @@ func TestImportRefuses(t *testing.T) {
 	if err := h.exec(t, h.app.newImportCmd(), h.repo); err == nil || !strings.Contains(err.Error(), "main checkout") {
 		t.Fatalf("import of the main checkout = %v", err)
 	}
-	// Uncommitted changes to tracked files.
-	dirty := linkedWorktree(t, h.repo, "dirty")
-	if err := os.WriteFile(filepath.Join(dirty, "README.md"), []byte("changed\n"), 0o644); err != nil {
+	// Conflicted files, with no unfinished operation to find: a stash that
+	// did not apply cleanly.
+	conflicted := linkedWorktree(t, h.repo, "conflicted")
+	if err := os.WriteFile(filepath.Join(conflicted, "README.md"), []byte("stashed\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.exec(t, h.app.newImportCmd(), dirty); err == nil || !strings.Contains(err.Error(), "uncommitted") {
-		t.Fatalf("import of a dirty worktree = %v", err)
+	gitIn(t, conflicted, "stash")
+	commitFile(t, conflicted, "README.md", "committed\n", "the other side")
+	pop := osexec.Command("git", "stash", "pop")
+	pop.Dir = conflicted
+	if err := pop.Run(); err == nil {
+		t.Fatal("stash pop did not conflict")
+	}
+	if err := h.exec(t, h.app.newImportCmd(), conflicted); err == nil || !strings.Contains(err.Error(), "1 conflicted file") {
+		t.Fatalf("import of a conflicted worktree = %v", err)
+	}
+	// An unfinished merge, staged and resolved or not.
+	merging := linkedWorktree(t, h.repo, "merging")
+	commitFile(t, merging, "ours.txt", "ours\n", "ours")
+	theirs := linkedWorktree(t, h.repo, "theirs-work")
+	commitFile(t, theirs, "theirs.txt", "theirs\n", "theirs")
+	gitIn(t, merging, "merge", "--no-commit", "--no-ff", "theirs-work")
+	if err := h.exec(t, h.app.newImportCmd(), merging); err == nil || !strings.Contains(err.Error(), "unfinished merge") {
+		t.Fatalf("import of an unfinished merge = %v", err)
 	}
 	// A detached HEAD.
 	detached := filepath.Join(t.TempDir(), "detached")
@@ -96,7 +151,7 @@ func TestImportRefuses(t *testing.T) {
 	if err := h.exec(t, h.app.newImportCmd(), detached); err == nil || !strings.Contains(err.Error(), "detached") {
 		t.Fatalf("import of a detached worktree = %v", err)
 	}
-	for _, name := range []string{"dirty", "detached"} {
+	for _, name := range []string{"conflicted", "merging", "detached"} {
 		if h.app.Store.Exists(name) {
 			t.Errorf("a refused import left task %s", name)
 		}

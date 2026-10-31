@@ -12,6 +12,9 @@ upgrade.
   `--branches` also renames unpublished branches following the configured
   task-name convention. Dash offers the same operation with `N`. A warning
   names old directories where resumable agents leave their conversations.
+- **`import` accepts uncommitted changes.** Work in progress moves with the
+  worktree and is reported, and nothing is committed. Conflicted files, an
+  unfinished merge or rebase, a lock and a detached HEAD are still refused.
 - **Move a repository between tasks.** `tspace repo move OLD REPO --to NEW
   [--name NAME]`, or `m` in dash, moves its worktree with uncommitted and
   untracked files, and keeps its branch, base, agent, resume command, setup
