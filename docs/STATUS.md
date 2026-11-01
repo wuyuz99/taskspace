@@ -31,10 +31,17 @@ as `no-window`. `--json` lists them in each task's `windows` array, with
   `tspace start --interrupted` starts what each of them was running, and
   carries on past one that fails; dash offers to on launch, and `I` does it
   any time. `--json` carries it as each task's `interrupted`, leaving each
-  row's `runtime` `no-session` as before. A session tspace did not end
-  includes one whose agents all exited on a multiplexer that closes a
-  window when its command ends (tmux keeps it, dead), so such a task is
-  offered too; `tspace stop TASK` tells tspace it is done.
+  row's `runtime` `no-session` as before. `tspace stop TASK` tells tspace an
+  interrupted task is done.
+
+  What comes back is the last snapshot of the session, taken after each
+  command that changes it and whenever `status` or dash sees a change: its
+  primary and saved windows that were alive. A window whose agent had exited
+  was not running, so it stays out; start it with `tspace start TASK REPO`.
+  Saved windows come back with a primary window, not on their own, and
+  unsaved extra windows do not come back. Anything that changed after the
+  last snapshot is missed, so a window opened with the multiplexer's own keys
+  counts only once tspace has looked.
 - **GIT** — `clean`, `dirty (N files)`, `missing`, `error`, plus stash and
   ahead/behind counts against the upstream, or for a branch not yet pushed,
   the commits that are not on its base (`2 commits not pushed`)

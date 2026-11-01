@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 )
 
@@ -133,28 +132,19 @@ func (s *Store) runningPath(taskName string) string {
 	return filepath.Join(s.RunDir(taskName), "running")
 }
 
-// Running is what start left running in a task's session, for bringing
+// Running is the last snapshot of what ran in a task's session, for bringing
 // back just that once something else ends it.
 type Running struct {
-	// Whole is the whole task, as start without arguments starts it.
+	// Whole is the whole task. Only a record from before snapshots says so.
 	Whole bool `json:"whole,omitempty"`
-	// Root is the root window, and Repos these repositories' windows.
-	Root  bool     `json:"root,omitempty"`
-	Repos []string `json:"repos,omitempty"`
+	// Root is the root window, Repos these repositories' windows, and
+	// Windows these saved windows, by the names they are saved under.
+	Root    bool     `json:"root,omitempty"`
+	Repos   []string `json:"repos,omitempty"`
+	Windows []string `json:"windows,omitempty"`
 }
 
-// With is what runs once r and o both do.
-func (r Running) With(o Running) Running {
-	out := Running{Whole: r.Whole || o.Whole, Root: r.Root || o.Root}
-	for _, name := range append(slices.Clone(r.Repos), o.Repos...) {
-		if !slices.Contains(out.Repos, name) {
-			out.Repos = append(out.Repos, name)
-		}
-	}
-	return out
-}
-
-// MarkRunning records that the task's session is up, running r.
+// MarkRunning records the snapshot r of the task's session.
 func (s *Store) MarkRunning(taskName string, r Running) error {
 	b, err := json.Marshal(r)
 	if err != nil {
@@ -194,8 +184,8 @@ func (s *Store) ClearRunning(taskName string) error {
 }
 
 // Interrupted reports whether a task without a session lost it to something
-// other than tspace ending it, such as a computer restart: start left it
-// running and nothing since recorded an end. The caller knows there is no
+// other than tspace ending it, such as a computer restart: its last snapshot
+// held something and nothing since recorded an end. The caller knows there is no
 // session. A task last run by an older tspace never counts.
 func (s *Store) Interrupted(taskName string) bool {
 	_, err := os.Stat(s.runningPath(taskName))

@@ -133,6 +133,12 @@ type RunReader interface {
 	Interrupted(taskName string) bool
 }
 
+// SessionObserver is told every session state status reads, so what a session
+// runs is kept up to date between commands.
+type SessionObserver interface {
+	Observe(ctx context.Context, t *task.Task, st runtime.SessionState)
+}
+
 // PublishedReader supplies what agents publish about themselves, keyed by
 // the directory each agent runs in. It is an opt-in integration with one
 // agent's own interface; core status never reads an agent by name.
@@ -148,6 +154,8 @@ type Aggregator struct {
 	Signals SignalReader
 	// Run is optional; without it no task is interrupted, only no-session.
 	Run RunReader
+	// Observer is optional; without it status only reads.
+	Observer SessionObserver
 	// Now is the clock silence is measured by; nil is time.Now.
 	Now func() time.Time
 	// Published are the agent status integrations turned on, if any.
@@ -288,6 +296,9 @@ func (a *Aggregator) task(ctx context.Context, t *task.Task, published map[strin
 
 	out.Repos = rows
 	out.Extra = a.extraWindows(t, sess, runtimeUnknown)
+	if !runtimeUnknown && a.Observer != nil {
+		a.Observer.Observe(ctx, t, sess)
+	}
 	if !runtimeUnknown && !sess.Exists && a.Run != nil && a.Run.Interrupted(t.Name) {
 		out.Interrupted = true
 		if out.Root != nil {

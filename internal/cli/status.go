@@ -152,6 +152,7 @@ func (a *App) aggregator() *status.Aggregator {
 	agg := status.New(a.Git, a.Runtime)
 	agg.Signals = a.Store
 	agg.Run = a.Store
+	agg.Observer = a.workspace()
 	agg.TaskDir = a.Store.TaskDir
 	// An unreadable config reads no agent's status; the command that needs
 	// the config reports it.

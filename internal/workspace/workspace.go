@@ -236,7 +236,12 @@ func (s *Service) Lock(ctx context.Context, name, command string, lifecycle bool
 		l.Unlock()
 		return nil, ctx, nil, err
 	}
-	return t, ctx, l.Unlock, nil
+	// Whatever the holder did to the session, the snapshot follows it, so no
+	// operation has to remember to.
+	return t, ctx, func() {
+		s.snapshot(ctx, name)
+		l.Unlock()
+	}, nil
 }
 
 // Acquire takes name's lock for command, which need not be a task yet, and

@@ -3,6 +3,17 @@
 What changed in each release of tspace; see [Installation](docs/INSTALL.md) to
 upgrade.
 
+## Unreleased
+
+### Changed
+
+- `tspace start --interrupted` brings back what the session last ran, from a
+  snapshot taken after each command that changes it and whenever `status` or
+  dash sees a change. A window whose agent had already exited no longer comes
+  back: start it with `tspace start TASK REPO`. Saved windows now come back as
+  they ran, including at the task root, and everything comes back in one
+  launch, so zellij needs no attached client for it (#85).
+
 ## v0.2.1 — 2026-10-31
 
 ### Fixed

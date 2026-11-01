@@ -218,9 +218,10 @@ func TestClosedWindowsAreNotInterrupted(t *testing.T) {
 	}
 }
 
-// When the second of two starts fails, what the first brought up is still
-// up, and counts as running.
-func TestInterruptedHalfStartedStillCounts(t *testing.T) {
+// Everything comes back in one launch, since a multiplexer may be unable to
+// add to a session later. A window that cannot be made fails that launch, and
+// the task stays interrupted to try again.
+func TestInterruptedFailedLaunchStaysInterrupted(t *testing.T) {
 	f := newFixture(t)
 	resumeTask(t, f)
 	ctx := context.Background()
@@ -245,10 +246,138 @@ func TestInterruptedHalfStartedStillCounts(t *testing.T) {
 	if err != nil || !slices.Equal(failed, []string{"T"}) {
 		t.Fatalf("failed %v, %v", failed, err)
 	}
-	if got := names(f.started()); !slices.Equal(got, []string{task.RootWindowName}) {
+	if got := f.started(); len(got) != 0 {
 		t.Fatalf("launched %v", got)
 	}
-	if r, ok := f.svc.Store.Running("T"); !ok || !r.Root || len(r.Repos) > 0 {
-		t.Fatalf("running %+v, %v", r, ok)
+	if !f.svc.Store.Interrupted("T") {
+		t.Fatal("no longer interrupted")
+	}
+}
+
+// A window that had exited was not running, so it does not come back.
+func TestInterruptedLeavesOutDeadWindows(t *testing.T) {
+	f := newFixture(t)
+	resumeTask(t, f)
+	ctx := context.Background()
+	if _, err := f.svc.Start(ctx, "T", StartOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	f.dead("T", "a")
+	session := f.rt.SessionName("T")
+	st, err := f.rt.State(ctx, session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tk, _ := f.svc.Store.Load("T")
+	f.svc.Observe(ctx, tk, st)
+	f.crash()
+	f.recover(t)
+	if got := names(f.started()); !slices.Equal(got, []string{task.RootWindowName, "b"}) {
+		t.Fatalf("launched %v", got)
+	}
+}
+
+// With every window dead nothing was running, and nothing is offered.
+func TestInterruptedNeedsSomethingAlive(t *testing.T) {
+	f := newFixture(t)
+	f.task(t, "T", map[string]task.Repo{"a": {Path: gitRepo(t)}})
+	f.rt.ExitAtStart(task.RootWindowName, "a")
+	if _, err := f.svc.Start(context.Background(), "T", StartOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if f.svc.Store.Interrupted("T") {
+		t.Fatal("a session of dead windows counts as running")
+	}
+}
+
+// Saved windows come back as they ran: those open, at the root too, and not
+// one closed on purpose.
+func TestInterruptedBringsBackSavedWindows(t *testing.T) {
+	f := newFixture(t)
+	resumeTask(t, f)
+	ctx := context.Background()
+	tk, _ := f.svc.Store.Load("T")
+	tk.Windows = []task.Window{{Name: "logs"}, {Name: "git", Repo: "a"}, {Name: "notes", Repo: "b"}}
+	if err := f.svc.Store.Save(tk); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Start(ctx, "T", StartOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.StopWindow(ctx, "T", "_notes", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.StopWindow(ctx, "T", "b", false); err != nil {
+		t.Fatal(err)
+	}
+	f.crash()
+	f.recover(t)
+	if got := names(f.started()); !slices.Equal(got, []string{"_git", "_logs", task.RootWindowName, "a"}) {
+		t.Fatalf("launched %v", got)
+	}
+	if calls := len(f.rt.Calls(runtimetest.OpOpenWindow)); calls != 0 {
+		t.Fatalf("added %d windows after the session started", calls)
+	}
+}
+
+// A record from before snapshots brings back the whole task.
+func TestInterruptedOlderRecord(t *testing.T) {
+	f := newFixture(t)
+	resumeTask(t, f)
+	if err := f.svc.Store.MarkRunning("T", task.Running{Whole: true}); err != nil {
+		t.Fatal(err)
+	}
+	f.recover(t)
+	if got := names(f.started()); !slices.Equal(got, []string{task.RootWindowName, "a", "b"}) {
+		t.Fatalf("launched %v", got)
+	}
+}
+
+// A state read before a stop, written after it, must not make the stop look
+// like an interruption.
+func TestObserveAfterStopWritesNothing(t *testing.T) {
+	f := newFixture(t)
+	resumeTask(t, f)
+	ctx := context.Background()
+	if _, err := f.svc.Start(ctx, "T", StartOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.Store.ClearRunning("T"); err != nil {
+		t.Fatal(err)
+	}
+	st, err := f.rt.State(ctx, f.rt.SessionName("T"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Stop(ctx, "T"); err != nil {
+		t.Fatal(err)
+	}
+	tk, _ := f.svc.Store.Load("T")
+	f.svc.Observe(ctx, tk, st)
+	if f.svc.Store.Interrupted("T") {
+		t.Fatal("a stopped task counts as interrupted")
+	}
+}
+
+// Observing the same thing again writes nothing, so dash can do it every
+// refresh, even with the task locked by someone else.
+func TestObserveWaitsForNothingWhenUnchanged(t *testing.T) {
+	f := newFixture(t)
+	resumeTask(t, f)
+	ctx := context.Background()
+	if _, err := f.svc.Start(ctx, "T", StartOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	st, err := f.rt.State(ctx, f.rt.SessionName("T"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tk, _ := f.svc.Store.Load("T")
+	if err := os.Remove(f.svc.Store.LockPath("T")); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	f.svc.Observe(ctx, tk, st)
+	if _, err := os.Stat(f.svc.Store.LockPath("T")); !os.IsNotExist(err) {
+		t.Fatalf("took the lock for no change: %v", err)
 	}
 }
