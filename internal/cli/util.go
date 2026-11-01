@@ -5,27 +5,14 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/mattn/go-isatty"
+	"github.com/wuyuz99/taskspace/internal/workspace"
 )
 
-// expandHome resolves a leading ~ so that paths typed in a shell that did not
-// expand them still work.
-func expandHome(path string) string {
-	if path != "~" && !strings.HasPrefix(path, "~/") && !strings.HasPrefix(path, `~\`) {
-		return path
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return path
-	}
-	if path == "~" {
-		return home
-	}
-	return filepath.Join(home, path[2:])
-}
+// expandHome resolves a leading ~; see workspace.ExpandHome.
+func expandHome(path string) string { return workspace.ExpandHome(path) }
 
 func joinNames(names []string) string { return strings.Join(names, ", ") }
 

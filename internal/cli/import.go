@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/wuyuz99/taskspace/internal/git"
 	"github.com/wuyuz99/taskspace/internal/task"
+	"github.com/wuyuz99/taskspace/internal/workspace"
 )
 
 // importSource is a worktree import has checked, and where it goes.
@@ -105,11 +106,7 @@ func (a *App) newImportCmd() *cobra.Command {
 
 			created := false
 			if !a.Store.Exists(taskName) {
-				create := []string{"create", taskName}
-				if withRoot {
-					create = append(create, "--with-root")
-				}
-				if err := a.runCmd(ctx, (*App).newTaskCmd, create...); err != nil {
+				if err := a.createTask(ctx, a.workspaceFor(cmd), workspace.CreateTaskOptions{Name: taskName, WithRoot: withRoot}); err != nil {
 					return err
 				}
 				created = true

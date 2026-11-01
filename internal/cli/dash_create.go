@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/wuyuz99/taskspace/internal/task"
+	"github.com/wuyuz99/taskspace/internal/workspace"
 )
 
 // createForm is n's form: what `tspace task create NAME REPO... [--project
@@ -75,27 +76,22 @@ func (m dashModel) checkCreate(f *dashForm) string {
 	return ""
 }
 
-// create runs task create with what f holds, as typed, so the dash and the
-// command cannot differ.
+// create creates a task from what f holds, as typed, through the operation
+// the command uses, so the two cannot differ.
 func (m dashModel) create(f *dashForm) tea.Cmd {
 	name := f.field("name").text()
-	var args []string
-	if p := f.field("project").text(); p != "" {
-		args = append(args, "--project", p)
-	}
 	start := f.field("start").on
-	if start {
-		args = append(args, "--start")
+	opts := workspace.CreateTaskOptions{Name: name, Repos: createRepos(f), Start: start}
+	if p := f.field("project").text(); p != "" {
+		opts.Project, opts.SetProject = p, true
 	}
-	// After --, nothing typed is read as a flag.
-	args = append(append(args, "--", name), createRepos(f)...)
 	return func() tea.Msg {
 		var out, warn bytes.Buffer
 		sub := *m.app
 		sub.Out, sub.Err, sub.hookOut = &out, &warn, io.Discard
 		sub.noWait = true
 		existed := m.app.Store.Exists(name)
-		err := sub.runCmd(m.ctx, (*App).newTaskCreateCmd, args...)
+		err := sub.createTask(m.ctx, sub.workspace(), opts)
 		msg := dashDoneMsg{err: err}
 		if existed || !m.app.Store.Exists(name) {
 			return msg
