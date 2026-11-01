@@ -68,7 +68,7 @@ func TestConfigHooksClaudeKeepsTheRestOfTheFile(t *testing.T) {
 	if c := commands(got, "Stop"); strings.Join(c, ",") != "say done,tspace signal --quiet done" {
 		t.Fatalf("Stop = %v", c)
 	}
-	for event, want := range map[string]string{"UserPromptSubmit": "tspace signal --quiet working", "Notification": "tspace signal --quiet blocked"} {
+	for event, want := range map[string]string{"UserPromptSubmit": "tspace signal --quiet working", "Notification": "tspace signal --quiet --hook --unless-blocked blocked", "PermissionRequest": "tspace signal --quiet --hook blocked"} {
 		if c := commands(got, event); len(c) != 1 || c[0] != want {
 			t.Fatalf("%s = %v", event, c)
 		}
@@ -339,7 +339,7 @@ func TestConfigHooksGemini(t *testing.T) {
 	got := readSettings(t, path)
 	for event, want := range map[string][]string{
 		"BeforeAgent":  {"tspace signal --quiet working"},
-		"Notification": {"tspace signal --quiet blocked"},
+		"Notification": {"tspace signal --quiet --hook blocked"},
 		"AfterAgent":   {"say done", "tspace signal --quiet done"},
 	} {
 		if c := commands(got, event); strings.Join(c, ";") != strings.Join(want, ";") {
