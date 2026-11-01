@@ -130,4 +130,5 @@ func TestRealZellijInterruption(t *testing.T) {
 			t.Fatalf("kill-session: %v\n%s", err, out)
 		}
 	})
+	t.Fatal("PROBE: reached the end of the real zellij interruption")
 }
