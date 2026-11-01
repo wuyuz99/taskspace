@@ -48,6 +48,7 @@ type Fake struct {
 	calls    []Call
 	onStop   func()
 	crashing map[string]bool
+	inside   bool
 }
 
 // New returns a fake with no sessions.
@@ -102,6 +103,13 @@ func (f *Fake) ExitAtStart(windows ...string) {
 	for _, w := range windows {
 		f.crashing[runtime.WindowName(w)] = true
 	}
+}
+
+// ClientInside says tspace runs inside a client, so Focus can show a window.
+func (f *Fake) ClientInside(inside bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.inside = inside
 }
 
 func contains(ops []Op, op Op) bool {
@@ -311,7 +319,7 @@ func (f *Fake) Attach(_ context.Context, session string) error {
 	return nil
 }
 
-// Focus implements runtime.Runtime. No client is ever inside the fake.
+// Focus implements runtime.Runtime.
 func (f *Fake) Focus(_ context.Context, session, window string) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -319,7 +327,7 @@ func (f *Fake) Focus(_ context.Context, session, window string) (bool, error) {
 		return false, err
 	}
 	f.record(OpFocus, session, runtime.Window{Name: window})
-	return false, nil
+	return f.inside, nil
 }
 
 // Select implements runtime.Runtime.

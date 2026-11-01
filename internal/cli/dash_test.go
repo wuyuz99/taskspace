@@ -8,7 +8,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/wuyuz99/taskspace/internal/runtime"
+	"github.com/wuyuz99/taskspace/internal/runtime/runtimetest"
 	"github.com/wuyuz99/taskspace/internal/status"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
@@ -160,22 +160,24 @@ func TestDashActionsOnAStoppedTask(t *testing.T) {
 	}
 
 	// Confirming a stop runs it.
-	rt := &windowRuntime{running: true, panes: map[string]runtime.PaneState{}}
-	h.app.Runtime = &runningRuntime{rt}
+	rt := runningSession(row.Task, nil)
+	h.app.Runtime = rt
 	m = drive(t, m, key("x"))
 	if m.confirm == nil {
 		t.Fatal("stop did not ask")
 	}
 	m = drive(t, m, key("y"))
-	if !rt.stopped || m.confirm != nil || m.noteErr || !strings.Contains(m.note, "stopped "+row.Task) {
-		t.Fatalf("confirmed stop: stopped=%v note=%q", rt.stopped, m.note)
+	if !stopped(rt) || m.confirm != nil || m.noteErr || !strings.Contains(m.note, "stopped "+row.Task) {
+		t.Fatalf("confirmed stop: stopped=%v note=%q", stopped(rt), m.note)
 	}
 }
 
 // A failure from the runtime shows on the status line rather than vanishing.
 func TestDashShowsActionErrors(t *testing.T) {
 	h, m := loadedDash(t)
-	h.app.Runtime = &failingFocus{&windowRuntime{running: true, panes: map[string]runtime.PaneState{}}}
+	rt := runningSession(m.data.Rows[0].Task, nil)
+	rt.Fail(runtimetest.OpFocus, errors.New("focus broke"))
+	h.app.Runtime = rt
 	m.data.Rows[0].Runtime = status.RuntimeRunning
 	m = drive(t, m, key("enter"))
 	if !m.noteErr || m.note != "focus broke" {
@@ -186,12 +188,6 @@ func TestDashShowsActionErrors(t *testing.T) {
 	if m.noteErr || m.note != "fine" {
 		t.Fatalf("after success: noteErr=%v note=%q", m.noteErr, m.note)
 	}
-}
-
-type failingFocus struct{ *windowRuntime }
-
-func (f *failingFocus) Focus(context.Context, string, string) (bool, error) {
-	return false, errors.New("focus broke")
 }
 
 func TestDashStyles(t *testing.T) {
