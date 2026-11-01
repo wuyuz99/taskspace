@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -198,6 +199,18 @@ func TestSignalHookTreatsBadInputAsTheMainThread(t *testing.T) {
 		if got := hookOwner(strings.NewReader(input)); got != task.SignalOwnerMain {
 			t.Errorf("hookOwner(%q) = %q", input, got)
 		}
+	}
+}
+
+// An agent that leaves stdin open must not hang every tool on the hook.
+func TestSignalHookDoesNotWaitForeverForInput(t *testing.T) {
+	old := hookInputWait
+	hookInputWait = 20 * time.Millisecond
+	t.Cleanup(func() { hookInputWait = old })
+	r, w := io.Pipe()
+	defer w.Close()
+	if got := hookOwner(r); got != task.SignalOwnerMain {
+		t.Fatalf("hookOwner = %q", got)
 	}
 }
 

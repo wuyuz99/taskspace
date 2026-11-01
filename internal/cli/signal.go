@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/wuyuz99/taskspace/internal/task"
@@ -24,6 +25,10 @@ func (e notInTask) Error() string {
 }
 
 func (e notInTask) Is(target error) bool { return target == errNotInTask }
+
+// hookInputWait is how long --hook waits for the hook's JSON. A hook runs on
+// every tool, so an agent that leaves stdin open must not stall on it.
+var hookInputWait = 2 * time.Second
 
 // signalMessageMax keeps a message to what a status line can show.
 const signalMessageMax = 200
@@ -184,14 +189,27 @@ func (a *App) newSignalCmd() *cobra.Command {
 }
 
 // hookOwner reads which of the agent's threads a hook ran for from the JSON
-// the hook was given. Input that can't be read counts as the main thread: a
-// hook must still report something.
+// the hook was given. Input that can't be read in time counts as the main
+// thread, as does a terminal, where nothing will ever arrive: a hook must
+// still report something.
 func hookOwner(r io.Reader) string {
+	if f, ok := r.(*os.File); ok {
+		if info, err := f.Stat(); err == nil && info.Mode()&os.ModeCharDevice != 0 {
+			return task.SignalOwnerMain
+		}
+	}
+	read := make(chan []byte, 1)
+	go func() {
+		b, _ := io.ReadAll(r)
+		read <- b
+	}()
 	var input struct {
 		AgentID string `json:"agent_id"`
 	}
-	if b, err := io.ReadAll(r); err == nil {
+	select {
+	case b := <-read:
 		_ = json.Unmarshal(b, &input)
+	case <-time.After(hookInputWait):
 	}
 	if input.AgentID != "" {
 		return input.AgentID
