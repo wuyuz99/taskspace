@@ -8,34 +8,42 @@ import (
 	"time"
 
 	"github.com/wuyuz99/taskspace/internal/runtime"
+	"github.com/wuyuz99/taskspace/internal/runtime/runtimetest"
 )
 
-// memoryRuntime is a live session that also records what restart relaunched.
-type memoryRuntime struct {
-	liveRuntime
-	restarted []runtime.Window
+// restarted lists what restart relaunched.
+func restarted(rt *runtimetest.Fake) []runtime.Window {
+	var out []runtime.Window
+	for _, c := range rt.Calls(runtimetest.OpRestart) {
+		out = append(out, c.Window)
+	}
+	return out
 }
 
-func (r *memoryRuntime) Restart(_ context.Context, _ string, w runtime.Window) error {
-	r.restarted = append(r.restarted, w)
-	return nil
+// openHand opens a window in T without tspace knowing, as the multiplexer's own
+// keys would.
+func openHand(t *testing.T, rt *runtimetest.Fake, name string) {
+	t.Helper()
+	if err := rt.OpenWindow(context.Background(), rt.SessionName("T"), runtime.Window{Name: name}); err != nil {
+		t.Fatal(err)
+	}
 }
 
-func (r *memoryRuntime) CloseWindow(_ context.Context, _ string, window string) error {
-	delete(r.panes, window)
-	return nil
-}
-
-func (r *memoryRuntime) Stop(context.Context, string) error {
-	r.panes = nil
-	return nil
+// paneCount is how many windows T has open.
+func paneCount(t *testing.T, rt *runtimetest.Fake) int {
+	t.Helper()
+	st, err := rt.State(context.Background(), rt.SessionName("T"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(st.Panes)
 }
 
 // memoryTask is a running task with one repository.
-func memoryTask(t *testing.T) (*harness, *memoryRuntime, string) {
+func memoryTask(t *testing.T) (*harness, *runtimetest.Fake, string) {
 	t.Helper()
 	h := newHarness(t)
-	rt := &memoryRuntime{}
+	rt := runtimetest.New()
 	h.app.Runtime = rt
 	if err := h.exec(t, h.app.newTaskCmd(), "create", "T", "--repo", "backend="+h.repo, "--with-root"); err != nil {
 		t.Fatal(err)
@@ -51,13 +59,15 @@ func TestRestartUnsavedWindow(t *testing.T) {
 	if err := h.exec(t, h.app.newWindowCmd(), "T", repo, "-d", "--", "lazygit", "{task_dir}"); err != nil {
 		t.Fatal(err)
 	}
+	rt.Exit(rt.SessionName("T"), "_backend-lazygit")
 	if err := h.exec(t, h.app.newRestartCmd(), "T", "_backend-lazygit"); err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.restarted) != 1 {
-		t.Fatalf("restarted %+v", rt.restarted)
+	if len(restarted(rt)) != 1 {
+		t.Fatalf("restarted %+v", restarted(rt))
 	}
-	got, opened := rt.restarted[0], rt.panes["_backend-lazygit"]
+	got := restarted(rt)[0]
+	opened, _ := rt.Window(rt.SessionName("T"), "_backend-lazygit")
 	if got.Dir != h.load(t, "T").Repos[repo].Worktree || got.Dir != opened.Dir || !slices.Equal(got.Command, opened.Command) ||
 		!slices.Equal(got.Command, []string{"lazygit", h.app.Store.TaskDir("T")}) {
 		t.Fatalf("restarted %+v, opened %+v", got, opened)
@@ -70,7 +80,7 @@ func TestRestartUnsavedWindow(t *testing.T) {
 // A repository may have any name, so nothing but --root means the root.
 func TestRememberedWindowInRepoNamedRoot(t *testing.T) {
 	h := newHarness(t)
-	rt := &memoryRuntime{}
+	rt := runtimetest.New()
 	h.app.Runtime = rt
 	if err := h.exec(t, h.app.newTaskCmd(), "create", "T", "--repo", "root="+h.repo, "--with-root"); err != nil {
 		t.Fatal(err)
@@ -81,10 +91,11 @@ func TestRememberedWindowInRepoNamedRoot(t *testing.T) {
 	if err := h.exec(t, h.app.newWindowCmd(), "T", "root", "-d", "--name", "x", "--", "top"); err != nil {
 		t.Fatal(err)
 	}
+	rt.Exit(rt.SessionName("T"), "_x")
 	if err := h.exec(t, h.app.newRestartCmd(), "T", "_x"); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := rt.restarted[0].Dir, h.load(t, "T").Repos["root"].Worktree; got != want {
+	if got, want := restarted(rt)[0].Dir, h.load(t, "T").Repos["root"].Worktree; got != want {
 		t.Fatalf("restarted in %s, want %s", got, want)
 	}
 }
@@ -100,7 +111,7 @@ func TestSaveOpenWindow(t *testing.T) {
 	if err := window("--root", "-d", "--name", "scratch"); err != nil {
 		t.Fatal(err)
 	}
-	before := len(rt.panes)
+	before := paneCount(t, rt)
 
 	// With or without the prefix, and the window is left as it is.
 	if err := window("--save", "_backend-lazygit"); err != nil {
@@ -109,8 +120,8 @@ func TestSaveOpenWindow(t *testing.T) {
 	if err := window("--save", "scratch"); err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.panes) != before {
-		t.Fatalf("saving changed the session: %v", rt.panes)
+	if got := paneCount(t, rt); got != before {
+		t.Fatalf("saving changed the session: %d windows, was %d", got, before)
 	}
 	tk := h.load(t, "T")
 	if len(tk.Windows) != 2 || tk.Windows[0].Name != "backend-lazygit" || tk.Windows[0].Repo != repo ||
@@ -131,7 +142,7 @@ func TestSaveOpenWindow(t *testing.T) {
 		t.Fatal("saved the root window")
 	}
 	// Opened behind tspace's back: the error shows the way that works.
-	rt.panes["_hand"] = runtime.Window{Name: "_hand"}
+	openHand(t, rt, "_hand")
 	if err := window("--save", "_hand"); err == nil || !strings.Contains(err.Error(), "--name hand --save -- COMMAND") {
 		t.Fatalf("saved an unknown window: %v", err)
 	}
@@ -145,7 +156,7 @@ func TestSaveOpenWindow(t *testing.T) {
 // windows, which must not be forgotten with the record of what was running.
 func TestExtraWindowOutlivesLastPrimary(t *testing.T) {
 	h := newHarness(t)
-	rt := &memoryRuntime{}
+	rt := runtimetest.New()
 	h.app.Runtime = rt
 	if err := h.exec(t, h.app.newTaskCmd(), "create", "T", "--repo", "backend="+h.repo); err != nil {
 		t.Fatal(err)
@@ -159,6 +170,7 @@ func TestExtraWindowOutlivesLastPrimary(t *testing.T) {
 	if err := h.exec(t, h.app.newStopCmd(), "T", "backend"); err != nil {
 		t.Fatal(err)
 	}
+	rt.Exit(rt.SessionName("T"), "_mon")
 	if err := h.exec(t, h.app.newRestartCmd(), "T", "_mon"); err != nil {
 		t.Fatal(err)
 	}
@@ -175,10 +187,11 @@ func TestRenamedWindowKeepsItsCommand(t *testing.T) {
 	if err := h.exec(t, h.app.newWindowCmd(), "T", "--rename", "a", "b"); err != nil {
 		t.Fatal(err)
 	}
+	rt.Exit(rt.SessionName("T"), "_b")
 	if err := h.exec(t, h.app.newRestartCmd(), "T", "_b"); err != nil {
 		t.Fatal(err)
 	}
-	if w := rt.restarted[0]; w.Name != "_b" || !slices.Equal(w.Command, []string{"top"}) {
+	if w := restarted(rt)[0]; w.Name != "_b" || !slices.Equal(w.Command, []string{"top"}) {
 		t.Fatalf("restarted %+v", w)
 	}
 	if _, ok := h.app.Store.OpenedWindow("T", "a"); ok {
@@ -220,14 +233,14 @@ func TestRememberedWindowEndsWithIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	open("c")
-	rt.panes = nil
+	rt.Reboot()
 	if err := h.exec(t, h.app.newStartCmd(), "T"); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := h.app.Store.OpenedWindow("T", "c"); ok {
 		t.Fatal("a new session inherited a window")
 	}
-	if _, ok := rt.panes["_c"]; ok {
+	if _, ok := rt.Window(rt.SessionName("T"), "_c"); ok {
 		t.Fatal("start opened an unsaved window")
 	}
 }
@@ -253,7 +266,7 @@ func TestDashSavesOpenWindow(t *testing.T) {
 	if err := h.exec(t, h.app.newWindowCmd(), "T", repo, "-d", "--name", "mon", "--", "top"); err != nil {
 		t.Fatal(err)
 	}
-	rt.panes["_hand"] = runtime.Window{Name: "_hand"}
+	openHand(t, rt, "_hand")
 	m := newDashModel(context.Background(), h.app, time.Second)
 	m.expanded = map[string]bool{"T": true}
 	m = drive(t, m, dashDataMsg(h.app.dashLoad(context.Background())))

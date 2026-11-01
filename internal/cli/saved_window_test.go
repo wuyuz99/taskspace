@@ -1,57 +1,17 @@
 package cli
 
 import (
-	"context"
 	"encoding/json"
 	"slices"
 	"strings"
 	"testing"
 
-	"github.com/wuyuz99/taskspace/internal/runtime"
+	"github.com/wuyuz99/taskspace/internal/runtime/runtimetest"
 )
-
-// liveRuntime is a session that exists once started, holding the windows it
-// was started or opened with, under the names they were last given.
-type liveRuntime struct {
-	stubRuntime
-	panes   map[string]runtime.Window
-	renamed [][2]string
-}
-
-func (l *liveRuntime) HasSession(context.Context, string) (bool, error) { return l.panes != nil, nil }
-func (l *liveRuntime) Start(_ context.Context, _ string, ws []runtime.Window) error {
-	if l.panes == nil {
-		l.panes = map[string]runtime.Window{}
-	}
-	for _, w := range ws {
-		if _, ok := l.panes[w.Name]; !ok {
-			l.panes[w.Name] = w
-			l.started = append(l.started, w)
-		}
-	}
-	return nil
-}
-func (l *liveRuntime) OpenWindow(_ context.Context, _ string, w runtime.Window) error {
-	l.panes[w.Name] = w
-	return nil
-}
-func (l *liveRuntime) RenameWindow(_ context.Context, _ string, from, to string) error {
-	l.panes[to] = l.panes[from]
-	delete(l.panes, from)
-	l.renamed = append(l.renamed, [2]string{from, to})
-	return nil
-}
-func (l *liveRuntime) State(context.Context, string) (runtime.SessionState, error) {
-	st := runtime.SessionState{Exists: l.panes != nil, Panes: map[string]runtime.PaneState{}}
-	for name := range l.panes {
-		st.Panes[name] = runtime.PaneState{Window: name}
-	}
-	return st, nil
-}
 
 func TestSavedWindows(t *testing.T) {
 	h := newHarness(t)
-	rt := &liveRuntime{}
+	rt := runtimetest.New()
 	h.app.Runtime = rt
 	other := mkRepo(t)
 	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--repo", "backend="+h.repo, "--repo", "frontend="+other); err != nil {
@@ -92,14 +52,15 @@ func TestSavedWindows(t *testing.T) {
 	if err := h.exec(t, h.app.newStartCmd(), "PAY-1", "frontend"); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := rt.panes["_git"]; ok {
+	if _, ok := rt.Window(rt.SessionName("PAY-1"), "_git"); ok {
 		t.Fatal("start frontend opened backend's saved window")
 	}
 	// The whole task opens all of them, where they belong.
 	if err := h.exec(t, h.app.newStartCmd(), "PAY-1"); err != nil {
 		t.Fatal(err)
 	}
-	git, notes := rt.panes["_git"], rt.panes["_notes"]
+	git, _ := rt.Window(rt.SessionName("PAY-1"), "_git")
+	notes, _ := rt.Window(rt.SessionName("PAY-1"), "_notes")
 	tk := h.load(t, "PAY-1")
 	if git.Dir != tk.Repos["backend"].Worktree || !slices.Equal(git.Command, []string{"lazygit"}) || git.Transient {
 		t.Fatalf("_git launched as %+v", git)
@@ -112,7 +73,7 @@ func TestSavedWindows(t *testing.T) {
 	if err := window("frontend", "--name", "logs", "--save", "--detach", "--", "tail", "-f", "log"); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := rt.panes["_logs"]; !ok {
+	if _, ok := rt.Window(rt.SessionName("PAY-1"), "_logs"); !ok {
 		t.Fatal("_logs not opened")
 	}
 	if _, ok := h.load(t, "PAY-1").SavedWindow("logs"); !ok {
@@ -123,8 +84,8 @@ func TestSavedWindows(t *testing.T) {
 	if err := window("--rename", "git", "lg"); err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renamed) != 1 || rt.renamed[0] != [2]string{"_git", "_lg"} {
-		t.Fatalf("renamed %v", rt.renamed)
+	if got := rt.Calls(runtimetest.OpRename); len(got) != 1 || got[0].Window.Name != "_lg" {
+		t.Fatalf("renamed %v", got)
 	}
 	if _, ok := h.load(t, "PAY-1").SavedWindow("lg"); !ok {
 		t.Fatal("saved window not renamed")
@@ -143,7 +104,7 @@ func TestSavedWindows(t *testing.T) {
 	if _, ok := h.load(t, "PAY-1").SavedWindow("lg"); ok {
 		t.Fatal("still saved")
 	}
-	if _, ok := rt.panes["_lg"]; !ok {
+	if _, ok := rt.Window(rt.SessionName("PAY-1"), "_lg"); !ok {
 		t.Fatal("forget closed the window")
 	}
 	if err := window("--forget", "nope"); err == nil || !strings.Contains(err.Error(), "saved: _notes, _logs") {
@@ -179,7 +140,7 @@ func TestSavedWindows(t *testing.T) {
 
 	// Removing a repository forgets the windows that opened in it. PAY-2
 	// was never started; the fake runtime would show it PAY-1's windows.
-	h.app.Runtime = &liveRuntime{}
+	h.app.Runtime = runtimetest.New()
 	if err := h.exec(t, h.app.newRepoCmd(), "rm", "PAY-2", "frontend"); err != nil {
 		t.Fatal(err)
 	}

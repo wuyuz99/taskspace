@@ -112,6 +112,21 @@ func (f *Fake) ClientInside(inside bool) {
 	f.inside = inside
 }
 
+// Window returns what an open window was launched with. A seeded one has only
+// its name.
+func (f *Fake) Window(session, window string) (runtime.Window, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	id := runtime.WindowName(window)
+	if _, ok := f.sessions[session][id]; !ok {
+		return runtime.Window{}, false
+	}
+	if w, ok := f.windows[session][id]; ok {
+		return w, true
+	}
+	return runtime.Window{Name: window}, true
+}
+
 func contains(ops []Op, op Op) bool {
 	for _, o := range ops {
 		if o == op {
