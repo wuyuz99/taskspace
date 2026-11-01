@@ -177,9 +177,14 @@ signals; `tspace restart` clears the window's own.
 #### Recipes for other agents
 
 Any agent that can run a command on its own events can report. Pick the
-events closest to "a prompt was submitted", "waiting on a person" and "the
-turn ended", and run `tspace signal --quiet` with `working`, `blocked` and
-`done`. Keep `--quiet`: some agents show a hook's output to the model, and
+events closest to "a prompt was submitted", "waiting on a person", "a tool
+completed" (including failures), and "the turn ended". Run `tspace signal
+--quiet` with `working`, `blocked`, `--if-blocked working`, and `done`,
+respectively. The conditional tool hook only replaces `blocked` with no
+message: it keeps `done`, `failed`, and an agent's question with a message,
+and does not reset an existing `working` signal's age. A message-free
+`blocked` is treated as a permission prompt, regardless of who wrote it.
+Keep `--quiet`: some agents show a hook's output to the model, and
 some refuse output that isn't JSON.
 
 **Codex** reads user hooks from `~/.codex/hooks.json` (under `$CODEX_HOME` if
@@ -192,10 +197,18 @@ for `blocked`:
   "hooks": {
     "UserPromptSubmit":  [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet working" }] }],
     "PermissionRequest": [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet blocked" }] }],
+    "PostToolUse":       [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet --if-blocked working" }] }],
     "Stop":              [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet done" }] }]
   }
 }
 ```
+
+[Codex's `PostToolUse`](https://learn.chatgpt.com/docs/hooks#posttooluse)
+runs after supported tools return output, including shell commands that exit
+nonzero. It restores `working` after an approved command returns; while that
+command is still running the signal can remain `blocked`. Hosted tools such
+as web search do not fire this hook. The guard does not match tool IDs: a
+parallel tool completing can still clear another tool's permission prompt.
 
 Codex runs a new or changed hook only after you trust it: open `/hooks` in
 Codex once after adding these. A hook that prints nothing leaves the approval

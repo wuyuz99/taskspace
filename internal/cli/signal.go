@@ -39,7 +39,7 @@ func (a *App) windowEnv(taskName, window string) []string {
 
 func (a *App) newSignalCmd() *cobra.Command {
 	var taskName, repo string
-	var root, clear, quiet bool
+	var root, clear, quiet, ifBlocked bool
 	cmd := &cobra.Command{
 		Use:   "signal STATE [MESSAGE]",
 		Short: "Report what an agent is doing, for status and dash",
@@ -67,6 +67,9 @@ func (a *App) newSignalCmd() *cobra.Command {
 			"--quiet is for hooks that run in every session, inside a task or not: it\n" +
 			"prints nothing, and outside a task it does nothing and succeeds. A hook's\n" +
 			"output can end up in front of the agent, which has no use for it.\n\n" +
+			"--if-blocked working is for tool-completion hooks: it only replaces a\n" +
+			"blocked signal with no message. Other signals and their ages are kept.\n" +
+			"A message-free blocked signal is treated as a permission prompt.\n\n" +
 			"A signal is one JSON file, .context/signals/REPO.json beside the\n" +
 			"worktrees (_root.json for the root window), holding\n" +
 			`{"state": "blocked", "message": "..."}` + "; an agent without tspace on its\n" +
@@ -75,6 +78,9 @@ func (a *App) newSignalCmd() *cobra.Command {
 			"clear them, and restart clears the window's own.",
 		Args: cobra.RangeArgs(0, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if ifBlocked && (clear || len(args) != 1 || args[0] != "working") {
+				return fmt.Errorf("--if-blocked requires working with no message and cannot be combined with --clear")
+			}
 			if root && repo != "" {
 				return fmt.Errorf("--root cannot be combined with --repo")
 			}
@@ -100,6 +106,22 @@ func (a *App) newSignalCmd() *cobra.Command {
 					return nil
 				}
 				return err
+			}
+			// Serialize the conditional read/write with other signal commands and
+			// task lifecycle changes. Quiet hooks must not print lock-wait notices.
+			lock, err := a.Store.Lock(cmd.Context(), t.Name, cmd.CommandPath(), nil)
+			if err != nil {
+				return err
+			}
+			defer lock.Unlock()
+			if ifBlocked {
+				signals, err := a.Store.ReadSignals(t.Name)
+				if err != nil {
+					return err
+				}
+				if current := signals[window]; current.State != task.SignalBlocked || current.Message != "" {
+					return nil
+				}
 			}
 			label := t.Name + " (root)"
 			if window != task.RootWindowName {
@@ -135,6 +157,7 @@ func (a *App) newSignalCmd() *cobra.Command {
 	cmd.Flags().StringVar(&repo, "repo", "", "repository window to report for (default: the worktree the current directory is in)")
 	cmd.Flags().BoolVar(&root, "root", false, "report for the task-root window")
 	cmd.Flags().BoolVar(&clear, "clear", false, "forget the window's signal")
+	cmd.Flags().BoolVar(&ifBlocked, "if-blocked", false, "set working only over blocked with no message, for tool-completion hooks")
 	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "print nothing, and outside a task do nothing, for hooks")
 	return cmd
 }
