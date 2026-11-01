@@ -126,16 +126,17 @@ snippets to paste. For Claude Code, install the hooks once:
 tspace config hooks claude            # --remove takes them out again
 ```
 
-That adds five hooks to your user settings, `~/.claude/settings.json`, and
+That adds six hooks to your user settings, `~/.claude/settings.json`, and
 leaves everything else in the file alone:
 
 ```json
 {
   "hooks": {
     "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet working" }] }],
-    "Notification":     [{ "matcher": "permission_prompt|elicitation_dialog", "hooks": [{ "type": "command", "command": "tspace signal --quiet blocked" }] }],
-    "PostToolUse":      [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet working" }] }],
-    "PostToolUseFailure": [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet working" }] }],
+    "PermissionRequest": [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet --hook blocked" }] }],
+    "Notification":     [{ "matcher": "permission_prompt|elicitation_dialog", "hooks": [{ "type": "command", "command": "tspace signal --quiet --hook --unless-blocked blocked" }] }],
+    "PostToolUse":      [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet --hook --if-blocked working" }] }],
+    "PostToolUseFailure": [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet --hook --if-blocked working" }] }],
     "Stop":             [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet done" }] }]
   }
 }
@@ -150,13 +151,21 @@ to the agent.
 Tool completion restores `working` after a permission prompt, including a
 tool that fails and returns control to Claude. Until that tool returns, a
 long-running approved tool can still show `blocked`. Each tool runs one short
-signal command. To upgrade an existing installation, run the installer again
-and start a new agent session; your other hooks are kept.
+signal command, which changes nothing unless a hook set `blocked` for the
+same thread. So a background subagent finishing tools doesn't hide a prompt
+the main agent still has open, and a `done`, a `failed` or a `blocked` the
+agent reported itself stays as it was.
+
+A denied permission fires no hook, so `blocked` stays until the next prompt or
+the end of a turn.
+
+To upgrade an existing installation, run the installer again and start a new
+agent session; your other hooks are kept.
 
 For Gemini CLI, `tspace config hooks gemini` does the same in
 `~/.gemini/settings.json` (under `$GEMINI_CLI_HOME` if that is set), with
 Gemini's events: `BeforeAgent` for `working`, `Notification` (tool permission
-prompts) for `blocked`, `AfterTool` to restore `working`, and `AfterAgent`
+prompts) for `blocked`, `AfterTool` to take that back, and `AfterAgent`
 for `done`. Gemini's hooks are on
 unless `hooksConfig.enabled` is `false`. Gemini allows comments in that file
 and tspace can't rewrite one that has them, so it refuses; add the hooks by
@@ -179,13 +188,12 @@ signals; `tspace restart` clears the window's own.
 Any agent that can run a command on its own events can report. Pick the
 events closest to "a prompt was submitted", "waiting on a person", "a tool
 completed" (including failures), and "the turn ended". Run `tspace signal
---quiet` with `working`, `blocked`, `--if-blocked working`, and `done`,
-respectively. The conditional tool hook only replaces `blocked` with no
-message: it keeps `done`, `failed`, and an agent's question with a message,
-and does not reset an existing `working` signal's age. A message-free
-`blocked` is treated as a permission prompt, regardless of who wrote it.
-Keep `--quiet`: some agents show a hook's output to the model, and
-some refuse output that isn't JSON.
+--quiet` with `working`, `--hook blocked`, `--hook --if-blocked working`,
+and `done`, respectively. The tool hook only clears a blocked signal owned
+by the same hook thread; other signals and their ages stay unchanged.
+`--hook` reads the event's JSON from stdin, using `agent_id` as its owner
+or `main` when absent. Keep `--quiet`: some agents show a hook's output to
+the model, and some refuse output that isn't JSON.
 
 **Codex** reads user hooks from `~/.codex/hooks.json` (under `$CODEX_HOME` if
 that is set), in the same shape as Claude Code. It has no notification event,
@@ -196,8 +204,8 @@ for `blocked`:
 {
   "hooks": {
     "UserPromptSubmit":  [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet working" }] }],
-    "PermissionRequest": [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet blocked" }] }],
-    "PostToolUse":       [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet --if-blocked working" }] }],
+    "PermissionRequest": [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet --hook blocked" }] }],
+    "PostToolUse":       [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet --hook --if-blocked working" }] }],
     "Stop":              [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet done" }] }]
   }
 }
@@ -208,7 +216,7 @@ runs after supported tools return output, including shell commands that exit
 nonzero. It restores `working` after an approved command returns; while that
 command is still running the signal can remain `blocked`. Hosted tools such
 as web search do not fire this hook. The guard does not match tool IDs: a
-parallel tool completing can still clear another tool's permission prompt.
+parallel tool with the same owner can still clear another tool's prompt.
 
 Codex runs a new or changed hook only after you trust it: open `/hooks` in
 Codex once after adding these. A hook that prints nothing leaves the approval

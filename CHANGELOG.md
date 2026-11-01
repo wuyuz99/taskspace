@@ -8,9 +8,9 @@ upgrade.
 ### Fixed
 
 - The Codex signal recipe restores `working` after an approved tool returns,
-  including a failed command. Its new `signal --if-blocked working` guard
-  only replaces a message-free `blocked`, preserving other states, messages
-  and signal ages on ordinary tool completions.
+  including a failed command. The recipe uses
+  `--hook --if-blocked` to preserve signals the hook does not own and avoid
+  resetting their ages on ordinary tool completions.
 - Commands launched in task worktrees clear inherited Git repository context,
   including `GIT_DIR` and `GIT_WORK_TREE`: `shell`, `exec`, `post_create`,
   terminal/editor launchers, and tmux, zellij and adapter windows. New
@@ -22,6 +22,14 @@ upgrade.
   `user.email` for identity. SSH/askpass settings and global/system config file
   locations remain; `GIT_CONFIG_COUNT` and `GIT_CONFIG_PARAMETERS` are dropped,
   including authentication injected through them (see #132).
+- A background subagent finishing tools no longer hides a permission prompt
+  the main agent still has open, and tool hooks no longer overwrite `done`,
+  `failed`, or a `blocked` the agent reported itself, or reset the age of
+  `working` (#129, #130). Claude Code also shows `blocked` as soon as a
+  permission is requested, about six seconds sooner. This needs
+  `tspace signal`'s new `--hook`, `--if-blocked` and `--unless-blocked`: run
+  `tspace config hooks claude` or `tspace config hooks gemini` again and start
+  a new agent session.
 
 ## v0.2.0 — 2026-10-31
 

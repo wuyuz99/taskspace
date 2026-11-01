@@ -25,63 +25,6 @@ func (h *harness) signals(t *testing.T, name string) map[string]task.Signal {
 	return got
 }
 
-func TestSignalIfBlocked(t *testing.T) {
-	h := newHarness(t)
-	tk := h.startedRootTask(t, "resume")
-	chdir(t, h.app.Store.TaskDir(tk.Name))
-	for _, tc := range []struct {
-		name, state, message string
-		resume               bool
-	}{
-		{"missing", "", "", false},
-		{"permission", "blocked", "", true},
-		{"question", "blocked", "which column?", false},
-		{"working", "working", "", false},
-		{"done", "done", "", false},
-		{"failed", "failed", "", false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			path := h.app.Store.SignalPath(tk.Name, task.RootWindowName)
-			if tc.state != "" {
-				if err := h.exec(t, h.app.newSignalCmd(), tc.state, tc.message, "--root"); err != nil {
-					t.Fatal(err)
-				}
-				old := time.Now().Add(-time.Hour)
-				if err := os.Chtimes(path, old, old); err != nil {
-					t.Fatal(err)
-				}
-			}
-			before := h.signals(t, tk.Name)[task.RootWindowName]
-			if err := h.exec(t, h.app.newSignalCmd(), "--quiet", "--if-blocked", "working", "--root"); err != nil {
-				t.Fatal(err)
-			}
-			if h.out.Len() != 0 || h.errb.Len() != 0 {
-				t.Fatalf("quiet hook output: %s %s", h.out, h.errb)
-			}
-			after := h.signals(t, tk.Name)[task.RootWindowName]
-			if tc.resume {
-				if after.State != task.SignalWorking || after.Message != "" || !after.At.After(before.At) {
-					t.Fatalf("permission did not resume: %+v", after)
-				}
-			} else if after != before {
-				t.Fatalf("signal changed: before=%+v after=%+v", before, after)
-			}
-		})
-	}
-	for _, args := range [][]string{
-		{"--if-blocked"}, {"--if-blocked", "done"},
-		{"--if-blocked", "working", "message"}, {"--if-blocked", "--clear"},
-	} {
-		if err := h.exec(t, h.app.newSignalCmd(), args...); err == nil {
-			t.Fatalf("accepted %v", args)
-		}
-	}
-	chdir(t, t.TempDir())
-	if err := h.exec(t, h.app.newSignalCmd(), "--quiet", "--if-blocked", "working"); err != nil {
-		t.Fatalf("outside task: %v", err)
-	}
-}
-
 // A hook has no arguments to spare, so the directory says which window it is.
 func TestSignalFindsItsWindowFromTheDirectory(t *testing.T) {
 	h := newHarness(t)

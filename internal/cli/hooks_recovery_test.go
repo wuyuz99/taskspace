@@ -62,7 +62,9 @@ func TestHooksUpgradeAndRecoverAfterPermission(t *testing.T) {
 						continue
 					}
 					args := strings.Fields(command)
-					if err := h.exec(t, h.app.newSignalCmd(), args[2:]...); err != nil {
+					cmd := h.app.newSignalCmd()
+					cmd.SetIn(strings.NewReader("{}"))
+					if err := h.exec(t, cmd, args[2:]...); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -71,7 +73,7 @@ func TestHooksUpgradeAndRecoverAfterPermission(t *testing.T) {
 				}
 			}
 			for _, event := range tc.resume {
-				if got := strings.Join(commands(settings, event), ","); got != "audit,tspace signal --quiet working" {
+				if got := strings.Join(commands(settings, event), ","); got != "audit,tspace signal --quiet --hook --if-blocked working" {
 					t.Fatalf("%s: %s", event, got)
 				}
 				fire("Notification", task.SignalBlocked)
