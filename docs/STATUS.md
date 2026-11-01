@@ -28,7 +28,9 @@ as `no-window`. `--json` lists them in each task's `windows` array, with
   `unknown`. `interrupted` is a task with no session that was not stopped on
   purpose: one that has run, and that neither `tspace stop`, dash `x`, clean
   nor closing its last window ended, such as after a computer restart.
-  `tspace start --interrupted` starts what each of them was running, and
+  Only the windows that would come back say `interrupted`; the rest of the
+  task shows `no-session`. `tspace start --interrupted` starts what each of
+  them was running, and
   carries on past one that fails; dash offers to on launch, and `I` does it
   any time. `--json` carries it as each task's `interrupted`, leaving each
   row's `runtime` `no-session` as before. `tspace stop TASK` tells tspace an
