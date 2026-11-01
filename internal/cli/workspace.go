@@ -45,6 +45,19 @@ func (a *App) render(e workspace.Event) {
 	switch e := e.(type) {
 	case workspace.Warning:
 		a.warnf("%s\n", e.Text)
+	case workspace.WorktreeReused:
+		a.printf("note: %s is already checked out at %s; start will reuse that worktree\n", e.Branch, e.Path)
+	case workspace.RepoAdded:
+		a.printf("added %s to %s\n", e.Repo, e.Task)
+		a.printf("  repo:     %s\n", e.Path)
+		a.printf("  branch:   %s (%s)\n", e.Branch, e.BranchNote)
+		if e.Existing {
+			a.printf("  base:     %s\n", e.Base)
+			if e.BaseAssumed {
+				a.printf("  base was guessed; confirm with: tspace repo update %s %s --base BASE\n", e.Task, e.Repo)
+			}
+		}
+		a.printf("  worktree: %s\n", e.Worktree)
 	case workspace.WorktreeReady:
 		res := e.Result
 		if res.FetchErr != nil {
