@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"maps"
 	"os"
 	osexec "os/exec"
 	"path/filepath"
@@ -15,72 +14,13 @@ import (
 	tsexec "github.com/wuyuz99/taskspace/internal/exec"
 	tsgit "github.com/wuyuz99/taskspace/internal/git"
 	"github.com/wuyuz99/taskspace/internal/runtime"
+	"github.com/wuyuz99/taskspace/internal/runtime/runtimetest"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
-// fakeRuntime is a session that exists once started, with the windows it
-// was given, each alive unless named in dead.
-type fakeRuntime struct {
-	unavailable error
-	hasErr      error
-	panes       map[string]runtime.PaneState
-	exists      bool
-	dead        map[string]bool
-	started     []runtime.Window
-	restarted   []runtime.Window
-	stopped     bool
-	// onStop runs as Stop does, as an agent finishing up would.
-	onStop func()
-}
-
-func (f *fakeRuntime) Available(context.Context) error { return f.unavailable }
-func (f *fakeRuntime) SessionName(t string) string     { return "tspace-" + t }
-func (f *fakeRuntime) WindowName(r string) string      { return r }
-func (f *fakeRuntime) HasSession(context.Context, string) (bool, error) {
-	return f.exists, f.hasErr
-}
-func (f *fakeRuntime) Start(_ context.Context, _ string, ws []runtime.Window) error {
-	if f.panes == nil {
-		f.panes = map[string]runtime.PaneState{}
-	}
-	f.exists = true
-	for _, w := range ws {
-		if _, ok := f.panes[w.Name]; !ok {
-			f.started = append(f.started, w)
-			f.panes[w.Name] = runtime.PaneState{Window: w.Name, Dead: f.dead[w.Name]}
-		}
-	}
-	return nil
-}
-func (f *fakeRuntime) OpenWindow(context.Context, string, runtime.Window) error { return nil }
-func (f *fakeRuntime) Restart(_ context.Context, _ string, w runtime.Window) error {
-	f.restarted = append(f.restarted, w)
-	if f.panes != nil {
-		f.panes[w.Name] = runtime.PaneState{Window: w.Name}
-	}
-	return nil
-}
-func (f *fakeRuntime) Stop(context.Context, string) error {
-	if f.onStop != nil {
-		f.onStop()
-	}
-	f.stopped, f.exists, f.panes = true, false, nil
-	return nil
-}
-func (f *fakeRuntime) Attach(context.Context, string) error { return nil }
-func (f *fakeRuntime) Focus(context.Context, string, string) (bool, error) {
-	return false, nil
-}
-func (f *fakeRuntime) Select(context.Context, string, string) error               { return nil }
-func (f *fakeRuntime) RenameWindow(context.Context, string, string, string) error { return nil }
-func (f *fakeRuntime) State(context.Context, string) (runtime.SessionState, error) {
-	// A copy, as a real one's is: what starts later is not in it.
-	return runtime.SessionState{Exists: f.exists, Panes: maps.Clone(f.panes)}, nil
-}
-
 type fixture struct {
 	svc    *Service
-	rt     *fakeRuntime
+	rt     *runtimetest.Fake
 	events []Event
 	hooks  bytes.Buffer
 }
@@ -96,7 +36,7 @@ func newFixture(t *testing.T) *fixture {
 	if r, err := filepath.EvalSymlinks(root); err == nil {
 		root = r
 	}
-	f := &fixture{rt: &fakeRuntime{}}
+	f := &fixture{rt: runtimetest.New()}
 	f.svc = &Service{
 		Store: task.NewStore(root), Git: tsgit.New(tsexec.Real()), Runtime: f.rt,
 		Stdout: &f.hooks, Stderr: &f.hooks,
@@ -104,6 +44,21 @@ func newFixture(t *testing.T) *fixture {
 	}
 	return f
 }
+
+func (f *fixture) windows(op runtimetest.Op) []runtime.Window {
+	var out []runtime.Window
+	for _, c := range f.rt.Calls(op) {
+		out = append(out, c.Window)
+	}
+	return out
+}
+
+func (f *fixture) started() []runtime.Window   { return f.windows(runtimetest.OpStart) }
+func (f *fixture) restarted() []runtime.Window { return f.windows(runtimetest.OpRestart) }
+func (f *fixture) stopped() bool               { return len(f.rt.Calls(runtimetest.OpStop)) > 0 }
+
+// dead leaves window of task name open with its command exited.
+func (f *fixture) dead(name, window string) { f.rt.Exit(f.rt.SessionName(name), window) }
 
 func gitRepo(t *testing.T) string {
 	t.Helper()
@@ -175,8 +130,8 @@ func TestStartRefusesReplacedWorktree(t *testing.T) {
 		if _, err := f.svc.Start(ctx, "T", StartOptions{NoRuntime: noRuntime}); err == nil {
 			t.Fatalf("Start(NoRuntime=%v) accepted replacement", noRuntime)
 		}
-		if len(eventsOf[WorktreeReady](f.events)) != 0 || len(f.rt.started) != 0 {
-			t.Fatalf("reported ready or launched runtime: %+v, %+v", f.events, f.rt.started)
+		if len(eventsOf[WorktreeReady](f.events)) != 0 || len(f.started()) != 0 {
+			t.Fatalf("reported ready or launched runtime: %+v, %+v", f.events, f.started())
 		}
 	}
 }
@@ -188,18 +143,18 @@ func TestStartAndRepeat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Session != "tspace-T" || len(eventsOf[WorktreeReady](f.events)) != 2 {
+	if res.Session != "tspace@T" || len(eventsOf[WorktreeReady](f.events)) != 2 {
 		t.Fatalf("result %+v, events %+v", res, f.events)
 	}
 	names := []string{}
-	for _, w := range f.rt.started {
+	for _, w := range f.started() {
 		names = append(names, w.Name)
 	}
 	if !slices.Equal(names, []string{task.RootWindowName, "a", "b"}) {
 		t.Fatalf("started %v", names)
 	}
 	// The root agent's placeholders are filled in.
-	if root := f.rt.started[0]; !slices.Contains(root.Command, f.svc.Store.ContextDir("T")) {
+	if root := f.started()[0]; !slices.Contains(root.Command, f.svc.Store.ContextDir("T")) {
 		t.Errorf("root command %v", root.Command)
 	}
 
@@ -213,8 +168,8 @@ func TestStartAndRepeat(t *testing.T) {
 			t.Errorf("%s created again", r.Repo)
 		}
 	}
-	if len(f.rt.started) != 3 {
-		t.Fatalf("windows started again: %d", len(f.rt.started))
+	if len(f.started()) != 3 {
+		t.Fatalf("windows started again: %d", len(f.started()))
 	}
 }
 
@@ -223,7 +178,7 @@ func TestStartAndRepeat(t *testing.T) {
 func TestStartPartialFailures(t *testing.T) {
 	f := newFixture(t)
 	f.task(t, "T", map[string]task.Repo{"a": {Path: gitRepo(t), PostCreate: "echo hook output; exit 3"}})
-	f.rt.dead = map[string]bool{"a": true}
+	f.rt.ExitAtStart("a")
 	if _, err := f.svc.Start(context.Background(), "T", StartOptions{}); err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +194,7 @@ func TestStartPartialFailures(t *testing.T) {
 
 	g := newFixture(t)
 	g.task(t, "U", map[string]task.Repo{"a": {Path: gitRepo(t)}})
-	g.rt.unavailable = errors.New("no multiplexer")
+	g.rt.Fail(runtimetest.OpAvailable, errors.New("no multiplexer"))
 	if _, err := g.svc.Start(context.Background(), "U", StartOptions{}); err == nil {
 		t.Fatal("start without a runtime succeeded")
 	}
@@ -285,7 +240,7 @@ func TestClean(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "work would be lost") {
 		t.Fatalf("clean of dirty work = %v", err)
 	}
-	if f.rt.stopped || !f.rt.exists {
+	if running, _ := f.rt.HasSession(context.Background(), f.rt.SessionName("T")); f.stopped() || !running {
 		t.Fatal("a refused clean stopped the session")
 	}
 
@@ -296,8 +251,8 @@ func TestClean(t *testing.T) {
 	if err := f.svc.Clean(context.Background(), "T", CleanOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	if !f.rt.stopped || len(eventsOf[SessionStopped](f.events)) != 1 || len(eventsOf[WorktreeRemoved](f.events)) != 1 {
-		t.Fatalf("clean: stopped %v, events %+v", f.rt.stopped, f.events)
+	if !f.stopped() || len(eventsOf[SessionStopped](f.events)) != 1 || len(eventsOf[WorktreeRemoved](f.events)) != 1 {
+		t.Fatalf("clean: stopped %v, events %+v", f.stopped(), f.events)
 	}
 	if brief, _ := f.svc.Store.ReadNote("T", task.BriefFile); brief.Text != "the brief\n" || !f.svc.Store.Exists("T") {
 		t.Fatal("clean lost the notes or the record")
@@ -338,7 +293,7 @@ func TestCleanJudgesWorkDoneWhileStopping(t *testing.T) {
 		}
 	}
 
-	f.rt.onStop = write
+	f.rt.OnStop(write)
 	err := f.svc.Clean(ctx, "T", CleanOptions{DeleteBranch: true})
 	if err == nil || !strings.Contains(err.Error(), "work appeared as its agents stopped") {
 		t.Fatalf("Clean = %v", err)
@@ -353,11 +308,11 @@ func TestCleanJudgesWorkDoneWhileStopping(t *testing.T) {
 	if _, err := f.svc.Start(ctx, "T", StartOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	f.rt.onStop = func() {
+	f.rt.OnStop(func() {
 		write()
 		git("add", "late.txt")
 		git("commit", "-q", "-m", "late")
-	}
+	})
 	f.events = nil
 	if err := f.svc.Clean(ctx, "T", CleanOptions{DeleteBranch: true}); err != nil {
 		t.Fatal(err)
@@ -376,11 +331,12 @@ func TestRestartAndResume(t *testing.T) {
 	if _, err := f.svc.Start(context.Background(), "T", StartOptions{}); err != nil {
 		t.Fatal(err)
 	}
+	f.dead("T", "a")
 	label, _, err := f.svc.Restart(context.Background(), "T", RestartOptions{Repo: "a", Resume: true})
 	if err != nil || label != "T/a" {
 		t.Fatalf("restart = %q, %v", label, err)
 	}
-	if got := f.rt.restarted[0].Command; !slices.Equal(got, []string{"repo-agent", "--continue"}) {
+	if got := f.restarted()[0].Command; !slices.Equal(got, []string{"repo-agent", "--continue"}) {
 		t.Fatalf("resumed with %v", got)
 	}
 	// The root window's agent has no resume command.
@@ -431,8 +387,8 @@ func TestRestartNeedsRootSaidOutright(t *testing.T) {
 	if _, _, err := f.svc.Restart(context.Background(), "T", RestartOptions{Repo: task.RootWindowName}); err == nil {
 		t.Fatal("restart of a repository named _root restarted something")
 	}
-	if len(f.rt.restarted) != 0 {
-		t.Fatalf("restarted %+v", f.rt.restarted)
+	if len(f.restarted()) != 0 {
+		t.Fatalf("restarted %+v", f.restarted())
 	}
 }
 

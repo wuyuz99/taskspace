@@ -46,6 +46,8 @@ type Fake struct {
 	windows  map[string]map[string]runtime.Window
 	errs     map[Op]error
 	calls    []Call
+	onStop   func()
+	crashing map[string]bool
 }
 
 // New returns a fake with no sessions.
@@ -54,6 +56,7 @@ func New() *Fake {
 		sessions: map[string]map[string]runtime.PaneState{},
 		windows:  map[string]map[string]runtime.Window{},
 		errs:     map[Op]error{},
+		crashing: map[string]bool{},
 	}
 }
 
@@ -76,6 +79,29 @@ func (f *Fake) Calls(ops ...Op) []Call {
 		}
 	}
 	return out
+}
+
+// ForgetCalls empties the record, so a test can look at what comes next.
+func (f *Fake) ForgetCalls() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = nil
+}
+
+// OnStop runs fn as Stop begins, as an agent finishing up would.
+func (f *Fake) OnStop(fn func()) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.onStop = fn
+}
+
+// ExitAtStart makes these windows' commands exit as Start launches them.
+func (f *Fake) ExitAtStart(windows ...string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, w := range windows {
+		f.crashing[runtime.WindowName(w)] = true
+	}
 }
 
 func contains(ops []Op, op Op) bool {
@@ -202,6 +228,9 @@ func (f *Fake) Start(_ context.Context, session string, windows []runtime.Window
 		if _, ok := f.sessions[session][runtime.WindowName(w.Name)]; !ok {
 			f.record(OpStart, session, w)
 			f.launch(session, w)
+			if id := runtime.WindowName(w.Name); f.crashing[id] {
+				f.exit(session, id)
+			}
 		}
 	}
 	return nil
@@ -251,6 +280,12 @@ func (f *Fake) Restart(_ context.Context, session string, w runtime.Window) erro
 
 // Stop implements runtime.Runtime. A session that is not there is stopped.
 func (f *Fake) Stop(_ context.Context, session string) error {
+	f.mu.Lock()
+	onStop := f.onStop
+	f.mu.Unlock()
+	if onStop != nil {
+		onStop()
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if err := f.errs[OpStop]; err != nil {

@@ -38,11 +38,12 @@ func TestStartResumesWhatWasThere(t *testing.T) {
 	ctx := context.Background()
 	start := func(opts StartOptions) map[string][]string {
 		t.Helper()
-		f.rt.started, f.events = nil, nil
+		f.rt.ForgetCalls()
+		f.events = nil
 		if _, err := f.svc.Start(ctx, "T", opts); err != nil {
 			t.Fatal(err)
 		}
-		return commands(f.rt.started)
+		return commands(f.started())
 	}
 
 	// Worktrees and the task directory made now hold no conversation.
@@ -55,8 +56,8 @@ func TestStartResumesWhatWasThere(t *testing.T) {
 	}
 	// A window still running is not launched again, so not resumed either.
 	start(StartOptions{})
-	if len(f.rt.started) != 0 || len(eventsOf[Resumed](f.events)) != 0 {
-		t.Fatalf("started %v", f.rt.started)
+	if len(f.started()) != 0 || len(eventsOf[Resumed](f.events)) != 0 {
+		t.Fatalf("started %v", f.started())
 	}
 
 	if _, err := f.svc.Stop(ctx, "T"); err != nil {
@@ -92,12 +93,13 @@ func TestStartFallsBackFromAFailedResume(t *testing.T) {
 	if _, err := f.svc.Stop(ctx, "T"); err != nil {
 		t.Fatal(err)
 	}
-	f.rt.dead, f.events = map[string]bool{"a": true}, nil
+	f.rt.ExitAtStart("a")
+	f.events = nil
 	if _, err := f.svc.Start(ctx, "T", StartOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	if len(f.rt.restarted) != 1 || !slices.Equal(f.rt.restarted[0].Command, []string{"a-agent"}) {
-		t.Fatalf("restarted %+v", f.rt.restarted)
+	if len(f.restarted()) != 1 || !slices.Equal(f.restarted()[0].Command, []string{"a-agent"}) {
+		t.Fatalf("restarted %+v", f.restarted())
 	}
 	if r := eventsOf[ResumeFailed](f.events); len(r) != 1 || r[0].Window != "a" {
 		t.Fatalf("events %+v", f.events)
@@ -114,14 +116,15 @@ func TestRestartResumesUnlessFresh(t *testing.T) {
 	if _, err := f.svc.Start(ctx, "T", StartOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	f.rt.panes["a"] = runtime.PaneState{Window: "a", Dead: true}
+	f.dead("T", "a")
 	_, resumed, err := f.svc.Restart(ctx, "T", RestartOptions{Repo: "a"})
-	if err != nil || !resumed || !slices.Equal(f.rt.restarted[0].Command, []string{"a-agent", "--continue"}) {
-		t.Fatalf("restart: resumed=%v err=%v %+v", resumed, err, f.rt.restarted)
+	if err != nil || !resumed || !slices.Equal(f.restarted()[0].Command, []string{"a-agent", "--continue"}) {
+		t.Fatalf("restart: resumed=%v err=%v %+v", resumed, err, f.restarted())
 	}
+	f.dead("T", "a")
 	_, resumed, err = f.svc.Restart(ctx, "T", RestartOptions{Repo: "a", Fresh: true})
-	if err != nil || resumed || !slices.Equal(f.rt.restarted[1].Command, []string{"a-agent"}) {
-		t.Fatalf("--fresh: resumed=%v err=%v %+v", resumed, err, f.rt.restarted)
+	if err != nil || resumed || !slices.Equal(f.restarted()[1].Command, []string{"a-agent"}) {
+		t.Fatalf("--fresh: resumed=%v err=%v %+v", resumed, err, f.restarted())
 	}
 	// Without a resume command, b is relaunched as it is.
 	if _, resumed, err = f.svc.Restart(ctx, "T", RestartOptions{Repo: "b"}); err != nil || resumed {
@@ -148,11 +151,12 @@ func TestResumeNeedsAnAgentThatRan(t *testing.T) {
 	if _, err := f.svc.Stop(ctx, "T"); err != nil {
 		t.Fatal(err)
 	}
-	f.events, f.rt.started = nil, nil
+	f.rt.ForgetCalls()
+	f.events = nil
 	if _, err := f.svc.Start(ctx, "T", StartOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	got := commands(f.rt.started)
+	got := commands(f.started())
 	if !slices.Equal(got["a"], []string{"a-agent", "--continue"}) || !slices.Equal(got[task.RootWindowName], []string{"root-agent"}) {
 		t.Fatalf("a ran before and the root window did not: %v", got)
 	}
@@ -164,11 +168,11 @@ func TestResumeNeedsAnAgentThatRan(t *testing.T) {
 	if err := f.svc.Clean(ctx, "T", CleanOptions{Repos: []string{"a"}}); err != nil {
 		t.Fatal(err)
 	}
-	f.rt.started = nil
+	f.rt.ForgetCalls()
 	if _, err := f.svc.Start(ctx, "T", StartOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	if got := commands(f.rt.started); !slices.Equal(got["a"], []string{"a-agent"}) {
+	if got := commands(f.started()); !slices.Equal(got["a"], []string{"a-agent"}) {
 		t.Fatalf("recreated worktree resumed: %v", got)
 	}
 }
@@ -185,7 +189,7 @@ func TestInterruptedOnlyWhenNotStopped(t *testing.T) {
 	if _, err := f.svc.Start(ctx, "T", StartOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	f.rt.exists, f.rt.panes = false, nil // the machine restarts
+	f.rt.Reboot()
 	if names, err := f.svc.Interrupted(ctx); err != nil || !slices.Equal(names, []string{"T"}) {
 		t.Fatalf("interrupted = %v, %v", names, err)
 	}
@@ -198,7 +202,7 @@ func TestInterruptedOnlyWhenNotStopped(t *testing.T) {
 	if _, err := f.svc.Start(ctx, "T", StartOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	f.rt.exists, f.rt.panes = false, nil
+	f.rt.Reboot()
 	if !f.svc.Store.Interrupted("T") {
 		t.Fatal("start did not clear the stop")
 	}

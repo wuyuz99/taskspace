@@ -11,6 +11,7 @@ import (
 
 	tsgit "github.com/wuyuz99/taskspace/internal/git"
 	"github.com/wuyuz99/taskspace/internal/runtime"
+	"github.com/wuyuz99/taskspace/internal/runtime/runtimetest"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
@@ -148,10 +149,7 @@ func TestMoveRepoWithNoWorktreeMovesTheRecord(t *testing.T) {
 
 func TestMoveRepoRefusals(t *testing.T) {
 	session := func(f *fixture, panes ...string) {
-		f.rt.exists, f.rt.panes = true, map[string]runtime.PaneState{}
-		for _, p := range panes {
-			f.rt.panes[p] = runtime.PaneState{Window: p}
-		}
+		seed(f, "OLD", panes...)
 	}
 	for _, c := range []struct {
 		kind, to, repo, name, want string
@@ -191,8 +189,8 @@ func TestMoveRepoRefusals(t *testing.T) {
 			session(f, "b")
 		}},
 		{kind: "destination-window", want: "NEW already has a window a", prepare: func(t *testing.T, f *fixture, old, dst *task.Task) {
-			f.rt.exists = true
-			f.svc.Runtime = sessionPanes{fakeRuntime: f.rt, panes: map[string][]string{"tspace-OLD": {"b"}, "tspace-NEW": {"a"}}}
+			seed(f, "OLD", "b")
+			seed(f, "NEW", "a")
 		}},
 		{kind: "outside-its-path", want: "outside its expected path", prepare: func(t *testing.T, f *fixture, old, dst *task.Task) {
 			r := old.Repos["a"]
@@ -201,7 +199,7 @@ func TestMoveRepoRefusals(t *testing.T) {
 			saveTask(t, f, old)
 		}},
 		{kind: "session-unknown", want: "cannot inspect", prepare: func(t *testing.T, f *fixture, old, dst *task.Task) {
-			f.rt.hasErr = errors.New("cannot inspect session")
+			f.rt.Fail(runtimetest.OpHasSession, errors.New("cannot inspect session"))
 		}},
 		{kind: "inside", want: "from outside", prepare: func(t *testing.T, f *fixture, old, dst *task.Task) {
 			t.Chdir(old.Repos["a"].Worktree)
@@ -241,28 +239,23 @@ func TestMoveRepoRefusals(t *testing.T) {
 	}
 }
 
-// sessionPanes gives each session windows of its own.
-type sessionPanes struct {
-	*fakeRuntime
-	panes map[string][]string
-}
-
-func (s sessionPanes) State(_ context.Context, session string) (runtime.SessionState, error) {
-	st := runtime.SessionState{Exists: true, Panes: map[string]runtime.PaneState{}}
-	for _, p := range s.panes[session] {
-		st.Panes[p] = runtime.PaneState{Window: p}
+// seed runs a session for task name with these windows.
+func seed(f *fixture, name string, windows ...string) {
+	panes := map[string]runtime.PaneState{}
+	for _, w := range windows {
+		panes[w] = runtime.PaneState{}
 	}
-	return st, nil
+	f.rt.Seed(f.rt.SessionName(name), panes)
 }
 
 // With its window closed, a repository leaves the running session alone.
 func TestMoveRepoFromARunningTask(t *testing.T) {
 	f, _, _ := moveFixture(t)
-	f.rt.exists, f.rt.panes = true, map[string]runtime.PaneState{"b": {Window: "b"}}
+	seed(f, "OLD", "b")
 	if err := f.svc.MoveRepo(t.Context(), "OLD", "a", "NEW", ""); err != nil {
 		t.Fatal(err)
 	}
-	if f.rt.stopped {
+	if f.stopped() {
 		t.Fatal("stopped the session")
 	}
 }

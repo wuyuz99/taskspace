@@ -11,6 +11,7 @@ import (
 
 	tsexec "github.com/wuyuz99/taskspace/internal/exec"
 	tsgit "github.com/wuyuz99/taskspace/internal/git"
+	"github.com/wuyuz99/taskspace/internal/runtime/runtimetest"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
@@ -121,9 +122,9 @@ func TestRenameRefusals(t *testing.T) {
 			branches := false
 			switch kind {
 			case "running":
-				f.rt.exists = true
+				seed(f, "OLD")
 			case "runtime-error":
-				f.rt.hasErr = errors.New("cannot inspect session")
+				f.rt.Fail(runtimetest.OpHasSession, errors.New("cannot inspect session"))
 			case "taken-name":
 				if _, err := f.svc.Store.Create("NEW"); err != nil {
 					t.Fatal(err)
