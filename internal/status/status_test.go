@@ -12,46 +12,26 @@ import (
 	tsexec "github.com/wuyuz99/taskspace/internal/exec"
 	tsgit "github.com/wuyuz99/taskspace/internal/git"
 	"github.com/wuyuz99/taskspace/internal/runtime"
+	"github.com/wuyuz99/taskspace/internal/runtime/runtimetest"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
-// fakeRuntime lets status tests describe a session without needing tmux.
-type fakeRuntime struct {
-	state runtime.SessionState
-	err   error
+// session is a task t's session with these panes, keyed by window.
+func session(panes map[string]runtime.PaneState) *runtimetest.Fake {
+	f := runtimetest.New()
+	f.Seed(f.SessionName("t"), panes)
+	return f
 }
 
-func (f *fakeRuntime) Available(context.Context) error { return nil }
-func (f *fakeRuntime) SessionName(t string) string     { return "tspace-" + t }
-func (f *fakeRuntime) WindowName(repo string) string   { return repo }
-func (f *fakeRuntime) HasSession(context.Context, string) (bool, error) {
-	return f.state.Exists, nil
-}
-func (f *fakeRuntime) Start(context.Context, string, []runtime.Window) error { return nil }
-func (f *fakeRuntime) Restart(context.Context, string, runtime.Window) error { return nil }
-func (f *fakeRuntime) OpenWindow(context.Context, string, runtime.Window) error {
-	return nil
-}
-func (f *fakeRuntime) Stop(context.Context, string) error                         { return nil }
-func (f *fakeRuntime) Select(context.Context, string, string) error               { return nil }
-func (f *fakeRuntime) RenameWindow(context.Context, string, string, string) error { return nil }
-func (f *fakeRuntime) Attach(context.Context, string) error                       { return nil }
-func (f *fakeRuntime) Focus(context.Context, string, string) (bool, error) {
-	return false, nil
-}
-func (f *fakeRuntime) State(context.Context, string) (runtime.SessionState, error) {
-	return f.state, f.err
+func noSession() *runtimetest.Fake { return runtimetest.New() }
+
+func unqueryable(err error) *runtimetest.Fake {
+	f := runtimetest.New()
+	f.Fail(runtimetest.OpState, err)
+	return f
 }
 
-func session(panes map[string]runtime.PaneState) *fakeRuntime {
-	return &fakeRuntime{state: runtime.SessionState{Name: "tspace-t", Exists: true, Panes: panes}}
-}
-
-func noSession() *fakeRuntime {
-	return &fakeRuntime{state: runtime.SessionState{Panes: map[string]runtime.PaneState{}}}
-}
-
-type alternateNamingRuntime struct{ *fakeRuntime }
+type alternateNamingRuntime struct{ *runtimetest.Fake }
 
 func (f *alternateNamingRuntime) WindowName(repo string) string { return "custom/" + repo }
 
@@ -225,10 +205,7 @@ func TestUnqueryableRuntimeIsUnknownNotNoSession(t *testing.T) {
 	tk := task.New("t")
 	tk.SetRepo("backend", task.Repo{Worktree: repo, Branch: "main"})
 
-	broken := &fakeRuntime{
-		state: runtime.SessionState{Panes: map[string]runtime.PaneState{}},
-		err:   errors.New("no server running on /tmp/tmux-1000/default"),
-	}
+	broken := unqueryable(errors.New("no server running on /tmp/tmux-1000/default"))
 	got := New(tsgit.New(tsexec.Real()), broken).Task(context.Background(), tk)
 
 	if got.Repos[0].Runtime != RuntimeUnknown {
@@ -261,7 +238,7 @@ func TestRootWindowState(t *testing.T) {
 		{"running", session(map[string]runtime.PaneState{task.RootWindowName: {}, "backend": {Dead: true}}), RuntimeRunning},
 		{"dead", session(map[string]runtime.PaneState{task.RootWindowName: {Dead: true}, "backend": {}}), RuntimeDead},
 		{"session without it", session(map[string]runtime.PaneState{"backend": {}}), RuntimeNoWindow},
-		{"unqueryable", &fakeRuntime{err: errors.New("no server")}, RuntimeUnknown},
+		{"unqueryable", unqueryable(errors.New("no server")), RuntimeUnknown},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
