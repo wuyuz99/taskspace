@@ -124,6 +124,10 @@ func TestClaudeHooksFollowEachThread(t *testing.T) {
 			{"PermissionRequest", subagent, blocked},
 			{"PostToolUse", otherAgent, blocked},
 		},
+		"a denied prompt doesn't outlast the turn": {
+			{"PermissionRequest", mainThread, blocked},
+			{"Stop", mainThread, done},
+		},
 		"a denial fires nothing, and the next prompt moves on": {
 			{"PermissionRequest", mainThread, blocked},
 			{"Notification", noThread, blocked},
@@ -175,6 +179,33 @@ func TestToolHooksKeepWhatTheAgentSaid(t *testing.T) {
 			if got := h.signals(t, name)[task.RootWindowName].Message; got != tc.message {
 				t.Fatalf("after Notification, message = %q, want %q", got, tc.message)
 			}
+		}
+	}
+}
+
+// The end of a turn is when an agent's own question has to stay on show.
+func TestTurnEndKeepsWhatTheAgentSaid(t *testing.T) {
+	for _, agent := range []struct {
+		agent       hookAgent
+		start, stop string
+	}{
+		{claudeAgent, "UserPromptSubmit", "Stop"},
+		{geminiAgent, "BeforeAgent", "AfterAgent"},
+	} {
+		for _, state := range []task.SignalState{task.SignalBlocked, task.SignalFailed} {
+			h, name := hookTask(t)
+			if err := h.exec(t, h.app.newSignalCmd(), string(state), "which column?"); err != nil {
+				t.Fatal(err)
+			}
+			replay(t, agent.agent, h, name, []hookStep{{agent.stop, "{}", state}})
+			if got := h.signals(t, name)[task.RootWindowName].Message; got != "which column?" {
+				t.Fatalf("message = %q", got)
+			}
+			// Answering it moves the window on.
+			replay(t, agent.agent, h, name, []hookStep{
+				{agent.start, "{}", task.SignalWorking},
+				{agent.stop, "{}", task.SignalDone},
+			})
 		}
 	}
 }
@@ -235,6 +266,7 @@ func TestSignalRefusesConditionsThatMakeNoSense(t *testing.T) {
 		{"--if-blocked", "working"},
 		{"--hook", "--if-blocked", "--unless-blocked", "working"},
 		{"--clear", "--unless-blocked"},
+		{"--clear", "--keep-reported"},
 	} {
 		cmd := h.app.newSignalCmd()
 		cmd.SetIn(strings.NewReader("{}"))

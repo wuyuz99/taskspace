@@ -31,6 +31,10 @@ upgrade.
   `tspace signal`'s new `--hook`, `--if-blocked` and `--unless-blocked`: run
   `tspace config hooks claude` or `tspace config hooks gemini` again and start
   a new agent session.
+- The end of a turn no longer replaces a `blocked` or `failed` the agent
+  reported itself, so `tspace signal blocked 'which column?'` stays on show
+  until the next prompt. `signal` gains `--keep-reported`; run the installer
+  again, or update the Codex recipe, to get it.
 
 ## v0.2.0 — 2026-10-31
 
@@ -178,6 +182,8 @@ upgrade.
 
 ### Fixed
 
+- `start` refuses a worktree path that something else has replaced, with
+  advice, instead of reporting it ready or launching an agent there (#92).
 - **Git operations use the requested repository**, even when tspace runs
   from a Git hook with another repository's environment. Status, cleanup
   safety checks, mutations and cloning ignore inherited repository context
