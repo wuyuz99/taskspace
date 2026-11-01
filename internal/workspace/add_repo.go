@@ -36,6 +36,33 @@ type WorktreeReused struct{ Branch, Path string }
 func (RepoAdded) event()      {}
 func (WorktreeReused) event() {}
 
+// AttachRepo adds the repository spec names to a task under its lock, settles
+// the task's layout, and opens a root window if the running session now needs
+// one.
+func (s *Service) AttachRepo(ctx context.Context, name, spec string, opts AddRepoOptions) error {
+	t, ctx, unlock, err := s.Lock(ctx, name, s.command("tspace repo add"), true)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	c, err := s.Store.LoadConfig()
+	if err != nil {
+		return err
+	}
+	first := len(t.Repos) == 0
+	if err := s.AddRepoSpec(ctx, t, c, spec, opts); err != nil {
+		return err
+	}
+	openRoot := s.SettleLayout(ctx, t, first)
+	if err := s.Store.Save(t); err != nil {
+		return err
+	}
+	if openRoot {
+		s.OpenRootWindow(ctx, t)
+	}
+	return nil
+}
+
 // AddRepo validates the repository at path and records it on t, in memory:
 // the caller saves t, as it may be changing more of it. It reports what start
 // will do with the branch, and creates nothing on disk.

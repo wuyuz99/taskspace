@@ -154,16 +154,6 @@ func (a *App) newRepoAddCmd() *cobra.Command {
 			"Nothing else is created on disk here — `tspace start` makes the worktrees.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			t, unlock, err := a.lockTask(cmd, args[0], true)
-			if err != nil {
-				return err
-			}
-			defer unlock()
-			ctx := cmd.Context()
-			c, err := a.Store.LoadConfig()
-			if err != nil {
-				return err
-			}
 			if err := resume.validate(cmd); err != nil {
 				return err
 			}
@@ -171,19 +161,11 @@ func (a *App) newRepoAddCmd() *cobra.Command {
 			if len(opts.Resume) > 0 && len(opts.Agent) == 0 {
 				return fmt.Errorf("--resume resumes the repository's agent; give one with --agent")
 			}
-			first := len(t.Repos) == 0
-			if err := a.addRepoSpec(ctx, t, c, args[1], opts); err != nil {
+			name, err := a.resolveTask(args[0])
+			if err != nil {
 				return err
 			}
-			ws := a.workspace()
-			openRoot := ws.SettleLayout(ctx, t, first)
-			if err := a.Store.Save(t); err != nil {
-				return err
-			}
-			if openRoot {
-				ws.OpenRootWindow(ctx, t)
-			}
-			return nil
+			return a.workspaceFor(cmd).AttachRepo(cmd.Context(), name, args[1], opts)
 		},
 	}
 	cmd.Flags().StringVar(&opts.Name, "name", "", "repo name (default: the registered name or the directory's base name)")
@@ -203,11 +185,6 @@ func samePath(x, y string) bool { return workspace.SamePath(x, y) }
 func isDir(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
-}
-
-// addRepoSpec parses a REPO argument and adds it.
-func (a *App) addRepoSpec(ctx context.Context, t *task.Task, c *task.Config, spec string, opts addRepoOptions) error {
-	return a.workspace().AddRepoSpec(ctx, t, c, spec, opts)
 }
 
 func firstNonEmpty(a, b string) string {

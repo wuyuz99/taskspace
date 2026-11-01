@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/wuyuz99/taskspace/internal/status"
 	"github.com/wuyuz99/taskspace/internal/task"
+	"github.com/wuyuz99/taskspace/internal/workspace"
 )
 
 // windowForm is w's form: what `tspace window TASK [REPO | --root] -d
@@ -90,38 +91,33 @@ func (m dashModel) sessionUp(name string) bool {
 // openWindow runs `tspace window` with what f holds, detached so dash stays
 // in front; the cursor then goes to the new window.
 func (m dashModel) openWindow(taskName, place string, f *dashForm) tea.Cmd {
-	args := []string{taskName, place, "-d"}
-	if name := strings.TrimPrefix(f.field("name").text(), task.ExtraWindowPrefix); name != "" {
-		args = append(args, "--name", name)
-	}
-	if f.field("save").on {
-		args = append(args, "--save")
+	opts := workspace.OpenWindowOptions{Detach: true, Save: f.field("save").on,
+		Name: strings.TrimPrefix(f.field("name").text(), task.ExtraWindowPrefix)}
+	if place == "--root" {
+		opts.Root = true
+	} else {
+		opts.Repo = place
 	}
 	switch command := f.field("command").text(); command {
 	case "":
 	case "agent":
-		args = append(args, "--agent")
+		opts.Agent = true
 	default:
-		argv, _ := splitWords(command) // checked as it was typed
-		args = append(append(args, "--"), argv...)
+		opts.Command, _ = splitWords(command) // checked as it was typed
 	}
 	return func() tea.Msg {
 		var out, warn bytes.Buffer
 		sub := *m.app
 		sub.Out, sub.Err = &out, &warn
 		sub.noWait = true
-		err := sub.runCmd(m.ctx, (*App).newWindowCmd, args...)
+		res, err := sub.workspace().OpenWindow(m.ctx, taskName, opts)
 		if err != nil {
 			return dashDoneMsg{err: err}
 		}
-		// "opened _NAME in TASK: ..." names the window it chose.
 		text := append(lines(out.String()), lines(warn.String())...)
 		msg := dashDoneMsg{text: strings.Join(text, "; ")}
-		if len(text) > 0 {
-			rest, _ := strings.CutPrefix(text[0], "opened ")
-			if w, _, ok := strings.Cut(rest, " in "+taskName+": "); ok {
-				msg.made, msg.window = taskName, w
-			}
+		if res.Window != "" {
+			msg.made, msg.window = taskName, res.Window
 		}
 		return msg
 	}
@@ -134,7 +130,7 @@ func (m dashModel) saveWindow(row dashRow) tea.Cmd {
 		sub := *m.app
 		sub.Out, sub.Err = &out, &warn
 		sub.noWait = true
-		err := sub.runCmd(m.ctx, (*App).newWindowCmd, row.Task, "--save", row.Window)
+		err := sub.workspace().SaveOpenWindow(m.ctx, row.Task, row.Window)
 		text := append(lines(out.String()), lines(warn.String())...)
 		return dashDoneMsg{text: strings.Join(text, "; "), err: err}
 	}
