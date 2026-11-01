@@ -99,11 +99,7 @@ func (o *resumeOptions) apply(cmd *cobra.Command, current []string, agentChanged
 }
 
 // defaultsToRoot reports whether an omitted repository means the task root.
-// With one repository the worktree is the obvious answer; with none or several,
-// the root is the only directory that stands for the whole task.
-func defaultsToRoot(t *task.Task, repoArg string) bool {
-	return repoArg == "" && len(t.Repos) != 1
-}
+func defaultsToRoot(t *task.Task, repoArg string) bool { return workspace.DefaultsToRoot(t, repoArg) }
 
 // rootWindow and expandArgv are the lifecycle service's; see package
 // workspace.

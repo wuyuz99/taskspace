@@ -380,16 +380,6 @@ func (a *App) deleteTask(t *task.Task) error { return a.workspace().Delete(t) }
 // deleteRecord removes the task's record alone.
 func (a *App) deleteRecord(t *task.Task) error { return a.workspace().DeleteRecord(t) }
 
-// runCmd runs another command as if it had been typed, with this App's output.
-func (a *App) runCmd(ctx context.Context, build func(*App) *cobra.Command, args ...string) error {
-	c := build(a)
-	c.SetArgs(args)
-	c.SetOut(a.Out)
-	c.SetErr(a.Err)
-	c.SilenceUsage, c.SilenceErrors = true, true
-	return c.ExecuteContext(ctx)
-}
-
 func agentDisplay(r task.Repo) string {
 	if len(r.Agent) == 0 {
 		return "shell"

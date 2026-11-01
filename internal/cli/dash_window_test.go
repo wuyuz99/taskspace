@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/wuyuz99/taskspace/internal/task"
+	"github.com/wuyuz99/taskspace/internal/workspace"
 )
 
 func TestSplitWords(t *testing.T) {
@@ -92,8 +93,8 @@ func TestDashOpenWindowNeedsSession(t *testing.T) {
 
 func TestWindowLabel(t *testing.T) {
 	for in, want := range map[string]string{"g++": "g--", "node@20": "node-20", "make": "make", "": "cmd"} {
-		if got := windowLabel(in); got != want || (in != "" && !task.IsExtraWindow("_x-"+got)) {
-			t.Errorf("windowLabel(%q) = %q, want %q", in, got, want)
+		if got := workspace.WindowLabel(in); got != want || (in != "" && !task.IsExtraWindow("_x-"+got)) {
+			t.Errorf("workspace.WindowLabel(%q) = %q, want %q", in, got, want)
 		}
 	}
 }

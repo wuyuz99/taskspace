@@ -45,6 +45,14 @@ func (a *App) render(e workspace.Event) {
 	switch e := e.(type) {
 	case workspace.Warning:
 		a.warnf("%s\n", e.Text)
+	case workspace.Info:
+		a.printf("%s\n", e.Text)
+	case workspace.WindowOpened:
+		what := "shell"
+		if len(e.Command) > 0 {
+			what = shellJoin(e.Command)
+		}
+		a.printf("opened %s in %s: %s at %s\n", e.Window, e.Task, what, e.Dir)
 	case workspace.TaskCreated:
 		t := e.Task
 		a.printf("created task %s\n", t.Name)
