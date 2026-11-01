@@ -13,51 +13,9 @@ import (
 	"github.com/spf13/cobra"
 	tsexec "github.com/wuyuz99/taskspace/internal/exec"
 	tsgit "github.com/wuyuz99/taskspace/internal/git"
-	"github.com/wuyuz99/taskspace/internal/runtime"
+	"github.com/wuyuz99/taskspace/internal/runtime/runtimetest"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
-
-// stubRuntime stands in for tmux so the safety-critical CLI paths can be tested
-// on any machine.
-type stubRuntime struct {
-	stopped bool
-	started []runtime.Window
-	// vanished makes the session gone once started; dead marks windows exited.
-	vanished bool
-	dead     map[string]bool
-}
-
-func (s *stubRuntime) Available(context.Context) error { return nil }
-func (s *stubRuntime) SessionName(t string) string     { return "tspace-" + t }
-func (s *stubRuntime) WindowName(repo string) string   { return repo }
-func (s *stubRuntime) HasSession(context.Context, string) (bool, error) {
-	return false, nil
-}
-func (s *stubRuntime) Start(_ context.Context, _ string, w []runtime.Window) error {
-	s.started = append(s.started, w...)
-	return nil
-}
-func (s *stubRuntime) OpenWindow(context.Context, string, runtime.Window) error { return nil }
-func (s *stubRuntime) Restart(context.Context, string, runtime.Window) error    { return nil }
-func (s *stubRuntime) Stop(context.Context, string) error {
-	s.stopped = true
-	return nil
-}
-func (s *stubRuntime) Attach(context.Context, string) error                       { return nil }
-func (s *stubRuntime) Select(context.Context, string, string) error               { return nil }
-func (s *stubRuntime) RenameWindow(context.Context, string, string, string) error { return nil }
-func (s *stubRuntime) Focus(context.Context, string, string) (bool, error) {
-	return false, nil
-}
-func (s *stubRuntime) State(context.Context, string) (runtime.SessionState, error) {
-	st := runtime.SessionState{Exists: len(s.started) > 0 && !s.vanished, Panes: map[string]runtime.PaneState{}}
-	if st.Exists {
-		for _, w := range s.started {
-			st.Panes[w.Name] = runtime.PaneState{Window: w.Name, Dead: s.dead[w.Name]}
-		}
-	}
-	return st, nil
-}
 
 type harness struct {
 	app  *App
@@ -86,7 +44,7 @@ func newHarness(t *testing.T) *harness {
 		app: &App{
 			Store:   task.NewStore(root),
 			Git:     tsgit.New(tsexec.Real()),
-			Runtime: &stubRuntime{},
+			Runtime: runtimetest.New(),
 			Out:     out,
 			Err:     errb,
 		},
@@ -95,6 +53,9 @@ func newHarness(t *testing.T) *harness {
 		repo: mkRepo(t),
 	}
 }
+
+// fake is the multiplexer newHarness gave h.
+func (h *harness) fake() *runtimetest.Fake { return h.app.Runtime.(*runtimetest.Fake) }
 
 func mkRepo(t *testing.T) string {
 	t.Helper()

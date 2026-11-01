@@ -22,7 +22,7 @@ func TestRestartResumeRunsTheResumeCommand(t *testing.T) {
 	if err := h.exec(t, h.app.newStartCmd(), "PAY-1", "--no-runtime"); err != nil {
 		t.Fatal(err)
 	}
-	rt := &restartRuntime{}
+	rt := deadSession("PAY-1", task.RootWindowName, "frontend")
 	h.app.Runtime = rt
 	if err := h.exec(t, h.app.newRestartCmd(), "PAY-1", "--root", "--resume"); err != nil {
 		t.Fatal(err)
@@ -34,8 +34,8 @@ func TestRestartResumeRunsTheResumeCommand(t *testing.T) {
 		{"agent-a", "--continue", "--notes=" + h.app.Store.ContextDir("PAY-1")},
 		{"agent-b", "resume"},
 	}
-	if len(rt.restarted) != 2 || !slices.Equal(rt.restarted[0].Command, want[0]) || !slices.Equal(rt.restarted[1].Command, want[1]) {
-		t.Fatalf("restarted %+v", rt.restarted)
+	if len(restarted(rt)) != 2 || !slices.Equal(restarted(rt)[0].Command, want[0]) || !slices.Equal(restarted(rt)[1].Command, want[1]) {
+		t.Fatalf("restarted %+v", restarted(rt))
 	}
 
 	// A shell has nothing to resume.
@@ -69,12 +69,12 @@ func TestRestartResumeOfTheAgentRepo(t *testing.T) {
 	if err := h.exec(t, h.app.newStartCmd(), "PAY-1", "--no-runtime"); err != nil {
 		t.Fatal(err)
 	}
-	rt := &restartRuntime{}
+	rt := deadSession("PAY-1", "backend")
 	h.app.Runtime = rt
 	if err := h.exec(t, h.app.newRestartCmd(), "PAY-1", "backend", "--resume"); err != nil {
 		t.Fatal(err)
 	}
-	if w := rt.restarted[0]; w.Name != "backend" || !slices.Equal(w.Command, []string{"agent-a", "--continue"}) {
+	if w := restarted(rt)[0]; w.Name != "backend" || !slices.Equal(w.Command, []string{"agent-a", "--continue"}) {
 		t.Fatalf("restarted %+v", w)
 	}
 }
@@ -184,7 +184,7 @@ func TestResumeReviewCases(t *testing.T) {
 	if err := h.exec(t, h.app.newStartCmd(), "PAY-1", "--no-runtime"); err != nil {
 		t.Fatal(err)
 	}
-	h.app.Runtime = &restartRuntime{}
+	h.app.Runtime = deadSession("PAY-1", "backend")
 	err := h.exec(t, h.app.newRestartCmd(), "PAY-1", "backend", "--resume")
 	if err == nil || !strings.Contains(err.Error(), "runs a shell; there is no agent to resume") {
 		t.Fatalf("restart --resume of a shell = %v", err)

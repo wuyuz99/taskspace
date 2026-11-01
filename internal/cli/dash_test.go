@@ -149,7 +149,7 @@ func TestDashActionsOnAStoppedTask(t *testing.T) {
 		t.Fatalf("clear without a signal: %q", m.note)
 	}
 
-	// s runs the same start a person would type; the stub runtime accepts it.
+	// s runs the same start a person would type; the fake accepts it.
 	next, cmd := m.Update(key("s"))
 	if m = next.(dashModel); m.note != "starting "+row.Task+"..." || cmd == nil {
 		t.Fatalf("start: %q", m.note)

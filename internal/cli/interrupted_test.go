@@ -27,15 +27,9 @@ func crashedTasks(t *testing.T) *harness {
 		t.Fatal(err)
 	}
 	// The machine restarts: no session survives.
-	h.app.Runtime = &sessionStub{}
+	h.fake().Reboot()
+	h.fake().ForgetCalls()
 	return h
-}
-
-// sessionStub has a session once anything is started in it.
-type sessionStub struct{ stubRuntime }
-
-func (s *sessionStub) HasSession(context.Context, string) (bool, error) {
-	return len(s.started) > 0, nil
 }
 
 func TestStatusShowsInterrupted(t *testing.T) {
@@ -72,7 +66,7 @@ func TestStatusShowsInterrupted(t *testing.T) {
 
 func TestStartInterrupted(t *testing.T) {
 	h := crashedTasks(t)
-	rt := h.app.Runtime.(*sessionStub)
+	rt := h.fake()
 	h.out.Reset()
 	if err := h.exec(t, h.app.newStartCmd(), "--interrupted"); err != nil {
 		t.Fatal(err)
@@ -81,8 +75,8 @@ func TestStartInterrupted(t *testing.T) {
 	if !strings.Contains(out, "== A") || !strings.Contains(out, "== B") || strings.Contains(out, "== C") || !strings.Contains(out, "started 2 interrupted tasks") {
 		t.Fatalf("output:\n%s", out)
 	}
-	if len(rt.started) != 2 {
-		t.Fatalf("started %+v", rt.started)
+	if len(started(rt)) != 2 {
+		t.Fatalf("started %+v", started(rt))
 	}
 	// Running again, nothing is interrupted: A and B run, C was stopped.
 	h.out.Reset()
@@ -112,7 +106,7 @@ func TestStartInterruptedCarriesOn(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "started 1 of 2") || !strings.Contains(err.Error(), "A did not start") {
 		t.Fatalf("err = %v", err)
 	}
-	if !strings.Contains(h.out.String(), "== B") || !strings.Contains(h.out.String(), "session tspace-B is up") {
+	if !strings.Contains(h.out.String(), "== B") || !strings.Contains(h.out.String(), "session tspace@B is up") {
 		t.Fatalf("B not started:\n%s", h.out.String())
 	}
 }

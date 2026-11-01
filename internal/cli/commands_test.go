@@ -277,12 +277,12 @@ func TestStop(t *testing.T) {
 	if err := h.app.Store.WriteSignal("PAY-6", repo, task.SignalWorking, ""); err != nil {
 		t.Fatal(err)
 	}
-	stub := h.app.Runtime.(*stubRuntime)
+	stub := h.fake()
 	if err := h.exec(t, h.app.newStopCmd(), "PAY-6"); err != nil {
 		t.Fatal(err)
 	}
-	if stub.stopped || !strings.Contains(h.out.String(), "nothing running for PAY-6") {
-		t.Fatalf("stop with nothing running: stopped=%v out=%q", stub.stopped, h.out.String())
+	if stopped(stub) || !strings.Contains(h.out.String(), "nothing running for PAY-6") {
+		t.Fatalf("stop with nothing running: stopped=%v out=%q", stopped(stub), h.out.String())
 	}
 	if sigs := h.signals(t, "PAY-6"); len(sigs) != 0 {
 		t.Fatalf("stale signals survived: %v", sigs)
@@ -376,7 +376,7 @@ func TestTaskShow(t *testing.T) {
 	out := h.out.String()
 	for _, want := range []string{
 		"task:     PAY-8",
-		"session:  tspace-PAY-8",
+		"session:  tspace@PAY-8",
 		"workspace: " + h.app.Store.TaskDir("PAY-8"),
 		"context:   " + h.app.Store.ContextDir("PAY-8"),
 		"\n" + name + "\n",

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	goruntime "runtime"
@@ -12,16 +11,6 @@ import (
 	"github.com/wuyuz99/taskspace/internal/runtime"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
-
-type restartRuntime struct {
-	stubRuntime
-	restarted []runtime.Window
-}
-
-func (r *restartRuntime) Restart(_ context.Context, _ string, w runtime.Window) error {
-	r.restarted = append(r.restarted, w)
-	return nil
-}
 
 func (h *harness) agentOf(t *testing.T, name string) []string {
 	t.Helper()
@@ -92,40 +81,45 @@ func TestStartOpensRootWindowFirst(t *testing.T) {
 		"--repo", "backend="+h.repo, "--repo", "frontend="+mkRepo(t)); err != nil {
 		t.Fatal(err)
 	}
-	rt := &openRuntime{}
-	h.app.Runtime = rt
+	rt := h.fake()
+	again := func() {
+		rt.Reboot()
+		rt.ForgetCalls()
+	}
 
 	if err := h.exec(t, h.app.newStartCmd(), "PAY-142"); err != nil {
 		t.Fatal(err)
 	}
 	var names []string
-	for _, w := range rt.windows {
+	for _, w := range started(rt) {
 		names = append(names, w.Name)
 	}
 	if strings.Join(names, ",") != "_root,backend,frontend" {
 		t.Fatalf("windows: %v", names)
 	}
-	root := rt.windows[0]
+	root := started(rt)[0]
 	if root.Dir != h.app.Store.TaskDir("PAY-142") || !slices.Equal(root.Command, []string{"claude"}) {
 		t.Fatalf("root window: %+v", root)
 	}
 
+	again()
 	if err := h.exec(t, h.app.newStartCmd(), "PAY-142", "backend"); err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.windows) != 1 || rt.windows[0].Name != "backend" {
-		t.Fatalf("naming a repository still started others: %+v", rt.windows)
+	if got := started(rt); len(got) != 1 || got[0].Name != "backend" {
+		t.Fatalf("naming a repository still started others: %+v", got)
 	}
 
 	// Without an agent the root window is still there, running a shell.
 	if err := h.exec(t, h.app.newTaskCmd(), "update", "PAY-142", "--shell"); err != nil {
 		t.Fatal(err)
 	}
+	again()
 	if err := h.exec(t, h.app.newStartCmd(), "PAY-142"); err != nil {
 		t.Fatal(err)
 	}
-	if rt.windows[0].Name != task.RootWindowName || rt.windows[0].Command != nil {
-		t.Fatalf("shell root window: %+v", rt.windows[0])
+	if got := started(rt)[0]; got.Name != task.RootWindowName || got.Command != nil {
+		t.Fatalf("shell root window: %+v", got)
 	}
 }
 
@@ -134,7 +128,7 @@ func TestOpenPointsAtRootRestart(t *testing.T) {
 	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-142", "--with-root", "--agent", "claude", "--repo", "backend="+h.repo); err != nil {
 		t.Fatal(err)
 	}
-	h.app.Runtime = &openRuntime{}
+	h.fake().ExitAtStart(task.RootWindowName)
 	if err := h.exec(t, h.app.newOpenCmd(), "PAY-142"); err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +142,7 @@ func TestRestartRoot(t *testing.T) {
 	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-142", "--with-root", "--agent", "claude", "--repo", "backend="+h.repo); err != nil {
 		t.Fatal(err)
 	}
-	rt := &restartRuntime{}
+	rt := deadSession("PAY-142", task.RootWindowName, "backend")
 	h.app.Runtime = rt
 
 	if err := h.exec(t, h.app.newRestartCmd(), "PAY-142", "--root"); err == nil {
@@ -162,21 +156,21 @@ func TestRestartRoot(t *testing.T) {
 			t.Fatalf("%v accepted", bad)
 		}
 	}
-	if len(rt.restarted) != 0 {
-		t.Fatalf("rejected restarts reached the runtime: %+v", rt.restarted)
+	if len(restarted(rt)) != 0 {
+		t.Fatalf("rejected restarts reached the runtime: %+v", restarted(rt))
 	}
 
 	if err := h.exec(t, h.app.newRestartCmd(), "PAY-142", "--root"); err != nil {
 		t.Fatal(err)
 	}
 	want := runtime.Window{Name: task.RootWindowName, Dir: h.app.Store.TaskDir("PAY-142"), Command: []string{"claude"}}
-	if len(rt.restarted) != 1 || rt.restarted[0].Name != want.Name || rt.restarted[0].Dir != want.Dir || !slices.Equal(rt.restarted[0].Command, want.Command) {
-		t.Fatalf("restarted: %+v", rt.restarted)
+	if len(restarted(rt)) != 1 || restarted(rt)[0].Name != want.Name || restarted(rt)[0].Dir != want.Dir || !slices.Equal(restarted(rt)[0].Command, want.Command) {
+		t.Fatalf("restarted: %+v", restarted(rt))
 	}
 	if err := h.exec(t, h.app.newRestartCmd(), "PAY-142", "backend"); err != nil {
 		t.Fatal(err)
 	}
-	if got := rt.restarted[1]; got.Name != "backend" || got.Dir != h.app.Store.WorktreePath("PAY-142", "backend") {
+	if got := restarted(rt)[1]; got.Name != "backend" || got.Dir != h.app.Store.WorktreePath("PAY-142", "backend") {
 		t.Fatalf("repository restart: %+v", got)
 	}
 }
