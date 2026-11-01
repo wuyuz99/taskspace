@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wuyuz99/taskspace/internal/runtime"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
@@ -290,16 +289,16 @@ func TestStop(t *testing.T) {
 	}
 
 	// Running: the session is stopped and its signals go with it.
-	rt := &windowRuntime{running: true, panes: map[string]runtime.PaneState{}}
-	h.app.Runtime = &runningRuntime{rt}
+	rt := runningSession("PAY-6", nil)
+	h.app.Runtime = rt
 	if err := h.app.Store.WriteSignal("PAY-6", repo, task.SignalBlocked, "?"); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.exec(t, h.app.newStopCmd(), "PAY-6"); err != nil {
 		t.Fatal(err)
 	}
-	if !rt.stopped || !strings.Contains(h.out.String(), "stopped PAY-6; worktrees left in place") {
-		t.Fatalf("stop: stopped=%v out=%q", rt.stopped, h.out.String())
+	if !stopped(rt) || !strings.Contains(h.out.String(), "stopped PAY-6; worktrees left in place") {
+		t.Fatalf("stop: stopped=%v out=%q", stopped(rt), h.out.String())
 	}
 	if sigs := h.signals(t, "PAY-6"); len(sigs) != 0 {
 		t.Fatalf("signals survived stop: %v", sigs)
@@ -312,11 +311,6 @@ func TestStop(t *testing.T) {
 		t.Error("unknown task accepted")
 	}
 }
-
-// runningRuntime reports a live session, which stubRuntime never does.
-type runningRuntime struct{ *windowRuntime }
-
-func (r *runningRuntime) HasSession(context.Context, string) (bool, error) { return true, nil }
 
 func TestRepoRm(t *testing.T) {
 	h := newHarness(t)

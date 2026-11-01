@@ -86,7 +86,7 @@ func TestStatusReadsPublishedAgentStatus(t *testing.T) {
 	if err := h.app.Store.WriteSignal("PAY-142", repo, task.SignalWorking, ""); err != nil {
 		t.Fatal(err)
 	}
-	h.app.Runtime = &windowRuntime{running: true, panes: map[string]runtime.PaneState{"_root": {}, repo: {}}}
+	h.app.Runtime = runningSession("PAY-142", map[string]runtime.PaneState{"_root": {}, repo: {}})
 	h.app.run = tsexec.NewFake().RespondOut("claude agents --json", claudeAgentsJSON(t,
 		map[string]any{"cwd": tk.Repos[repo].Worktree + string(filepath.Separator), "kind": "interactive", "status": "waiting", "waitingFor": "approve Bash"},
 		map[string]any{"cwd": h.app.Store.TaskDir("PAY-142"), "kind": "interactive", "status": "busy"},

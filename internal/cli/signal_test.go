@@ -231,7 +231,7 @@ func TestDash(t *testing.T) {
 	if err := h.app.Store.WriteSignal("PAY-142", repo, task.SignalBlocked, "which column?"); err != nil {
 		t.Fatal(err)
 	}
-	rt := &windowRuntime{running: true, panes: map[string]runtime.PaneState{"_root": {Dead: true}, repo: {}}}
+	rt := runningSession("PAY-142", map[string]runtime.PaneState{"_root": {Dead: true}, repo: {}})
 	h.app.Runtime = rt
 
 	if err := h.exec(t, h.app.newDashCmd()); err == nil || !strings.Contains(err.Error(), "terminal") {
@@ -268,8 +268,8 @@ func TestDash(t *testing.T) {
 
 	// Inside a client that can show the window, enter switches to it.
 	m = drive(t, m, key("enter"))
-	if len(rt.focused) != 1 || rt.focused[0] != repo || m.attach != nil || !strings.Contains(m.note, "switched to PAY-142/"+repo) {
-		t.Fatalf("focus: %v, %q", rt.focused, m.note)
+	if got := focused(rt); len(got) != 1 || got[0] != repo || m.attach != nil || !strings.Contains(m.note, "switched to PAY-142/"+repo) {
+		t.Fatalf("focus: %v, %q", focused(rt), m.note)
 	}
 
 	// Stopping asks first, and anything but y is a no.
@@ -278,8 +278,8 @@ func TestDash(t *testing.T) {
 		t.Fatalf("no confirmation:\n%s", m.View())
 	}
 	m = drive(t, m, key("n"))
-	if m.confirm != nil || m.note != "cancelled" || rt.stopped {
-		t.Fatalf("declined stop: %q, stopped=%v", m.note, rt.stopped)
+	if m.confirm != nil || m.note != "cancelled" || stopped(rt) {
+		t.Fatalf("declined stop: %q, stopped=%v", m.note, stopped(rt))
 	}
 
 	m = drive(t, m, key("c"))
@@ -288,17 +288,12 @@ func TestDash(t *testing.T) {
 	}
 
 	// From a plain terminal there is nothing to switch, so dash quits to attach.
-	h.app.Runtime = &stubAttach{windowRuntime: rt}
+	rt.ClientInside(false)
 	m = drive(t, m, key("enter"))
 	if m.attach == nil || m.attach.Window != repo {
 		t.Fatalf("attach: %+v", m.attach)
 	}
 }
-
-// stubAttach is a runtime outside tmux: it cannot focus, only attach.
-type stubAttach struct{ *windowRuntime }
-
-func (s *stubAttach) Focus(context.Context, string, string) (bool, error) { return false, nil }
 
 // chdir moves the test into dir and back out again afterwards.
 func chdir(t *testing.T, dir string) {
@@ -423,10 +418,10 @@ func TestStatusAndDashReadTheMultiplexer(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now()
-	h.app.Runtime = &windowRuntime{running: true, panes: map[string]runtime.PaneState{
+	h.app.Runtime = runningSession("PAY-142", map[string]runtime.PaneState{
 		"_root": {Bell: true, Output: now.Add(-2 * time.Minute)},
 		repo:    {Output: now.Add(-time.Hour)},
-	}}
+	})
 
 	if err := h.exec(t, h.app.newStatusCmd()); err != nil {
 		t.Fatal(err)
