@@ -163,14 +163,7 @@ func (a *App) newRepoUpdateCmd() *cobra.Command {
 	return cmd
 }
 
-type addRepoOptions struct {
-	Name       string
-	Branch     string
-	Base       string
-	Agent      []string
-	Resume     []string
-	PostCreate string
-}
+type addRepoOptions = workspace.AddRepoOptions
 
 func (a *App) newRepoAddCmd() *cobra.Command {
 	var opts addRepoOptions
@@ -349,135 +342,7 @@ func firstNonEmpty(a, b string) string {
 
 // addRepo validates the repository and records it on the task.
 func (a *App) addRepo(ctx context.Context, t *task.Task, c *task.Config, path string, opts addRepoOptions) error {
-	canonical, err := a.Git.Validate(ctx, expandHome(path))
-	if err != nil {
-		return err
-	}
-
-	name := opts.Name
-	if name == "" {
-		name = filepath.Base(canonical)
-	}
-	if err := task.ValidateName("repo", name); err != nil {
-		return err
-	}
-	if existing, ok := t.Repo(name); ok {
-		return fmt.Errorf("task %q already has a repo named %q (%s); use --name to pick another",
-			t.Name, name, existing.Path)
-	}
-	for _, other := range t.RepoNames() {
-		if t.Repos[other].Path == canonical {
-			return fmt.Errorf("%s is already attached to task %q as %q", canonical, t.Name, other)
-		}
-	}
-
-	branch := opts.Branch
-	if branch == "" {
-		branch = c.Branch(t.Name)
-	}
-	if err := a.Git.CheckBranchName(ctx, branch); err != nil {
-		return err
-	}
-
-	// Refs the user named but this clone has not fetched yet are the ones
-	// most likely to be new, so fetch once before calling them missing.
-	fetched := false
-	var fetchErr error
-	fetch := func() error {
-		if !fetched {
-			fetched = true
-			_, fetchErr = a.Git.FetchRemotes(ctx, canonical, opts.Base)
-		}
-		return fetchErr
-	}
-
-	// Resolve the base now so that `tspace task show` can report it before anything
-	// is created, and so a later start cannot silently pick a different one.
-	base := opts.Base
-	if base == "" {
-		base, err = a.Git.ResolveBase(ctx, canonical)
-	} else {
-		base, err = a.workspace().ResolveBase(ctx, canonical, opts.Base, fetch)
-	}
-	if err != nil {
-		return err
-	}
-
-	// Report what start will do with the branch, so a mistyped existing branch
-	// shows up now as "new", not later as a worktree without the work in it.
-	local, err := a.Git.BranchExists(ctx, canonical, branch)
-	if err != nil {
-		return err
-	}
-	remote := ""
-	if !local {
-		if remote, err = a.Git.RemoteBranch(ctx, canonical, branch); err == nil && remote == "" && opts.Branch != "" {
-			_ = fetch()
-			remote, err = a.Git.RemoteBranch(ctx, canonical, branch)
-		}
-		if err != nil {
-			return err
-		}
-	}
-	assumed := opts.Base == "" && (local || remote != "")
-	if assumed {
-		target := remote
-		if local {
-			target = "refs/heads/" + branch
-		}
-		base, err = a.Git.InferBase(ctx, canonical, branch, target, base)
-		if err != nil {
-			return err
-		}
-	}
-	var branchNote string
-	switch {
-	case local:
-		branchNote = "existing branch"
-	case remote != "":
-		branchNote = "will track " + remote
-	default:
-		branchNote = "new, from " + base
-		if opts.Branch != "" {
-			a.warnf("note: %s has no branch %s locally or on a remote%s; start will create it from %s\n",
-				name, branch, workspace.FetchNote(fetchErr), base)
-		}
-	}
-	worktree := a.Store.WorktreePath(t.Name, name)
-	if local {
-		// Checked out at this repo's own worktree path, as after repo rm and
-		// add again, start reuses the worktree; only elsewhere does it refuse.
-		if wt, err := a.Git.FindWorktreeForBranch(ctx, canonical, branch); err == nil && wt != nil {
-			if own, err := a.Git.FindWorktree(ctx, canonical, worktree); err == nil && own != nil && own.Branch == branch {
-				a.printf("note: %s is already checked out at %s; start will reuse that worktree\n", branch, own.Path)
-			} else {
-				a.warnf("note: %s is checked out at %s; start will refuse until it is switched away there\n", branch, wt.Path)
-			}
-		}
-	}
-
-	t.SetRepo(name, task.Repo{
-		Path:        canonical,
-		Branch:      branch,
-		Base:        base,
-		BaseAssumed: assumed,
-		Worktree:    worktree,
-		Agent:       opts.Agent,
-		Resume:      opts.Resume,
-		PostCreate:  opts.PostCreate,
-	})
-
-	a.printf("added %s to %s\n", name, t.Name)
-	a.printf("  repo:     %s\n", canonical)
-	a.printf("  branch:   %s (%s)\n", branch, branchNote)
-	if local || remote != "" {
-		a.printf("  base:     %s\n", base)
-		if assumed {
-			a.printf("  base was guessed; confirm with: tspace repo update %s %s --base BASE\n", t.Name, name)
-		}
-	}
-	a.printf("  worktree: %s\n", worktree)
-	return nil
+	return a.workspace().AddRepo(ctx, t, c, expandHome(path), opts)
 }
 
 // removedRepoText is repo rm's last line, which dash shows too.
