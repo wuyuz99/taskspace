@@ -12,11 +12,15 @@ import (
 	"time"
 
 	"github.com/wuyuz99/taskspace/internal/runtime"
+	"github.com/wuyuz99/taskspace/internal/runtime/runtimetest"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
 // crash ends every session the way a computer restart does.
-func (f *fixture) crash() { f.rt.exists, f.rt.panes, f.rt.started = false, nil, nil }
+func (f *fixture) crash() {
+	f.rt.Reboot()
+	f.rt.ForgetCalls()
+}
 
 func names(ws []runtime.Window) []string {
 	var out []string
@@ -50,7 +54,7 @@ func TestInterruptedRootOnlyTaskComesBack(t *testing.T) {
 	if started := f.recover(t); !slices.Equal(started, []string{"T"}) {
 		t.Fatalf("started %v", started)
 	}
-	if got := names(f.rt.started); !slices.Equal(got, []string{task.RootWindowName}) {
+	if got := names(f.started()); !slices.Equal(got, []string{task.RootWindowName}) {
 		t.Fatalf("launched %v", got)
 	}
 	if !f.svc.Store.Interrupted("T") {
@@ -69,7 +73,7 @@ func TestInterruptedBringsBackWhatRan(t *testing.T) {
 	}
 	f.crash()
 	f.recover(t)
-	if got := names(f.rt.started); !slices.Equal(got, []string{"a"}) {
+	if got := names(f.started()); !slices.Equal(got, []string{"a"}) {
 		t.Fatalf("launched %v", got)
 	}
 	tk, err := f.svc.Store.Load("T")
@@ -87,7 +91,7 @@ func TestInterruptedBringsBackWhatRan(t *testing.T) {
 	}
 	f.crash()
 	f.recover(t)
-	if got := names(f.rt.started); !slices.Equal(got, []string{task.RootWindowName, "a"}) {
+	if got := names(f.started()); !slices.Equal(got, []string{task.RootWindowName, "a"}) {
 		t.Fatalf("launched %v", got)
 	}
 
@@ -99,22 +103,14 @@ func TestInterruptedBringsBackWhatRan(t *testing.T) {
 	if _, err := f.svc.Start(ctx, "T", StartOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	f.svc.Runtime = &closingRuntime{f.rt}
 	if err := f.svc.StopWindow(ctx, "T", "b", false); err != nil {
 		t.Fatal(err)
 	}
 	f.crash()
 	f.recover(t)
-	if got := names(f.rt.started); !slices.Equal(got, []string{task.RootWindowName, "a"}) {
+	if got := names(f.started()); !slices.Equal(got, []string{task.RootWindowName, "a"}) {
 		t.Fatalf("launched %v", got)
 	}
-}
-
-type closingRuntime struct{ *fakeRuntime }
-
-func (c *closingRuntime) CloseWindow(_ context.Context, _ string, window string) error {
-	delete(c.panes, window)
-	return nil
 }
 
 // Every interrupted task is launched before any is waited on, so starting
@@ -150,7 +146,7 @@ func TestCleanRefusesASessionItCannotCheck(t *testing.T) {
 	if _, err := f.svc.Start(ctx, "T", StartOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	f.rt.hasErr = errors.New("server busy")
+	f.rt.Fail(runtimetest.OpHasSession, errors.New("server busy"))
 	err := f.svc.Clean(ctx, "T", CleanOptions{})
 	if err == nil || !strings.Contains(err.Error(), "server busy") {
 		t.Fatalf("Clean = %v", err)
@@ -164,7 +160,8 @@ func TestCleanRefusesASessionItCannotCheck(t *testing.T) {
 	}
 
 	// A multiplexer that says it is unusable may still run the session.
-	f.rt.hasErr, f.rt.unavailable = errors.New("state: exit status 23"), errors.New("check: exit status 23")
+	f.rt.Fail(runtimetest.OpHasSession, errors.New("state: exit status 23"))
+	f.rt.Fail(runtimetest.OpAvailable, errors.New("check: exit status 23"))
 	if err := f.svc.Clean(ctx, "T", CleanOptions{}); err == nil {
 		t.Fatal("Clean with an unusable runtime removed the worktrees")
 	}
@@ -174,14 +171,15 @@ func TestCleanRefusesASessionItCannotCheck(t *testing.T) {
 
 	// One that is not installed runs nothing.
 	notInstalled := fmt.Errorf("exec tmux: %w", osexec.ErrNotFound)
-	f.rt.hasErr, f.rt.unavailable = notInstalled, notInstalled
+	f.rt.Fail(runtimetest.OpHasSession, notInstalled)
+	f.rt.Fail(runtimetest.OpAvailable, notInstalled)
 	if err := f.svc.Clean(ctx, "T", CleanOptions{}); err != nil {
 		t.Fatalf("Clean without a multiplexer = %v", err)
 	}
 	if _, err := os.Stat(tk.Repos["a"].Worktree); !os.IsNotExist(err) {
 		t.Fatalf("worktree kept: %v", err)
 	}
-	if f.rt.stopped {
+	if f.stopped() {
 		t.Fatal("stopped a session in a multiplexer that is not installed")
 	}
 }
@@ -196,7 +194,6 @@ func TestClosedWindowsAreNotInterrupted(t *testing.T) {
 	if _, err := f.svc.Start(ctx, "T", StartOptions{Repos: []string{"a"}}); err != nil {
 		t.Fatal(err)
 	}
-	f.svc.Runtime = &closingRuntime{f.rt}
 	if err := f.svc.StopWindow(ctx, "T", "a", false); err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +207,9 @@ func TestClosedWindowsAreNotInterrupted(t *testing.T) {
 	if err := f.svc.StopWindow(ctx, "T", "b", false); err != nil {
 		t.Fatal(err)
 	}
-	f.rt.panes["b"] = runtime.PaneState{Window: "b", Dead: true}
+	if err := f.rt.OpenWindow(ctx, f.rt.SessionName("T"), runtime.Window{Name: "b", Command: []string{"false"}}); err != nil {
+		t.Fatal(err)
+	}
 	if _, _, err := f.svc.Restart(ctx, "T", RestartOptions{Repo: "b", Fresh: true}); err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +245,7 @@ func TestInterruptedHalfStartedStillCounts(t *testing.T) {
 	if err != nil || !slices.Equal(failed, []string{"T"}) {
 		t.Fatalf("failed %v, %v", failed, err)
 	}
-	if got := names(f.rt.started); !slices.Equal(got, []string{task.RootWindowName}) {
+	if got := names(f.started()); !slices.Equal(got, []string{task.RootWindowName}) {
 		t.Fatalf("launched %v", got)
 	}
 	if r, ok := f.svc.Store.Running("T"); !ok || !r.Root || len(r.Repos) > 0 {
