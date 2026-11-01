@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -10,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/wuyuz99/taskspace/internal/task"
+	"github.com/wuyuz99/taskspace/internal/workspace"
 )
 
 func (a *App) newTaskCmd() *cobra.Command {
@@ -71,149 +71,18 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 			if err := resume.validate(cmd); err != nil {
 				return err
 			}
-			name := args[0]
-			if err := task.ValidateName("task", name); err != nil {
-				return err
-			}
-			if a.Store.Exists(name) {
-				return fmt.Errorf("%q: %w", name, task.ErrExists)
-			}
-			t := task.New(name)
-			details.apply(cmd, t)
-			// Loaded only when something needs it, so a task that names its
-			// agent and no repositories can be created with a broken config.
-			var cfg *task.Config
-			config := func() (*task.Config, error) {
-				if cfg == nil {
-					c, err := a.Store.LoadConfig()
-					if err != nil {
-						return nil, err
-					}
-					cfg = c
-				}
-				return cfg, nil
-			}
-			// The root agent comes from --agent/--shell, else the recipe, else
-			// the user's default. Whichever wins is recorded on the task.
-			agentFrom := ""
-			// Each repository's report is held until the record is created, so
-			// a later repository that fails does not follow "added backend"
-			// for a task that was never made.
-			out := a.Out
-			var added bytes.Buffer
-			a.Out = &added
-			defer func() { a.Out = out }()
-			if cmd.Flags().Changed("project") {
-				p, err := a.Store.LoadProject(project)
-				if err != nil {
-					return err
-				}
-				t.Agent = append([]string(nil), p.Agent...)
-				t.Resume = append([]string(nil), p.Resume...)
-				t.Windows = task.CopyWindows(p.Windows)
-				if len(p.Agent) > 0 {
-					agentFrom = "project " + p.Name
-				}
-				for _, repoName := range p.RepoNames() {
-					r := p.Repos[repoName]
-					c, err := config()
-					if err != nil {
-						return err
-					}
-					if err := a.addRepo(cmd.Context(), t, c, r.Path, addRepoOptions{Name: repoName, Base: r.Base, Agent: r.Agent, Resume: r.Resume, PostCreate: r.PostCreate}); err != nil {
-						return err
-					}
-				}
-			}
+			return a.createTask(cmd.Context(), a.workspaceFor(cmd), workspace.CreateTaskOptions{
+				Name:  args[0],
+				Repos: append(repos, args[1:]...),
 
-			// Each REPO is sugar for a following `tspace repo add`.
-			for _, spec := range append(repos, args[1:]...) {
-				c, err := config()
-				if err != nil {
-					return err
-				}
-				if err := a.addRepoSpec(cmd.Context(), t, c, spec, addRepoOptions{}); err != nil {
-					return err
-				}
-			}
-			a.Out = out
-			// Like the agent, a broken config does not stop a task that needs
-			// nothing from it.
-			if !cmd.Flags().Changed("ticket") {
-				c, err := config()
-				if err == nil {
-					t.Ticket, err = c.TicketFrom(name)
-				}
-				if err != nil {
-					a.warnf("note: no ticket read from the name: %v\n", err)
-				}
-			}
-			// A resume command goes with the agent it resumes: the recipe's or
-			// the config's comes along only with that agent.
-			switch {
-			case agent.apply(cmd, t):
-				agentFrom = ""
-				t.Resume = nil
-			case len(t.Agent) == 0:
-				cfg, err := config()
-				if err != nil {
-					return err
-				}
-				if len(cfg.Agent) > 0 {
-					t.Agent = append([]string(nil), cfg.Agent...)
-					t.Resume = append([]string(nil), cfg.Resume...)
-					agentFrom = "tspace config"
-				}
-			}
-			t.Resume, _ = resume.apply(cmd, t.Resume, false)
-			if len(t.Resume) > 0 && len(t.Agent) == 0 {
-				return fmt.Errorf("--resume resumes the task's agent, and it has none; give one with --agent")
-			}
-			if withRoot {
-				t.RootWindow = true
-			} else if len(t.Repos) == 1 && t.CanRunAgentIn(t.RepoNames()[0]) {
-				t.AgentRepo = t.RepoNames()[0]
-			}
-			if start && len(t.Repos) == 0 {
-				return fmt.Errorf("--start needs a repository to start; name one, or add it later and run: tspace start %s", name)
-			}
-			// Held from here through --start. Publishing never replaces a
-			// record, so of two creates at once only one gets this far.
-			l, err := a.acquire(cmd, name)
-			if err != nil {
-				return err
-			}
-			defer l.Unlock()
-			if err := a.Store.CreatePrepared(t); err != nil {
-				return err
-			}
-			// The brief is written after the record exists, so a failure here
-			// leaves a task without a brief rather than a note without a task.
-			if err := a.applyBrief(cmd, t, brief); err != nil {
-				return err
-			}
-			if _, err := added.WriteTo(a.Out); err != nil {
-				return err
-			}
-			a.printf("created task %s\n", name)
-			if len(t.Agent) > 0 {
-				from := ""
-				if agentFrom != "" {
-					from = ", from " + agentFrom
-				}
-				where := "task root"
-				if t.AgentRepo != "" {
-					where = "in " + t.AgentRepo + "'s worktree"
-				}
-				a.printf("  agent: %s (%s%s)\n", shellJoin(t.Agent), where, from)
-			}
-			if start {
-				a.printf("\n")
-				if err := a.runCmd(cmd.Context(), (*App).newStartCmd, t.Name); err != nil {
-					return fmt.Errorf("task %s was created, but starting it failed: %w", t.Name, err)
-				}
-			}
-			return nil
+				Project: project, SetProject: cmd.Flags().Changed("project"),
+				Title: details.title, TicketURL: details.ticketURL,
+				Ticket: details.ticket, SetTicket: cmd.Flags().Changed("ticket"),
+				Brief: brief, SetBrief: cmd.Flags().Changed("brief") || cmd.Flags().Changed("brief-file"),
+				SetAgent: cmd.Flags().Changed("agent"), Agent: agent.argv, Shell: agent.shell,
+				SetResume: cmd.Flags().Changed("resume"), Resume: resume.argv, NoResume: resume.none,
+				WithRoot: withRoot, Start: start,
+			})
 		},
 	}
 	cmd.Flags().StringArrayVar(&repos, "repo", nil,
@@ -226,6 +95,18 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 	details.flags(cmd)
 	agent.flags(cmd)
 	return cmd
+}
+
+// createTask creates a task with ws, and says what start brought up.
+func (a *App) createTask(ctx context.Context, ws *workspace.Service, o workspace.CreateTaskOptions) error {
+	res, err := ws.CreateTask(ctx, o)
+	if err != nil {
+		return err
+	}
+	if res.Started != nil {
+		a.printf("\n%s\n", startedText(res.Started))
+	}
+	return nil
 }
 
 // taskJSON is a task in `tspace task list --json` and `tspace task show --json`.

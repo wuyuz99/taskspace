@@ -1,9 +1,12 @@
 package workspace
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/wuyuz99/taskspace/internal/task"
 )
@@ -160,4 +163,109 @@ func (s *Service) AddRepo(ctx context.Context, t *task.Task, c *task.Config, pat
 		Base: base, Existing: local || remote != "", BaseAssumed: assumed, Worktree: worktree,
 	})
 	return nil
+}
+
+// RepoSpec is one repository as typed on the command line:
+//
+//	[NAME=]SOURCE[@BRANCH][:BASE]
+//
+// SOURCE is a registered name or a path. The spec splits at the first '@',
+// which no repository name contains, and then at the first ':', which git
+// forbids in ref names; a branch keeps any later '@' of its own.
+type RepoSpec struct {
+	Name, Source, Branch, Base string
+}
+
+const repoSpecForm = "[NAME=]REPO[@BRANCH][:BASE]"
+
+// ParseRepoSpec reads one repository as typed.
+func ParseRepoSpec(spec string) (RepoSpec, error) {
+	var s RepoSpec
+	rest := spec
+	// '=' separates a name only when what precedes it could be one, since a
+	// branch name may itself contain '='.
+	if name, source, found := strings.Cut(spec, "="); found && !strings.ContainsAny(name, "@:/") {
+		if name == "" || source == "" {
+			return s, fmt.Errorf("invalid repository %q: expected %s", spec, repoSpecForm)
+		}
+		s.Name, rest = name, source
+	}
+	// A directory that exists as typed is taken literally, so a path that
+	// happens to contain '@' or ':' still works.
+	if looksLikePath(rest) && isDir(ExpandHome(rest)) {
+		s.Source = rest
+		return s, nil
+	}
+
+	source, branch, hasBranch := strings.Cut(rest, "@")
+	tail := source
+	if hasBranch {
+		tail = branch
+	}
+	head, base, hasBase := strings.Cut(tail, ":")
+	if hasBranch {
+		s.Source, s.Branch = source, head
+	} else {
+		s.Source = head
+	}
+	s.Base = base
+	if s.Source == "" || (hasBranch && s.Branch == "") || (hasBase && s.Base == "") {
+		return s, fmt.Errorf("invalid repository %q: expected %s", spec, repoSpecForm)
+	}
+	return s, nil
+}
+
+func looksLikePath(s string) bool {
+	return strings.ContainsRune(s, '/') || strings.HasPrefix(s, "~") || strings.HasPrefix(s, ".") || filepath.IsAbs(s)
+}
+
+// AddRepoSpec parses a REPO argument and adds it. A part given both in the
+// spec and as a flag is refused rather than one silently winning.
+func (s *Service) AddRepoSpec(ctx context.Context, t *task.Task, c *task.Config, spec string, opts AddRepoOptions) error {
+	r, err := ParseRepoSpec(spec)
+	if err != nil {
+		return err
+	}
+	for _, p := range []struct{ flag, fromSpec, fromFlag string }{
+		{"--name", r.Name, opts.Name}, {"--branch", r.Branch, opts.Branch}, {"--base", r.Base, opts.Base},
+	} {
+		if p.fromSpec != "" && p.fromFlag != "" {
+			return fmt.Errorf("%s is given twice, in %q and as %s", strings.TrimPrefix(p.flag, "--"), spec, p.flag)
+		}
+	}
+	opts.Name = cmp.Or(opts.Name, r.Name)
+	opts.Branch = cmp.Or(opts.Branch, r.Branch)
+	opts.Base = cmp.Or(opts.Base, r.Base)
+
+	path := r.Source
+	if !looksLikePath(r.Source) {
+		if p, ok := c.Repos[r.Source]; ok {
+			path = p
+			opts.Name = cmp.Or(opts.Name, r.Source)
+		} else if !isDir(r.Source) {
+			return fmt.Errorf("no repository registered as %q%s", r.Source, RegisteredHint(c))
+		}
+	}
+	return s.AddRepo(ctx, t, c, ExpandHome(path), opts)
+}
+
+func isDir(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
+
+// ExpandHome resolves a leading ~ so that paths typed in a shell that did not
+// expand them still work.
+func ExpandHome(path string) string {
+	if path != "~" && !strings.HasPrefix(path, "~/") && !strings.HasPrefix(path, `~\`) {
+		return path
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return path
+	}
+	if path == "~" {
+		return home
+	}
+	return filepath.Join(home, path[2:])
 }

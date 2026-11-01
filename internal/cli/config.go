@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/wuyuz99/taskspace/internal/task"
+	"github.com/wuyuz99/taskspace/internal/workspace"
 )
 
 func (a *App) newConfigCmd() *cobra.Command {
@@ -464,12 +465,7 @@ func (a *App) printRepoCatalog(c *task.Config) {
 	tw.Flush()
 }
 
-func registeredHint(c *task.Config) string {
-	if len(c.Repos) == 0 {
-		return "; register it with: tspace config repo NAME PATH"
-	}
-	return " (registered: " + joinNames(c.RepoNames()) + ")"
-}
+func registeredHint(c *task.Config) string { return workspace.RegisteredHint(c) }
 
 func (a *App) newConfigAgentCmd() *cobra.Command {
 	var unset bool

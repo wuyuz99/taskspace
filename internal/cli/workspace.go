@@ -45,6 +45,23 @@ func (a *App) render(e workspace.Event) {
 	switch e := e.(type) {
 	case workspace.Warning:
 		a.warnf("%s\n", e.Text)
+	case workspace.TaskCreated:
+		t := e.Task
+		a.printf("created task %s\n", t.Name)
+		if len(t.Agent) > 0 {
+			from := ""
+			if e.AgentFrom != "" {
+				from = ", from " + e.AgentFrom
+			}
+			where := "task root"
+			if t.AgentRepo != "" {
+				where = "in " + t.AgentRepo + "'s worktree"
+			}
+			a.printf("  agent: %s (%s%s)\n", shellJoin(t.Agent), where, from)
+		}
+		if e.Starting {
+			a.printf("\n")
+		}
 	case workspace.WorktreeReused:
 		a.printf("note: %s is already checked out at %s; start will reuse that worktree\n", e.Branch, e.Path)
 	case workspace.RepoAdded:

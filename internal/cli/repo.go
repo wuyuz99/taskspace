@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -117,6 +116,10 @@ func (a *App) newRepoUpdateCmd() *cobra.Command {
 
 type addRepoOptions = workspace.AddRepoOptions
 
+type repoSpec = workspace.RepoSpec
+
+func parseRepoSpec(spec string) (repoSpec, error) { return workspace.ParseRepoSpec(spec) }
+
 func (a *App) newRepoAddCmd() *cobra.Command {
 	var opts addRepoOptions
 	var resume resumeOptions
@@ -193,59 +196,6 @@ func (a *App) newRepoAddCmd() *cobra.Command {
 	return cmd
 }
 
-// repoSpec is one repository as typed on the command line:
-//
-//	[NAME=]SOURCE[@BRANCH][:BASE]
-//
-// SOURCE is a registered name or a path. The spec splits at the first '@',
-// which no repository name contains, and then at the first ':', which git
-// forbids in ref names; a branch keeps any later '@' of its own.
-type repoSpec struct {
-	Name, Source, Branch, Base string
-}
-
-const repoSpecForm = "[NAME=]REPO[@BRANCH][:BASE]"
-
-func parseRepoSpec(spec string) (repoSpec, error) {
-	var s repoSpec
-	rest := spec
-	// '=' separates a name only when what precedes it could be one, since a
-	// branch name may itself contain '='.
-	if name, source, found := strings.Cut(spec, "="); found && !strings.ContainsAny(name, "@:/") {
-		if name == "" || source == "" {
-			return s, fmt.Errorf("invalid repository %q: expected %s", spec, repoSpecForm)
-		}
-		s.Name, rest = name, source
-	}
-	// A directory that exists as typed is taken literally, so a path that
-	// happens to contain '@' or ':' still works.
-	if looksLikePath(rest) && isDir(expandHome(rest)) {
-		s.Source = rest
-		return s, nil
-	}
-
-	source, branch, hasBranch := strings.Cut(rest, "@")
-	tail := source
-	if hasBranch {
-		tail = branch
-	}
-	head, base, hasBase := strings.Cut(tail, ":")
-	if hasBranch {
-		s.Source, s.Branch = source, head
-	} else {
-		s.Source = head
-	}
-	s.Base = base
-	if s.Source == "" || (hasBranch && s.Branch == "") || (hasBase && s.Base == "") {
-		return s, fmt.Errorf("invalid repository %q: expected %s", spec, repoSpecForm)
-	}
-	return s, nil
-}
-
-func looksLikePath(s string) bool {
-	return strings.ContainsRune(s, '/') || strings.HasPrefix(s, "~") || strings.HasPrefix(s, ".") || filepath.IsAbs(s)
-}
-
 // samePath reports whether two paths name the same place, as git and tspace
 // spell them.
 func samePath(x, y string) bool { return workspace.SamePath(x, y) }
@@ -255,34 +205,9 @@ func isDir(path string) bool {
 	return err == nil && info.IsDir()
 }
 
-// addRepoSpec parses a REPO argument and adds it. A part given both in the
-// spec and as a flag is refused rather than one silently winning.
+// addRepoSpec parses a REPO argument and adds it.
 func (a *App) addRepoSpec(ctx context.Context, t *task.Task, c *task.Config, spec string, opts addRepoOptions) error {
-	s, err := parseRepoSpec(spec)
-	if err != nil {
-		return err
-	}
-	for _, p := range []struct{ flag, fromSpec, fromFlag string }{
-		{"--name", s.Name, opts.Name}, {"--branch", s.Branch, opts.Branch}, {"--base", s.Base, opts.Base},
-	} {
-		if p.fromSpec != "" && p.fromFlag != "" {
-			return fmt.Errorf("%s is given twice, in %q and as %s", strings.TrimPrefix(p.flag, "--"), spec, p.flag)
-		}
-	}
-	opts.Name = firstNonEmpty(opts.Name, s.Name)
-	opts.Branch = firstNonEmpty(opts.Branch, s.Branch)
-	opts.Base = firstNonEmpty(opts.Base, s.Base)
-
-	path := s.Source
-	if !looksLikePath(s.Source) {
-		if p, ok := c.Repos[s.Source]; ok {
-			path = p
-			opts.Name = firstNonEmpty(opts.Name, s.Source)
-		} else if !isDir(s.Source) {
-			return fmt.Errorf("no repository registered as %q%s", s.Source, registeredHint(c))
-		}
-	}
-	return a.addRepo(ctx, t, c, path, opts)
+	return a.workspace().AddRepoSpec(ctx, t, c, spec, opts)
 }
 
 func firstNonEmpty(a, b string) string {
