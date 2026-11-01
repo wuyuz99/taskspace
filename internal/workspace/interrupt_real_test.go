@@ -22,6 +22,13 @@ func interruption(t *testing.T, rt runtime.Runtime, name string, kill func(sessi
 	f := newFixture(t)
 	f.svc.Runtime = rt
 	f.svc.Settle = 500 * time.Millisecond
+	// StartInterrupted returns only the names of tasks that failed; the reason
+	// reaches Progress alone.
+	f.svc.Progress = func(e Event) {
+		if n, ok := e.(TaskNotStarted); ok {
+			t.Logf("%s not started: %v", n.Task, n.Err)
+		}
+	}
 	sleep := []string{"sleep", "60"}
 	tk := f.task(t, name, map[string]task.Repo{
 		"a": {Path: gitRepo(t), Agent: sleep},
