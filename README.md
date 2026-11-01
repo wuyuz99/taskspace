@@ -99,10 +99,23 @@ tspace task show checkout-redesign    # inspect this task's configuration
 tspace open checkout-redesign         # return to the task
 ```
 
+`tspace dash` shows every task live and runs the same commands from a key: `n`
+creates a task, `enter` goes to it, `s` and `x` start and stop it, `D` cleans it
+and `R` deletes it. `t` opens it in a new terminal tab, once you have told
+tspace how with [`config terminal`](docs/STATUS.md#dashboard).
+
 Inside the session, work and commit as you would in any Git checkout. A new
 branch starts without an upstream; push it with `git push -u origin HEAD`
-from its repository when ready. Shared [briefs and handoffs](docs/TASK_CONTEXT.md)
-keep the task's requirements and next steps beside its worktrees.
+from its repository when ready. Pushing and pull requests stay with your own
+tools. Shared [briefs and handoffs](docs/TASK_CONTEXT.md) keep the task's
+requirements and next steps beside its worktrees.
+
+To review a change that spans repositories, make a task from its branches.
+They are checked out as they are, including ones only on the remote:
+
+```bash
+tspace task create review-checkout backend@feature/api frontend@feature/ui --shell
+```
 
 When finished, detach and choose the action you need:
 
@@ -137,7 +150,7 @@ application resources; see [service isolation](docs/WORKFLOWS.md#application-and
 
 ## Project status and contributing
 
-**Early-stage, v0.1, Unix-only.** The command surface can change;
+**Early-stage, Unix-only.** The command surface can change;
 [CHANGELOG.md](CHANGELOG.md) lists what each release changed. See
 [current limitations and possible follow-ups](docs/PROJECT_STATUS.md) before
 relying on a particular workflow. The [implementation plan](docs/IMPLEMENTATION_PLAN.md)

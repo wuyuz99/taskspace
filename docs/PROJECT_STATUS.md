@@ -7,7 +7,8 @@
 - **Unix only.** A multiplexer (tmux, zellij or an adapter's) is required for
   sessions; there is no Windows path.
 - **Submodules** are detected and reported, but not recursed into.
-- **No notifications.** `internal/status` is the single place one would attach.
+- **No notifications.** `tspace status --json` is how another tool can watch
+  tasks and tell you. Signals and hooks give basic coverage in `status` and dash.
 - **Windows you open yourself get no `TSPACE_*` variables.** The windows tspace
   opens, `tspace shell` and hooks do; a pane you split or a window you open in
   the multiplexer starts from its environment.
@@ -39,7 +40,7 @@ agent. That is where tspace stays, neutral about which agent and which
 multiplexer you use.
 
 **dash is how people use tspace; the CLI is how everything else does.** dash is
-where you see which agent is blocked, which finished and where to go next, and
+a view of tasks: where you see each one, its repositories and their state, and
 act on it. The CLI stays complete underneath: agents run `tspace signal` and
 `tspace task handoff` from their windows, hooks and scripts run it, and
 `status --json` is how anything else reads state. Every dash action is also a
@@ -86,30 +87,10 @@ dash, not only in the CLI.
 
 ### Next
 
-**Which agent needs you, for every agent**
-([#94](https://github.com/wuyuz99/taskspace/issues/94)). Every agent now runs
-in parallel worktrees by itself; telling at a glance which one is blocked is
-what a dashboard over all of them is for. Status comes from every source an
-agent already offers, most trusted first, and dash shows where it came from:
-
-- Hooks: `config hooks claude` and `config hooks gemini`, and recipes for
-  Codex and any other agent, all on `tspace signal`. New agents get a recipe,
-  not a command
-- Status an agent publishes itself, such as Claude Code's `claude agents
-  --json`, as an opt-in integration
-- What the multiplexer knows of any agent: a dead pane, the bell, time since
-  the last output
-- A silence guess, last, and labelled as one
-
-dash shows what needs you first: blocked and finished agents ahead of the
-rest. tspace does not read agents' screens for their wording.
-
 **From task to merged.** A task today goes from create to clean. A feature
 that spans two repositories ends as two pull requests, and nothing yet
 follows it there:
 
-- The task's pull requests and CI status as columns in dash, and in
-  `status`, one row per repository
 - The pull requests linked to each other, and merge readiness for the task as
   a whole: every repository pushed, reviewed and green
 - A review workspace: open someone else's cross-repository change as a task,
@@ -129,14 +110,6 @@ read-only, so an agent can see it and cannot change it.
 - Agent instructions at the task root: an `AGENTS.md` written from the brief,
   which agents from many vendors read, so the task's context reaches them
   without `{context_dir}` in their command
-- Desktop notifications, if dash showing what needs you first turns out not
-  to be enough
-- A neutral status protocol, such as the draft OSC 7501 states, once agents
-  and multiplexers settle on one; it would replace most per-agent hooks
-- One dash across several machines, if real use calls for it: it reads
-  `tspace status --json` over SSH from each host and attaches with
-  `ssh -t HOST tspace attach TASK`. tspace itself keeps running where the code
-  is; driving a remote multiplexer from another machine is not planned
 - A plain-subprocess runtime, for agents that need no multiplexer (anything
   else can already be an adapter)
 
@@ -149,3 +122,15 @@ Coordinating agents is left to the agents and the tools built for it:
   contract"
 - Files that agents write to coordinate through, such as a shared API
   contract or status file. The brief and handoff stay notes for people.
+
+Watching agents is left to the agents and tools built for it. tspace keeps
+`tspace signal`, the hooks and what dash shows of them as basic coverage, and
+`tspace status --json` lets those tools work alongside it:
+
+- An attention dashboard that ranks which agent needs you
+- New sources of agent status
+- Desktop notifications
+- A neutral status protocol, such as the draft OSC 7501 states
+- One dash across several machines
+- Pull request and CI columns for each repository; what matters here is the
+  task as a whole
