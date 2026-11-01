@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -69,72 +68,25 @@ func (a *App) newRepoUpdateCmd() *cobra.Command {
 			if setAgent && (len(agent) == 0 || strings.TrimSpace(agent[0]) == "") {
 				return fmt.Errorf("agent command is empty; use --shell to restore the default shell")
 			}
-			// Renaming or rebasing the branch changes the worktree, so it is a
-			// lifecycle change; the rest only edits the record.
-			t, unlock, err := a.lockTask(cmd, args[0], setBranch || rebase)
+			name, err := a.resolveTask(args[0])
 			if err != nil {
 				return err
 			}
-			defer unlock()
-			r, ok := t.Repo(args[1])
-			if !ok {
-				return fmt.Errorf("task %q has no repo named %q (has: %s)", t.Name, args[1], joinNames(t.RepoNames()))
-			}
-			// The agent repository's window runs the task's agent, unless it
-			// has one of its own, so that is what its agent flags change.
-			taskAgent := args[1] == t.AgentRepo && len(r.Agent) == 0
-			// A shell there would leave the task with no agent anywhere, and
-			// take its resume command along.
-			if taskAgent && shell && len(t.Agent) > 0 {
-				return fmt.Errorf("%s's window runs the task's agent, so --shell would drop it; to run a shell there, drop the task's agent with tspace task update %s --shell", args[1], t.Name)
-			}
-			before := t.RepoAgent(args[1])
-			switch {
-			case taskAgent && setAgent:
-				t.Agent = agent
-			case setAgent:
-				r.Agent = agent
-			case shell:
-				r.Agent = nil
-			}
-			var resumeCleared bool
-			after := r.Agent
-			if taskAgent {
-				after = t.Agent
-			}
-			agentChanged := (setAgent || shell) && !slices.Equal(before, after)
-			if taskAgent {
-				t.Resume, resumeCleared = resume.apply(cmd, t.Resume, agentChanged)
-			} else {
-				r.Resume, resumeCleared = resume.apply(cmd, r.Resume, agentChanged)
-			}
-			if setHook {
-				r.PostCreate = hook
-			}
-			t.SetRepo(args[1], r)
-			if len(t.ResumeFor(args[1])) > 0 && len(t.RepoAgent(args[1])) == 0 {
-				return fmt.Errorf("--resume resumes the window's agent, and %s runs a shell; give one with --agent", args[1])
-			}
-			// Git last, once nothing else can refuse.
-			var gitNotes []string
-			if setBranch || setBase {
-				record := func(r task.Repo) error {
-					t.SetRepo(args[1], r)
-					return a.Store.Save(t)
-				}
-				if r, gitNotes, err = a.workspaceFor(cmd).MoveRepoBranch(cmd.Context(), t, args[1], r, branch, base, rebase, record); err != nil {
-					return err
-				}
-				t.SetRepo(args[1], r)
-			}
-			if err := a.Store.Save(t); err != nil {
+			res, err := a.workspaceFor(cmd).UpdateRepo(cmd.Context(), name, args[1], workspace.UpdateRepoOptions{
+				SetAgent: setAgent, Agent: agent, Shell: shell,
+				SetResume: cmd.Flags().Changed("resume"), Resume: resume.argv, NoResume: resume.none,
+				SetHook: setHook, PostCreate: hook,
+				Branch: branch, Base: base, Rebase: rebase,
+			})
+			if err != nil {
 				return err
 			}
+			t, taskAgent := res.Task, res.TaskAgent
 			a.printf("updated %s/%s\n", t.Name, args[1])
-			for _, n := range gitNotes {
+			for _, n := range res.Notes {
 				a.printf("  %s\n", n)
 			}
-			if resumeCleared {
+			if res.ResumeCleared {
 				a.warnf("note: the resume command went with the old agent; set one for this agent with --resume\n")
 			}
 			if resume.changed(cmd) {
