@@ -126,6 +126,7 @@ func TestRestartResumesUnlessFresh(t *testing.T) {
 	if err != nil || resumed || !slices.Equal(f.restarted()[1].Command, []string{"a-agent"}) {
 		t.Fatalf("--fresh: resumed=%v err=%v %+v", resumed, err, f.restarted())
 	}
+	f.dead("T", "b")
 	// Without a resume command, b is relaunched as it is.
 	if _, resumed, err = f.svc.Restart(ctx, "T", RestartOptions{Repo: "b"}); err != nil || resumed {
 		t.Fatalf("b: resumed=%v err=%v", resumed, err)
