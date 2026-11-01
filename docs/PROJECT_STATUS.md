@@ -92,8 +92,9 @@ in parallel worktrees by itself; telling at a glance which one is blocked is
 what a dashboard over all of them is for. Status comes from every source an
 agent already offers, most trusted first, and dash shows where it came from:
 
-- Hooks, for more agents: `config hooks codex` and `config hooks gemini` next
-  to the Claude one, all on `tspace signal`
+- Hooks: `config hooks claude` and `config hooks gemini`, and recipes for
+  Codex and any other agent, all on `tspace signal`. New agents get a recipe,
+  not a command
 - Status an agent publishes itself, such as Claude Code's `claude agents
   --json`, as an opt-in integration
 - What the multiplexer knows of any agent: a dead pane, the bell, time since

@@ -65,7 +65,7 @@ func TestConfigHooksClaudeKeepsTheRestOfTheFile(t *testing.T) {
 		t.Fatalf("PreToolUse = %v", c)
 	}
 	// The hand-written signal hook is replaced, the other Stop hook kept.
-	if c := commands(got, "Stop"); strings.Join(c, ",") != "say done,tspace signal --quiet done" {
+	if c := commands(got, "Stop"); strings.Join(c, ",") != "say done,tspace signal --quiet --keep-reported done" {
 		t.Fatalf("Stop = %v", c)
 	}
 	for event, want := range map[string]string{"UserPromptSubmit": "tspace signal --quiet working", "Notification": "tspace signal --quiet --hook --unless-blocked blocked", "PermissionRequest": "tspace signal --quiet --hook blocked"} {
@@ -340,7 +340,7 @@ func TestConfigHooksGemini(t *testing.T) {
 	for event, want := range map[string][]string{
 		"BeforeAgent":  {"tspace signal --quiet working"},
 		"Notification": {"tspace signal --quiet --hook blocked"},
-		"AfterAgent":   {"say done", "tspace signal --quiet done"},
+		"AfterAgent":   {"say done", "tspace signal --quiet --keep-reported done"},
 	} {
 		if c := commands(got, event); strings.Join(c, ";") != strings.Join(want, ";") {
 			t.Errorf("%s = %v, want %v", event, c, want)

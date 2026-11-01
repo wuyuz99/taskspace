@@ -46,7 +46,7 @@ func (a *App) windowEnv(taskName, window string) []string {
 
 func (a *App) newSignalCmd() *cobra.Command {
 	var taskName, repo string
-	var root, clear, quiet, hook, ifBlocked, unlessBlocked bool
+	var root, clear, quiet, hook, ifBlocked, unlessBlocked, keepReported bool
 	cmd := &cobra.Command{
 		Use:   "signal STATE [MESSAGE]",
 		Short: "Report what an agent is doing, for status and dash",
@@ -74,14 +74,16 @@ func (a *App) newSignalCmd() *cobra.Command {
 			"--quiet is for hooks that run in every session, inside a task or not: it\n" +
 			"prints nothing, and outside a task it does nothing and succeeds. A hook's\n" +
 			"output can end up in front of the agent, which has no use for it.\n\n" +
-			"Three flags let a hook report a prompt and take it back without disturbing\n" +
+			"Four flags let a hook report what it sees without disturbing anything else\n" +
 			"anything else the agent said:\n\n" +
 			"  --hook            read the hook's JSON from stdin. Its agent_id, or \"main\"\n" +
 			"                    without one, owns a blocked signal this writes\n" +
 			"  --if-blocked      with --hook: write only over a blocked signal a hook\n" +
 			"                    set for the same owner, and otherwise leave the signal\n" +
 			"                    and its age alone\n" +
-			"  --unless-blocked  write only if the window is not already blocked\n\n" +
+			"  --unless-blocked  write only if the window is not already blocked\n" +
+			"  --keep-reported   leave a blocked or failed the agent reported itself,\n" +
+			"                    so the end of its turn doesn't lose what it said\n\n" +
 			"A signal is one JSON file, .context/signals/REPO.json beside the\n" +
 			"worktrees (_root.json for the root window), holding\n" +
 			`{"state": "blocked", "message": "..."}` + "; an agent without tspace on its\n" +
@@ -105,8 +107,8 @@ func (a *App) newSignalCmd() *cobra.Command {
 			if ifBlocked && unlessBlocked {
 				return fmt.Errorf("--if-blocked cannot be combined with --unless-blocked")
 			}
-			if clear && (ifBlocked || unlessBlocked) {
-				return fmt.Errorf("--clear cannot be combined with --if-blocked or --unless-blocked")
+			if clear && (ifBlocked || unlessBlocked || keepReported) {
+				return fmt.Errorf("--clear cannot be combined with --if-blocked, --unless-blocked or --keep-reported")
 			}
 			owner := ""
 			if hook {
@@ -151,14 +153,16 @@ func (a *App) newSignalCmd() *cobra.Command {
 					message = string(r[:signalMessageMax-3]) + "..."
 				}
 			}
-			if ifBlocked || unlessBlocked {
+			if ifBlocked || unlessBlocked || keepReported {
 				signals, err := a.Store.ReadSignals(t.Name)
 				if err != nil {
 					return err
 				}
 				current, ok := signals[window]
 				blocked := ok && current.State == task.SignalBlocked
-				if (ifBlocked && (!blocked || current.Owner != owner)) || (unlessBlocked && blocked) {
+				// Only a hook sets an owner, so one without is the agent's word.
+				reported := ok && current.Owner == "" && (blocked || current.State == task.SignalFailed)
+				if (ifBlocked && (!blocked || current.Owner != owner)) || (unlessBlocked && blocked) || (keepReported && reported) {
 					if !quiet {
 						a.printf("%s: unchanged\n", label)
 					}
@@ -185,6 +189,7 @@ func (a *App) newSignalCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&hook, "hook", false, "read the hook's JSON from stdin, to tell which of the agent's threads this is about")
 	cmd.Flags().BoolVar(&ifBlocked, "if-blocked", false, "with --hook, write only over a blocked signal a hook set for the same thread")
 	cmd.Flags().BoolVar(&unlessBlocked, "unless-blocked", false, "write only if the window is not already blocked")
+	cmd.Flags().BoolVar(&keepReported, "keep-reported", false, "leave a blocked or failed the agent reported itself")
 	return cmd
 }
 

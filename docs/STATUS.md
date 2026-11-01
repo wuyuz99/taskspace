@@ -137,7 +137,7 @@ leaves everything else in the file alone:
     "Notification":     [{ "matcher": "permission_prompt|elicitation_dialog", "hooks": [{ "type": "command", "command": "tspace signal --quiet --hook --unless-blocked blocked" }] }],
     "PostToolUse":      [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet --hook --if-blocked working" }] }],
     "PostToolUseFailure": [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet --hook --if-blocked working" }] }],
-    "Stop":             [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet done" }] }]
+    "Stop":             [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet --keep-reported done" }] }]
   }
 }
 ```
@@ -157,7 +157,8 @@ the main agent still has open, and a `done`, a `failed` or a `blocked` the
 agent reported itself stays as it was.
 
 A denied permission fires no hook, so `blocked` stays until the next prompt or
-the end of a turn.
+the end of a turn. The end of a turn leaves a `blocked` or `failed` the agent
+reported itself, until the next prompt, so its question stays on show.
 
 To upgrade an existing installation, run the installer again and start a new
 agent session; your other hooks are kept.
@@ -167,7 +168,8 @@ For Gemini CLI, `tspace config hooks gemini` does the same in
 Gemini's events: `BeforeAgent` for `working`, `Notification` (tool permission
 prompts) for `blocked`, `AfterTool` to take that back, and `AfterAgent`
 for `done`. Gemini's hooks are on
-unless `hooksConfig.enabled` is `false`. Gemini allows comments in that file
+unless `hooksConfig.enabled` is `false`. They are best effort: how they behave
+around prompts and subagents hasn't been checked on a real Gemini CLI. Gemini allows comments in that file
 and tspace can't rewrite one that has them, so it refuses; add the hooks by
 hand instead, in the same shape as the Claude Code example above.
 
@@ -189,7 +191,7 @@ Any agent that can run a command on its own events can report. Pick the
 events closest to "a prompt was submitted", "waiting on a person", "a tool
 completed" (including failures), and "the turn ended". Run `tspace signal
 --quiet` with `working`, `--hook blocked`, `--hook --if-blocked working`,
-and `done`, respectively. The tool hook only clears a blocked signal owned
+and `--keep-reported done`, respectively. The tool hook only clears a blocked signal owned
 by the same hook thread; other signals and their ages stay unchanged.
 `--hook` reads the event's JSON from stdin, using `agent_id` as its owner
 or `main` when absent. Keep `--quiet`: some agents show a hook's output to
@@ -206,7 +208,7 @@ for `blocked`:
     "UserPromptSubmit":  [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet working" }] }],
     "PermissionRequest": [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet --hook blocked" }] }],
     "PostToolUse":       [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet --hook --if-blocked working" }] }],
-    "Stop":              [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet done" }] }]
+    "Stop":              [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet --keep-reported done" }] }]
   }
 }
 ```
