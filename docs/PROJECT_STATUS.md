@@ -134,3 +134,6 @@ Watching agents is left to the agents and tools built for it. tspace keeps
 - One dash across several machines
 - Pull request and CI columns for each repository; what matters here is the
   task as a whole
+
+Tracking work is left to the tools built for it. tspace holds the work, so it
+has no backlog, priorities, assignments or status workflows.
