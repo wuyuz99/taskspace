@@ -9,6 +9,7 @@ import (
 	"context"
 	"path/filepath"
 	goruntime "runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -128,9 +129,11 @@ type SignalReader interface {
 	ReadSignals(taskName string) (map[string]task.Signal, error)
 }
 
-// RunReader says whether a task without a session was interrupted.
+// RunReader says whether a task without a session was interrupted, and what
+// was running when it was.
 type RunReader interface {
 	Interrupted(taskName string) bool
+	Running(taskName string) (task.Running, bool)
 }
 
 // SessionObserver is told every session state status reads, so what a session
@@ -301,14 +304,20 @@ func (a *Aggregator) task(ctx context.Context, t *task.Task, published map[strin
 	}
 	if !runtimeUnknown && !sess.Exists && a.Run != nil && a.Run.Interrupted(t.Name) {
 		out.Interrupted = true
-		if out.Root != nil {
+		// Only what comes back says so; the rest simply is not running.
+		r, _ := a.Run.Running(t.Name)
+		if out.Root != nil && (r.Whole || r.Root) {
 			out.Root.Runtime = RuntimeInterrupted
 		}
 		for i := range out.Repos {
-			out.Repos[i].Runtime = RuntimeInterrupted
+			if r.Whole || slices.Contains(r.Repos, out.Repos[i].Repo) {
+				out.Repos[i].Runtime = RuntimeInterrupted
+			}
 		}
 		for i := range out.Extra {
-			out.Extra[i].Runtime = RuntimeInterrupted
+			if r.Whole || slices.Contains(r.Windows, strings.TrimPrefix(out.Extra[i].Name, task.ExtraWindowPrefix)) {
+				out.Extra[i].Runtime = RuntimeInterrupted
+			}
 		}
 	}
 	return out

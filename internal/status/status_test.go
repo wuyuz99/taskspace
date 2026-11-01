@@ -257,3 +257,45 @@ func TestRootWindowState(t *testing.T) {
 		t.Errorf("Root.Agent = %q without an agent, want shell", got.Root.Agent)
 	}
 }
+
+type interruptedRun struct{ running task.Running }
+
+func (interruptedRun) Interrupted(string) bool               { return true }
+func (r interruptedRun) Running(string) (task.Running, bool) { return r.running, true }
+
+// Only what would come back is marked; the rest is simply not running.
+func TestInterruptedMarksOnlyWhatComesBack(t *testing.T) {
+	tk := task.New("t")
+	tk.RootWindow = true
+	tk.Windows = []task.Window{{Name: "logs"}, {Name: "notes"}}
+	for _, name := range []string{"a", "b"} {
+		tk.SetRepo(name, task.Repo{Worktree: filepath.Join(t.TempDir(), "missing")})
+	}
+	a := New(tsgit.New(tsexec.Real()), noSession())
+	a.Run = interruptedRun{task.Running{Repos: []string{"a"}, Windows: []string{"logs"}}}
+	got := a.Task(context.Background(), tk)
+	if !got.Interrupted {
+		t.Fatal("task not interrupted")
+	}
+	if got.Root.Runtime != RuntimeNoSession {
+		t.Errorf("root = %q", got.Root.Runtime)
+	}
+	want := map[string]RuntimeState{"a": RuntimeInterrupted, "b": RuntimeNoSession}
+	for _, r := range got.Repos {
+		if r.Runtime != want[r.Repo] {
+			t.Errorf("%s = %q", r.Repo, r.Runtime)
+		}
+	}
+	extra := map[string]RuntimeState{"_logs": RuntimeInterrupted, "_notes": RuntimeNoSession}
+	for _, e := range got.Extra {
+		if e.Runtime != extra[e.Name] {
+			t.Errorf("%s = %q", e.Name, e.Runtime)
+		}
+	}
+
+	// A record from before snapshots says only that all of it ran.
+	a.Run = interruptedRun{task.Running{Whole: true}}
+	if got := a.Task(context.Background(), tk); got.Root.Runtime != RuntimeInterrupted || got.Repos[1].Runtime != RuntimeInterrupted {
+		t.Errorf("older record: %+v", got)
+	}
+}
