@@ -13,7 +13,8 @@ type Target struct {
 	Runtime runtime.Runtime
 	// Session names a session for one case, unused by anything else.
 	Session func(t *testing.T) string
-	// NeedsClient says windows can only be opened with a client attached.
+	// NeedsClient says a window can only be added with a client attached, which
+	// a restart with another command does too.
 	NeedsClient bool
 	// KeepsEmptySession says closing the last window leaves the session.
 	KeepsEmptySession bool
@@ -70,11 +71,16 @@ func Conformance(t *testing.T, target func(t *testing.T) Target) {
 			start(t, tg, s, root)
 			again := root
 			again.Command = exited
-			start(t, tg, s, again, runtime.Window{Name: "api", Dir: dir, Command: alive})
-			if _, ok := state(t, tg, s).Pane("api"); !ok {
+			windows := []runtime.Window{again}
+			if !tg.NeedsClient {
+				windows = append(windows, runtime.Window{Name: "api", Dir: dir, Command: alive})
+			}
+			start(t, tg, s, windows...)
+			st := state(t, tg, s)
+			if _, ok := st.Pane("api"); !ok && !tg.NeedsClient {
 				t.Fatal("missing window not added")
 			}
-			if st := state(t, tg, s); st.Panes["_root"].Dead {
+			if st.Panes["_root"].Dead {
 				t.Fatalf("running window replaced: %+v", st)
 			}
 		}},
@@ -97,7 +103,14 @@ func Conformance(t *testing.T, target func(t *testing.T) Target) {
 			if err := tg.Runtime.Restart(ctx, s, runtime.Window{Name: "gone", Dir: dir, Command: alive}); err == nil {
 				t.Fatal("missing window restarted")
 			}
+			if err := tg.Runtime.Restart(ctx, s, api); err != nil {
+				t.Fatal(err)
+			}
+			if tg.NeedsClient {
+				return
+			}
 			api.Command = alive
+			waitFor(t, tg, s, "window dead again", func(st runtime.SessionState) bool { return st.Panes["api"].Dead })
 			if err := tg.Runtime.Restart(ctx, s, api); err != nil {
 				t.Fatal(err)
 			}
