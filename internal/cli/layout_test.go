@@ -10,53 +10,44 @@ import (
 	"time"
 
 	"github.com/wuyuz99/taskspace/internal/runtime"
+	"github.com/wuyuz99/taskspace/internal/runtime/runtimetest"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
-// layoutRuntime is a session that may already be running, and records the
-// windows started or opened in it.
-type layoutRuntime struct {
-	stubRuntime
-	running bool
-	opened  []runtime.Window
-	openErr error
-	// hasErr is what a session check fails with.
-	hasErr error
+// sessionWith is a multiplexer with task's session running these windows.
+func sessionWith(task string, windows ...string) *runtimetest.Fake {
+	rt := runtimetest.New()
+	panes := map[string]runtime.PaneState{}
+	for _, w := range windows {
+		panes[w] = runtime.PaneState{}
+	}
+	rt.Seed(rt.SessionName(task), panes)
+	return rt
 }
 
-func (r *layoutRuntime) HasSession(context.Context, string) (bool, error) {
-	return r.running, r.hasErr
-}
-func (r *layoutRuntime) CloseWindow(_ context.Context, _ string, name string) error {
-	var kept []runtime.Window
-	for _, w := range r.started {
-		if w.Name != name {
-			kept = append(kept, w)
-		}
+func started(rt *runtimetest.Fake) []runtime.Window {
+	var out []runtime.Window
+	for _, c := range rt.Calls(runtimetest.OpStart) {
+		out = append(out, c.Window)
 	}
-	r.started = kept
-	return nil
-}
-func (r *layoutRuntime) State(ctx context.Context, s string) (runtime.SessionState, error) {
-	st, err := r.stubRuntime.State(ctx, s)
-	st.Exists = st.Exists || r.running
-	return st, err
-}
-func (r *layoutRuntime) OpenWindow(_ context.Context, _ string, w runtime.Window) error {
-	if r.openErr != nil {
-		return r.openErr
-	}
-	r.opened = append(r.opened, w)
-	return nil
+	return out
 }
 
-func (rt *layoutRuntime) window(name string) (runtime.Window, bool) {
-	for _, w := range rt.started {
+func startedWindow(rt *runtimetest.Fake, name string) (runtime.Window, bool) {
+	for _, w := range started(rt) {
 		if w.Name == name {
 			return w, true
 		}
 	}
 	return runtime.Window{}, false
+}
+
+func closed(rt *runtimetest.Fake) []string {
+	var out []string
+	for _, c := range rt.Calls(runtimetest.OpClose) {
+		out = append(out, c.Window.Name)
+	}
+	return out
 }
 
 func (h *harness) load(t *testing.T, name string) *task.Task {
@@ -76,15 +67,15 @@ func TestSingleRepoTaskRunsItsAgentInTheRepo(t *testing.T) {
 	if tk := h.load(t, "PAY-1"); tk.AgentRepo != "backend" || tk.HasRootWindow() {
 		t.Fatalf("layout: agent_repo=%q root=%v", tk.AgentRepo, tk.HasRootWindow())
 	}
-	rt := &layoutRuntime{}
+	rt := runtimetest.New()
 	h.app.Runtime = rt
 	if err := h.exec(t, h.app.newStartCmd(), "PAY-1"); err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.started) != 1 {
-		t.Fatalf("started %+v, want only the repo window", rt.started)
+	if len(started(rt)) != 1 {
+		t.Fatalf("started %+v, want only the repo window", started(rt))
 	}
-	w := rt.started[0]
+	w := started(rt)[0]
 	ctxDir := h.app.Store.ContextDir("PAY-1")
 	if w.Name != "backend" || !slices.Equal(w.Command, []string{"claude", "--add-dir", ctxDir}) {
 		t.Fatalf("window: %+v", w)
@@ -124,16 +115,16 @@ func TestWithRootAndSeveralReposKeepTheRootWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"PAY-1", "PAY-2"} {
-		rt := &layoutRuntime{}
+		rt := runtimetest.New()
 		h.app.Runtime = rt
 		if err := h.exec(t, h.app.newStartCmd(), name); err != nil {
 			t.Fatal(err)
 		}
-		root, ok := rt.window(task.RootWindowName)
+		root, ok := startedWindow(rt, task.RootWindowName)
 		if !ok || !slices.Equal(root.Command, []string{"claude"}) {
-			t.Fatalf("%s root window: %+v", name, rt.started)
+			t.Fatalf("%s root window: %+v", name, started(rt))
 		}
-		if b, _ := rt.window("backend"); len(b.Command) != 0 {
+		if b, _ := startedWindow(rt, "backend"); len(b.Command) != 0 {
 			t.Fatalf("%s backend runs %v, want a shell", name, b.Command)
 		}
 	}
@@ -150,7 +141,7 @@ func TestSecondRepoOpensRootWindowInRunningSession(t *testing.T) {
 	if err := h.exec(t, h.app.newStartCmd(), "PAY-1", "--no-runtime"); err != nil {
 		t.Fatal(err)
 	}
-	rt := &layoutRuntime{running: true}
+	rt := sessionWith("PAY-1")
 	h.app.Runtime = rt
 	if err := h.exec(t, h.app.newRepoCmd(), "add", "PAY-1", other, "--name", "frontend"); err != nil {
 		t.Fatal(err)
@@ -159,20 +150,20 @@ func TestSecondRepoOpensRootWindowInRunningSession(t *testing.T) {
 	if tk.AgentRepo != "backend" || !tk.RootWindow {
 		t.Fatalf("layout: agent_repo=%q root_window=%v", tk.AgentRepo, tk.RootWindow)
 	}
-	if len(rt.opened) != 1 || rt.opened[0].Name != task.RootWindowName || len(rt.opened[0].Command) != 0 {
-		t.Fatalf("opened %+v, want a root shell", rt.opened)
+	if len(opened(rt)) != 1 || opened(rt)[0].Name != task.RootWindowName || len(opened(rt)[0].Command) != 0 {
+		t.Fatalf("opened %+v, want a root shell", opened(rt))
 	}
-	if _, err := os.Stat(rt.opened[0].Dir); err != nil {
+	if _, err := os.Stat(opened(rt)[0].Dir); err != nil {
 		t.Fatalf("root window directory: %v", err)
 	}
 
 	if err := h.exec(t, h.app.newStartCmd(), "PAY-1"); err != nil {
 		t.Fatal(err)
 	}
-	if b, _ := rt.window("backend"); len(b.Command) == 0 || b.Command[0] != "claude" {
+	if b, _ := startedWindow(rt, "backend"); len(b.Command) == 0 || b.Command[0] != "claude" {
 		t.Fatalf("backend runs %v, want the agent to stay", b.Command)
 	}
-	if f, _ := rt.window("frontend"); len(f.Command) != 0 {
+	if f, _ := startedWindow(rt, "frontend"); len(f.Command) != 0 {
 		t.Fatalf("frontend runs %v, want a shell", f.Command)
 	}
 
@@ -191,19 +182,19 @@ func TestSecondRepoWithoutSessionLeavesRootToStart(t *testing.T) {
 	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--repo", "backend="+h.repo); err != nil {
 		t.Fatal(err)
 	}
-	rt := &layoutRuntime{}
+	rt := runtimetest.New()
 	h.app.Runtime = rt
 	if err := h.exec(t, h.app.newRepoCmd(), "add", "PAY-1", other, "--name", "frontend"); err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.opened) != 0 || !strings.Contains(h.out.String(), "the next start opens a root window") {
-		t.Fatalf("opened %+v\n%s", rt.opened, h.out.String())
+	if len(opened(rt)) != 0 || !strings.Contains(h.out.String(), "the next start opens a root window") {
+		t.Fatalf("opened %+v\n%s", opened(rt), h.out.String())
 	}
 	if err := h.exec(t, h.app.newStartCmd(), "PAY-1"); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := rt.window(task.RootWindowName); !ok {
-		t.Fatalf("start did not create the root window: %+v", rt.started)
+	if _, ok := startedWindow(rt, task.RootWindowName); !ok {
+		t.Fatalf("start did not create the root window: %+v", started(rt))
 	}
 }
 
@@ -213,7 +204,9 @@ func TestRootWindowThatCannotOpenIsLeftToStart(t *testing.T) {
 	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--repo", "backend="+h.repo); err != nil {
 		t.Fatal(err)
 	}
-	h.app.Runtime = &layoutRuntime{running: true, openErr: errors.New("needs a client")}
+	rt := sessionWith("PAY-1")
+	rt.Fail(runtimetest.OpOpenWindow, errors.New("needs a client"))
+	h.app.Runtime = rt
 	if err := h.exec(t, h.app.newRepoCmd(), "add", "PAY-1", other, "--name", "frontend"); err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +230,11 @@ func TestFirstRepoOfEmptyTaskChoosesTheLayout(t *testing.T) {
 		if err := h.exec(t, h.app.newTaskCmd(), "create", name); err != nil {
 			t.Fatal(err)
 		}
-		h.app.Runtime = &layoutRuntime{running: running}
+		rt := runtimetest.New()
+		if running {
+			rt = sessionWith(name)
+		}
+		h.app.Runtime = rt
 		if err := h.exec(t, h.app.newRepoCmd(), "add", name, h.repo, "--name", "backend"); err != nil {
 			t.Fatal(err)
 		}
@@ -256,7 +253,8 @@ func TestRepoAddWithASessionItCannotCheck(t *testing.T) {
 	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1"); err != nil {
 		t.Fatal(err)
 	}
-	rt := &layoutRuntime{hasErr: errors.New("server busy")}
+	rt := runtimetest.New()
+	rt.Fail(runtimetest.OpHasSession, errors.New("server busy"))
 	h.app.Runtime = rt
 	if err := h.exec(t, h.app.newRepoCmd(), "add", "PAY-1", h.repo, "--name", "backend"); err != nil {
 		t.Fatal(err)
@@ -274,8 +272,8 @@ func TestRepoAddWithASessionItCannotCheck(t *testing.T) {
 	if err := h.exec(t, h.app.newRepoCmd(), "add", "PAY-2", mkRepo(t), "--name", "frontend"); err != nil {
 		t.Fatal(err)
 	}
-	if tk := h.load(t, "PAY-2"); !tk.RootWindow || len(rt.opened) != 0 {
-		t.Fatalf("root=%v opened=%v", tk.RootWindow, rt.opened)
+	if tk := h.load(t, "PAY-2"); !tk.RootWindow || len(opened(rt)) != 0 {
+		t.Fatalf("root=%v opened=%v", tk.RootWindow, opened(rt))
 	}
 	if !strings.Contains(h.errb.String(), "opens when the task next starts") {
 		t.Fatalf("no warning for the second repository: %q", h.errb.String())
@@ -289,7 +287,9 @@ func TestRepoRmRefusesASessionItCannotCheck(t *testing.T) {
 	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--agent", "claude", "--repo", "backend="+h.repo); err != nil {
 		t.Fatal(err)
 	}
-	h.app.Runtime = &layoutRuntime{hasErr: errors.New("server busy")}
+	rt := runtimetest.New()
+	rt.Fail(runtimetest.OpHasSession, errors.New("server busy"))
+	h.app.Runtime = rt
 	err := h.exec(t, h.app.newRepoCmd(), "rm", "PAY-1", "backend", "--keep-worktree")
 	if err == nil || !strings.Contains(err.Error(), "server busy") || !strings.Contains(err.Error(), "tspace stop PAY-1") {
 		t.Fatalf("rm = %v", err)
@@ -324,12 +324,12 @@ func TestSignalFromTheAgentRepoWindow(t *testing.T) {
 	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--agent", "claude", "--repo", "backend="+h.repo); err != nil {
 		t.Fatal(err)
 	}
-	rt := &layoutRuntime{}
+	rt := runtimetest.New()
 	h.app.Runtime = rt
 	if err := h.exec(t, h.app.newStartCmd(), "PAY-1"); err != nil {
 		t.Fatal(err)
 	}
-	for _, kv := range rt.started[0].Env {
+	for _, kv := range started(rt)[0].Env {
 		k, v, _ := strings.Cut(kv, "=")
 		t.Setenv(k, v)
 	}
@@ -362,7 +362,7 @@ func TestSignalFromTheAgentRepoWindow(t *testing.T) {
 func TestDashNamesSingleRepoTask(t *testing.T) {
 	h := newHarness(t)
 	h.startedTask(t, "PAY-1")
-	h.app.Runtime = &layoutRuntime{running: true}
+	h.app.Runtime = sessionWith("PAY-1")
 	m := newDashModel(context.Background(), h.app, time.Second)
 	m = drive(t, m, dashDataMsg(h.app.dashLoad(context.Background())))
 	if len(m.data.Rows) != 1 || m.data.Rows[0].root() {
@@ -451,7 +451,7 @@ func TestRepoWithItsOwnAgentKeepsTheRootWindow(t *testing.T) {
 	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1"); err != nil {
 		t.Fatal(err)
 	}
-	h.app.Runtime = &layoutRuntime{}
+	h.app.Runtime = runtimetest.New()
 	if err := h.exec(t, h.app.newRepoCmd(), "add", "PAY-1", h.repo, "--name", "backend", "--agent", "codex"); err != nil {
 		t.Fatal(err)
 	}
@@ -465,7 +465,7 @@ func TestRepoRmRefusesToOrphanARunningAgent(t *testing.T) {
 	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--agent", "claude", "--repo", "backend="+h.repo); err != nil {
 		t.Fatal(err)
 	}
-	h.app.Runtime = &layoutRuntime{running: true}
+	h.app.Runtime = sessionWith("PAY-1")
 	if err := h.exec(t, h.app.newRepoCmd(), "rm", "PAY-1", "backend", "--keep-worktree"); err == nil || !strings.Contains(err.Error(), "tspace stop PAY-1") {
 		t.Fatalf("rm = %v", err)
 	}
@@ -482,7 +482,7 @@ func TestEmptiedTaskKeepsTheRootLayout(t *testing.T) {
 	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--agent", "claude", "--repo", "backend="+h.repo, "--repo", "frontend="+other); err != nil {
 		t.Fatal(err)
 	}
-	h.app.Runtime = &layoutRuntime{}
+	h.app.Runtime = runtimetest.New()
 	for _, name := range []string{"backend", "frontend"} {
 		if err := h.exec(t, h.app.newRepoCmd(), "rm", "PAY-1", name); err != nil {
 			t.Fatal(err)
@@ -536,16 +536,16 @@ func TestAgentCommandPlaceholders(t *testing.T) {
 	if err := h.exec(t, h.app.newRepoCmd(), "update", "PAY-1", "frontend", "--agent", "other-agent", "--agent", "{task_dir}"); err != nil {
 		t.Fatal(err)
 	}
-	rt := &layoutRuntime{}
+	rt := runtimetest.New()
 	h.app.Runtime = rt
 	if err := h.exec(t, h.app.newStartCmd(), "PAY-1"); err != nil {
 		t.Fatal(err)
 	}
-	root, _ := rt.window(task.RootWindowName)
+	root, _ := startedWindow(rt, task.RootWindowName)
 	if want := []string{"some-agent", "--notes=" + h.app.Store.ContextDir("PAY-1") + "/TASK.md"}; !slices.Equal(root.Command, want) {
 		t.Fatalf("root runs %v, want %v", root.Command, want)
 	}
-	front, _ := rt.window("frontend")
+	front, _ := startedWindow(rt, "frontend")
 	if want := []string{"other-agent", h.app.Store.TaskDir("PAY-1")}; !slices.Equal(front.Command, want) {
 		t.Fatalf("frontend runs %v, want %v", front.Command, want)
 	}
@@ -601,7 +601,7 @@ func TestTaskUpdateAgentAtRootInARunningSession(t *testing.T) {
 	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--agent", "claude", "--repo", "backend="+h.repo); err != nil {
 		t.Fatal(err)
 	}
-	rt := &layoutRuntime{running: true}
+	rt := sessionWith("PAY-1")
 	h.app.Runtime = rt
 	if err := h.exec(t, h.app.newTaskCmd(), "update", "PAY-1", "--agent-at-root"); err != nil {
 		t.Fatal(err)
@@ -612,8 +612,8 @@ func TestTaskUpdateAgentAtRootInARunningSession(t *testing.T) {
 			t.Fatalf("missing %q in:\n%s", want, out)
 		}
 	}
-	if len(rt.opened) != 0 || len(rt.started) != 0 {
-		t.Fatalf("windows changed: opened=%v started=%v", rt.opened, rt.started)
+	if len(opened(rt)) != 0 || len(started(rt)) != 0 {
+		t.Fatalf("windows changed: opened=%v started=%v", opened(rt), started(rt))
 	}
 	// With a root window open already, restarting it is what runs the agent.
 	h.app.Runtime = &stubRuntime{}
@@ -740,7 +740,7 @@ func TestTaskUpdateMovesNoAgent(t *testing.T) {
 	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--shell", "--repo", "backend="+h.repo); err != nil {
 		t.Fatal(err)
 	}
-	h.app.Runtime = &layoutRuntime{running: true}
+	h.app.Runtime = sessionWith("PAY-1")
 	if err := h.exec(t, h.app.newTaskCmd(), "update", "PAY-1", "--agent-at-root"); err != nil {
 		t.Fatal(err)
 	}

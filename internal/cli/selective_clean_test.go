@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wuyuz99/taskspace/internal/runtime"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
@@ -25,8 +24,7 @@ func TestSelectiveCleanAndRepoRemoval(t *testing.T) {
 	if err := h.app.Store.Save(tk); err != nil {
 		t.Fatal(err)
 	}
-	rt := &closingRuntime{layoutRuntime: layoutRuntime{running: true}}
-	rt.started = []runtime.Window{{Name: "backend"}, {Name: "frontend"}, {Name: "_logs"}, {Name: task.RootWindowName}}
+	rt := sessionWith("T", "backend", "frontend", "_logs", task.RootWindowName)
 	h.app.Runtime = rt
 	wt := tk.Repos["backend"].Worktree
 	if err := os.WriteFile(filepath.Join(wt, "dirty"), []byte("keep"), 0600); err != nil {
@@ -35,7 +33,7 @@ func TestSelectiveCleanAndRepoRemoval(t *testing.T) {
 	if err := h.exec(t, h.app.newRepoRmCmd(), "T", "backend"); err == nil {
 		t.Fatal("dirty removal succeeded")
 	}
-	if len(rt.closed) != 0 || len(h.load(t, "T").Repos) != 2 {
+	if len(closed(rt)) != 0 || len(h.load(t, "T").Repos) != 2 {
 		t.Fatal("refusal mutated task")
 	}
 	if err := os.Remove(filepath.Join(wt, "dirty")); err != nil {
@@ -44,8 +42,8 @@ func TestSelectiveCleanAndRepoRemoval(t *testing.T) {
 	if err := h.exec(t, h.app.newRepoRmCmd(), "T", "backend"); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(rt.closed, []string{"backend", "_logs"}) || rt.stopped {
-		t.Fatalf("closed=%v stopped=%v", rt.closed, rt.stopped)
+	if !slices.Equal(closed(rt), []string{"backend", "_logs"}) || stopped(rt) {
+		t.Fatalf("closed=%v stopped=%v", closed(rt), stopped(rt))
 	}
 	if _, err := os.Stat(wt); !os.IsNotExist(err) {
 		t.Fatalf("worktree remains: %v", err)
@@ -61,13 +59,12 @@ func TestSelectiveCleanAndRepoRemoval(t *testing.T) {
 func TestSelectiveCleanRefusesUnknownWindows(t *testing.T) {
 	h := newHarness(t)
 	tk := h.startedTask(t, "T")
-	rt := &closingRuntime{layoutRuntime: layoutRuntime{running: true}}
-	rt.started = []runtime.Window{{Name: "_unsaved"}}
+	rt := sessionWith("T", "_unsaved")
 	h.app.Runtime = rt
 	if err := h.exec(t, h.app.newCleanCmd(), "T", tk.RepoNames()[0]); err == nil || !strings.Contains(err.Error(), "no saved repository") {
 		t.Fatal(err)
 	}
-	if len(rt.closed) != 0 {
+	if len(closed(rt)) != 0 {
 		t.Fatal("refusal closed windows")
 	}
 }

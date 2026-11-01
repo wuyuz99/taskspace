@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"slices"
 	"strings"
 	"testing"
@@ -9,7 +8,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/wuyuz99/taskspace/internal/runtime"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
@@ -32,21 +30,11 @@ func TestSplitWords(t *testing.T) {
 	}
 }
 
-// openingRuntime is a running session whose OpenWindow adds the window.
-type openingRuntime struct{ layoutRuntime }
-
-func (r *openingRuntime) OpenWindow(_ context.Context, _ string, w runtime.Window) error {
-	r.opened = append(r.opened, w)
-	r.started = append(r.started, w)
-	return nil
-}
-
 func TestDashOpenWindow(t *testing.T) {
 	h := newHarness(t)
 	tk := h.startedRootTask(t, "T")
 	repo := tk.RepoNames()[0]
-	rt := &openingRuntime{layoutRuntime{running: true}}
-	rt.started = []runtime.Window{{Name: task.RootWindowName}, {Name: repo}}
+	rt := sessionWith("T", task.RootWindowName, repo)
 	h.app.Runtime = rt
 	m := newDashModel(t.Context(), h.app, time.Second)
 	m.expanded = map[string]bool{"T": true}
@@ -70,10 +58,10 @@ func TestDashOpenWindow(t *testing.T) {
 	if m.form != nil || m.noteErr || !strings.Contains(m.note, "opened _tests") {
 		t.Fatalf("form=%v note=%q", m.form != nil, m.note)
 	}
-	if len(rt.opened) != 1 {
-		t.Fatalf("opened %+v", rt.opened)
+	if len(opened(rt)) != 1 {
+		t.Fatalf("opened %+v", opened(rt))
 	}
-	w := rt.opened[0]
+	w := opened(rt)[0]
 	if w.Name != "_tests" || w.Dir != tk.Repos[repo].Worktree || !slices.Equal(w.Command, []string{"make", "test", "ARGS=-v"}) {
 		t.Fatalf("opened %+v", w)
 	}
@@ -89,8 +77,8 @@ func TestDashOpenWindow(t *testing.T) {
 	m.cursor = 0
 	m = drive(t, m, key("w"))
 	m = drive(t, m, key("enter"))
-	if m.noteErr || len(rt.opened) != 2 || rt.opened[1].Dir != h.app.Store.TaskDir("T") || len(rt.opened[1].Command) != 0 {
-		t.Fatalf("note=%q opened=%+v", m.note, rt.opened)
+	if m.noteErr || len(opened(rt)) != 2 || opened(rt)[1].Dir != h.app.Store.TaskDir("T") || len(opened(rt)[1].Command) != 0 {
+		t.Fatalf("note=%q opened=%+v", m.note, opened(rt))
 	}
 }
 
