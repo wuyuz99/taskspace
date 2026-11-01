@@ -27,6 +27,8 @@ func interruption(t *testing.T, rt runtime.Runtime, name string, kill func(sessi
 	f.svc.Progress = func(e Event) {
 		if n, ok := e.(TaskNotStarted); ok {
 			t.Logf("%s not started: %v", n.Task, n.Err)
+			out, _ := osexec.Command("sh", "-c", "date +%T.%N; zellij list-sessions --no-formatting; zellij --session tspace@"+name+" action list-panes --all --json | head -c 1500").CombinedOutput()
+			t.Log("DUMP", string(out))
 		}
 	}
 	sleep := []string{"sleep", "60"}
@@ -51,6 +53,9 @@ func interruption(t *testing.T, rt runtime.Runtime, name string, kill func(sessi
 	}
 
 	kill(session)
+	if out, err := osexec.Command("zellij", "list-sessions", "--no-formatting").CombinedOutput(); true {
+		t.Log("AFTERKILL", err, string(out))
+	}
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		names, err := f.svc.Interrupted(ctx)

@@ -29,6 +29,14 @@ jobs:
           else
             brew install tmux zellij
           fi
+      - name: Probe
+        run: |
+          nproc
+          for i in 1 2 3 4 5 6 7 8; do
+            echo "=== round $i"
+            go test -v -count=1 -coverpkg=./... ./... > /tmp/o.txt 2>&1 || true
+            grep -E -A14 'AFTERKILL|not started|DUMP|^--- FAIL|^=== RUN   TestRealZellijInterruption' /tmp/o.txt | grep -v -E '^=== (RUN|PAUSE|CONT)   Test[^R]' | cut -c1-700 | head -90
+          done
       - name: gofmt
         run: test -z "$(gofmt -l .)"
       - run: go vet ./...
