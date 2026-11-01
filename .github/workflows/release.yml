@@ -30,6 +30,8 @@ jobs:
             cp LICENSE README.md CHANGELOG.md "build/$name/"
             cp -R docs "build/$name/docs"
             tar -C build -czf "out/$name.tar.gz" "$name"
+            # A version-free name gives releases/latest/download a stable link.
+            cp "out/$name.tar.gz" "out/tspace_${os}_${arch}.tar.gz"
           done
           (cd out && sha256sum *.tar.gz > checksums.txt)
       - name: Publish
