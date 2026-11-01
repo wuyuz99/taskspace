@@ -30,6 +30,10 @@ const (
 	SignalFailed SignalState = "failed"
 )
 
+// SignalOwnerMain is the owner of a blocked signal a hook set for the agent's
+// main thread, as opposed to one of its subagents.
+const SignalOwnerMain = "main"
+
 // SignalStates lists the states in the order help text shows them.
 var SignalStates = []SignalState{SignalWorking, SignalBlocked, SignalDone, SignalFailed}
 
@@ -55,12 +59,17 @@ type Signal struct {
 	State   SignalState `json:"state"`
 	Message string      `json:"message,omitempty"`
 	At      time.Time   `json:"at"`
+	// Owner is set only on a blocked signal from a hook, and names the thread
+	// of the agent that is waiting: SignalOwnerMain, or a subagent's id. Only
+	// that thread's hook takes the signal back; see `tspace signal --help`.
+	Owner string `json:"-"`
 }
 
 // signalFile is a signal as stored: the time is the file's own.
 type signalFile struct {
 	State   SignalState `json:"state"`
 	Message string      `json:"message,omitempty"`
+	Owner   string      `json:"owner,omitempty"`
 }
 
 // SignalsDir holds one file per window. It sits in .context so that an agent
@@ -77,10 +86,15 @@ func (s *Store) SignalPath(taskName, window string) string {
 
 // WriteSignal replaces a window's signal.
 func (s *Store) WriteSignal(taskName, window string, state SignalState, message string) error {
+	return s.WriteOwnedSignal(taskName, window, state, message, "")
+}
+
+// WriteOwnedSignal replaces a window's signal with one that records its owner.
+func (s *Store) WriteOwnedSignal(taskName, window string, state SignalState, message, owner string) error {
 	if err := ValidateName("task", taskName); err != nil {
 		return err
 	}
-	b, err := json.Marshal(signalFile{State: state, Message: message})
+	b, err := json.Marshal(signalFile{State: state, Message: message, Owner: owner})
 	if err != nil {
 		return err
 	}
@@ -141,7 +155,7 @@ func (s *Store) ReadSignals(taskName string) (map[string]Signal, error) {
 		if err != nil {
 			continue
 		}
-		out[strings.TrimSuffix(name, ".json")] = Signal{State: f.State, Message: f.Message, At: info.ModTime().UTC()}
+		out[strings.TrimSuffix(name, ".json")] = Signal{State: f.State, Message: f.Message, At: info.ModTime().UTC(), Owner: f.Owner}
 	}
 	return out, nil
 }

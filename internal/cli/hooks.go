@@ -41,13 +41,20 @@ type hookAgent struct {
 // Notification is limited by its matcher to the notifications that need a
 // person. Claude Code also notifies when a finished agent has sat idle for a
 // while, and that one must not turn "done" into "blocked".
+//
+// PermissionRequest fires at once and says which thread is asking, where
+// Notification comes six seconds later and never does, so Notification only
+// adds what PermissionRequest doesn't cover. Tool hooks fire for subagents
+// too, so one clears only the blocked of its own thread: a background
+// subagent's tools must not hide a prompt the main thread still has open.
 var claudeAgent = hookAgent{
 	name: "claude", product: "Claude Code",
 	hooks: []signalHook{
 		{"UserPromptSubmit", "", "tspace signal --quiet working", ""},
-		{"Notification", "permission_prompt|elicitation_dialog", "tspace signal --quiet blocked", "permission prompts and questions"},
-		{"PostToolUse", "", "tspace signal --quiet working", "a tool completed after any approval"},
-		{"PostToolUseFailure", "", "tspace signal --quiet working", "a tool failed and the agent continues"},
+		{"PermissionRequest", "", "tspace signal --quiet --hook blocked", "a tool needs approval"},
+		{"Notification", "permission_prompt|elicitation_dialog", "tspace signal --quiet --hook --unless-blocked blocked", "permission prompts and questions"},
+		{"PostToolUse", "", "tspace signal --quiet --hook --if-blocked working", "a tool completed after any approval"},
+		{"PostToolUseFailure", "", "tspace signal --quiet --hook --if-blocked working", "a tool failed and the agent continues"},
 		{"Stop", "", "tspace signal --quiet done", ""},
 	},
 	settings:     claudeSettingsPath,
@@ -61,8 +68,8 @@ var geminiAgent = hookAgent{
 	name: "gemini", product: "Gemini CLI",
 	hooks: []signalHook{
 		{"BeforeAgent", "", "tspace signal --quiet working", "a prompt was submitted"},
-		{"Notification", "", "tspace signal --quiet blocked", "tool permission prompts"},
-		{"AfterTool", "", "tspace signal --quiet working", "a tool completed after any approval"},
+		{"Notification", "", "tspace signal --quiet --hook blocked", "tool permission prompts"},
+		{"AfterTool", "", "tspace signal --quiet --hook --if-blocked working", "a tool completed after any approval"},
 		{"AfterAgent", "", "tspace signal --quiet done", "the turn's answer is done"},
 	},
 	settings:     geminiSettingsPath,

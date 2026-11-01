@@ -126,16 +126,17 @@ snippets to paste. For Claude Code, install the hooks once:
 tspace config hooks claude            # --remove takes them out again
 ```
 
-That adds five hooks to your user settings, `~/.claude/settings.json`, and
+That adds six hooks to your user settings, `~/.claude/settings.json`, and
 leaves everything else in the file alone:
 
 ```json
 {
   "hooks": {
     "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet working" }] }],
-    "Notification":     [{ "matcher": "permission_prompt|elicitation_dialog", "hooks": [{ "type": "command", "command": "tspace signal --quiet blocked" }] }],
-    "PostToolUse":      [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet working" }] }],
-    "PostToolUseFailure": [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet working" }] }],
+    "PermissionRequest": [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet --hook blocked" }] }],
+    "Notification":     [{ "matcher": "permission_prompt|elicitation_dialog", "hooks": [{ "type": "command", "command": "tspace signal --quiet --hook --unless-blocked blocked" }] }],
+    "PostToolUse":      [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet --hook --if-blocked working" }] }],
+    "PostToolUseFailure": [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet --hook --if-blocked working" }] }],
     "Stop":             [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet done" }] }]
   }
 }
@@ -150,13 +151,21 @@ to the agent.
 Tool completion restores `working` after a permission prompt, including a
 tool that fails and returns control to Claude. Until that tool returns, a
 long-running approved tool can still show `blocked`. Each tool runs one short
-signal command. To upgrade an existing installation, run the installer again
-and start a new agent session; your other hooks are kept.
+signal command, which changes nothing unless a hook set `blocked` for the
+same thread. So a background subagent finishing tools doesn't hide a prompt
+the main agent still has open, and a `done`, a `failed` or a `blocked` the
+agent reported itself stays as it was.
+
+A denied permission fires no hook, so `blocked` stays until the next prompt or
+the end of a turn.
+
+To upgrade an existing installation, run the installer again and start a new
+agent session; your other hooks are kept.
 
 For Gemini CLI, `tspace config hooks gemini` does the same in
 `~/.gemini/settings.json` (under `$GEMINI_CLI_HOME` if that is set), with
 Gemini's events: `BeforeAgent` for `working`, `Notification` (tool permission
-prompts) for `blocked`, `AfterTool` to restore `working`, and `AfterAgent`
+prompts) for `blocked`, `AfterTool` to take that back, and `AfterAgent`
 for `done`. Gemini's hooks are on
 unless `hooksConfig.enabled` is `false`. Gemini allows comments in that file
 and tspace can't rewrite one that has them, so it refuses; add the hooks by

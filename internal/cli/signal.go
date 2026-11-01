@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,7 +41,7 @@ func (a *App) windowEnv(taskName, window string) []string {
 
 func (a *App) newSignalCmd() *cobra.Command {
 	var taskName, repo string
-	var root, clear, quiet bool
+	var root, clear, quiet, hook, ifBlocked, unlessBlocked bool
 	cmd := &cobra.Command{
 		Use:   "signal STATE [MESSAGE]",
 		Short: "Report what an agent is doing, for status and dash",
@@ -61,12 +63,20 @@ func (a *App) newSignalCmd() *cobra.Command {
 			"  tspace signal working --task PAY-142 --repo backend\n\n" +
 			"It is meant to be called by the agent's own hooks rather than typed. For\n" +
 			"Claude Code, for example: UserPromptSubmit runs `tspace signal working`,\n" +
-			"Notification runs `tspace signal blocked`, PostToolUse and PostToolUseFailure\n" +
-			"restore `working`, and Stop runs `tspace signal done`;\n" +
+			"PermissionRequest and Notification report `blocked`, PostToolUse and\n" +
+			"PostToolUseFailure take that back, and Stop runs `tspace signal done`;\n" +
 			"`tspace config hooks claude` installs exactly these.\n\n" +
 			"--quiet is for hooks that run in every session, inside a task or not: it\n" +
 			"prints nothing, and outside a task it does nothing and succeeds. A hook's\n" +
 			"output can end up in front of the agent, which has no use for it.\n\n" +
+			"Three flags let a hook report a prompt and take it back without disturbing\n" +
+			"anything else the agent said:\n\n" +
+			"  --hook            read the hook's JSON from stdin. Its agent_id, or \"main\"\n" +
+			"                    without one, owns a blocked signal this writes\n" +
+			"  --if-blocked      with --hook: write only over a blocked signal a hook\n" +
+			"                    set for the same owner, and otherwise leave the signal\n" +
+			"                    and its age alone\n" +
+			"  --unless-blocked  write only if the window is not already blocked\n\n" +
 			"A signal is one JSON file, .context/signals/REPO.json beside the\n" +
 			"worktrees (_root.json for the root window), holding\n" +
 			`{"state": "blocked", "message": "..."}` + "; an agent without tspace on its\n" +
@@ -83,6 +93,20 @@ func (a *App) newSignalCmd() *cobra.Command {
 			}
 			if !clear && len(args) == 0 {
 				return fmt.Errorf("give a state: working, blocked, done or failed")
+			}
+			if ifBlocked && !hook {
+				return fmt.Errorf("--if-blocked needs --hook")
+			}
+			if ifBlocked && unlessBlocked {
+				return fmt.Errorf("--if-blocked cannot be combined with --unless-blocked")
+			}
+			if clear && (ifBlocked || unlessBlocked) {
+				return fmt.Errorf("--clear cannot be combined with --if-blocked or --unless-blocked")
+			}
+			owner := ""
+			if hook {
+				// First, so the agent is never left writing to a closed pipe.
+				owner = hookOwner(cmd.InOrStdin())
 			}
 			var state task.SignalState
 			if !clear {
@@ -122,7 +146,24 @@ func (a *App) newSignalCmd() *cobra.Command {
 					message = string(r[:signalMessageMax-3]) + "..."
 				}
 			}
-			if err := a.Store.WriteSignal(t.Name, window, state, message); err != nil {
+			if ifBlocked || unlessBlocked {
+				signals, err := a.Store.ReadSignals(t.Name)
+				if err != nil {
+					return err
+				}
+				current, ok := signals[window]
+				blocked := ok && current.State == task.SignalBlocked
+				if (ifBlocked && (!blocked || current.Owner != owner)) || (unlessBlocked && blocked) {
+					if !quiet {
+						a.printf("%s: unchanged\n", label)
+					}
+					return nil
+				}
+			}
+			if state != task.SignalBlocked {
+				owner = ""
+			}
+			if err := a.Store.WriteOwnedSignal(t.Name, window, state, message, owner); err != nil {
 				return err
 			}
 			if !quiet {
@@ -136,7 +177,26 @@ func (a *App) newSignalCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&root, "root", false, "report for the task-root window")
 	cmd.Flags().BoolVar(&clear, "clear", false, "forget the window's signal")
 	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "print nothing, and outside a task do nothing, for hooks")
+	cmd.Flags().BoolVar(&hook, "hook", false, "read the hook's JSON from stdin, to tell which of the agent's threads this is about")
+	cmd.Flags().BoolVar(&ifBlocked, "if-blocked", false, "with --hook, write only over a blocked signal a hook set for the same thread")
+	cmd.Flags().BoolVar(&unlessBlocked, "unless-blocked", false, "write only if the window is not already blocked")
 	return cmd
+}
+
+// hookOwner reads which of the agent's threads a hook ran for from the JSON
+// the hook was given. Input that can't be read counts as the main thread: a
+// hook must still report something.
+func hookOwner(r io.Reader) string {
+	var input struct {
+		AgentID string `json:"agent_id"`
+	}
+	if b, err := io.ReadAll(r); err == nil {
+		_ = json.Unmarshal(b, &input)
+	}
+	if input.AgentID != "" {
+		return input.AgentID
+	}
+	return task.SignalOwnerMain
 }
 
 // signalTarget resolves which window a signal is about.
