@@ -53,13 +53,14 @@ func TestRepoMoveOpensTheRootWindow(t *testing.T) {
 	if err := h.exec(t, h.app.newTaskCmd(), "create", "NEW", "--repo", "other="+other); err != nil {
 		t.Fatal(err)
 	}
-	rt := &layoutRuntime{running: true}
+	rt := sessionWith("OLD")
+	rt.Seed(rt.SessionName("NEW"), nil)
 	h.app.Runtime = rt
 	if err := h.exec(t, h.app.newRepoCmd(), "move", "OLD", repo, "--to", "NEW"); err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.opened) != 1 || !strings.Contains(h.out.String(), "opened the root window for NEW") {
-		t.Fatalf("opened %+v; output %s", rt.opened, h.out.String())
+	if len(opened(rt)) != 1 || !strings.Contains(h.out.String(), "opened the root window for NEW") {
+		t.Fatalf("opened %+v; output %s", opened(rt), h.out.String())
 	}
 }
 

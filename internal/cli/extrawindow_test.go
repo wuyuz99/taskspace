@@ -8,24 +8,14 @@ import (
 	"time"
 
 	"github.com/wuyuz99/taskspace/internal/runtime"
+	"github.com/wuyuz99/taskspace/internal/runtime/runtimetest"
 	"github.com/wuyuz99/taskspace/internal/status"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
-// restartingRuntime records what restart relaunched.
-type restartingRuntime struct {
-	layoutRuntime
-	restarted []runtime.Window
-}
-
-func (r *restartingRuntime) Restart(_ context.Context, _ string, w runtime.Window) error {
-	r.restarted = append(r.restarted, w)
-	return nil
-}
-
 // extraWindowTask is a running task with an unsaved window _mon open and a
 // saved window _git, in its repository, that is not.
-func extraWindowTask(t *testing.T) (*harness, *restartingRuntime, string) {
+func extraWindowTask(t *testing.T) (*harness, *runtimetest.Fake, string) {
 	t.Helper()
 	h := newHarness(t)
 	tk := h.startedRootTask(t, "T")
@@ -34,8 +24,7 @@ func extraWindowTask(t *testing.T) (*harness, *restartingRuntime, string) {
 	if err := h.app.Store.Save(tk); err != nil {
 		t.Fatal(err)
 	}
-	rt := &restartingRuntime{layoutRuntime: layoutRuntime{running: true}}
-	rt.started = []runtime.Window{{Name: task.RootWindowName}, {Name: repo}, {Name: "_mon"}}
+	rt := sessionWith("T", task.RootWindowName, repo, "_mon")
 	h.app.Runtime = rt
 	return h, rt, repo
 }
@@ -84,11 +73,11 @@ func TestStopClosesOneExtraWindow(t *testing.T) {
 	if err := h.exec(t, h.app.newStopCmd(), "T", "_mon"); err != nil {
 		t.Fatal(err)
 	}
-	if _, open := rt.window("_mon"); open {
+	if _, open := rt.Window(rt.SessionName("T"), "_mon"); open {
 		t.Fatal("_mon still open")
 	}
 	for _, w := range []string{task.RootWindowName, repo} {
-		if _, open := rt.window(w); !open {
+		if _, open := rt.Window(rt.SessionName("T"), w); !open {
 			t.Fatalf("%s was closed too", w)
 		}
 	}
@@ -114,14 +103,16 @@ func TestRestartExtraWindow(t *testing.T) {
 	if err := h.exec(t, h.app.newRestartCmd(), "T", "_../../x"); err == nil {
 		t.Fatal("restarted a path-like name")
 	}
-	rt.started = append(rt.started, runtime.Window{Name: "_git"})
+	if err := rt.OpenWindow(context.Background(), rt.SessionName("T"), runtime.Window{Name: "_git", Command: []string{"false"}}); err != nil {
+		t.Fatal(err)
+	}
 	if err := h.exec(t, h.app.newRestartCmd(), "T", "_git"); err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.restarted) != 1 {
-		t.Fatalf("restarted %+v", rt.restarted)
+	if len(restarted(rt)) != 1 {
+		t.Fatalf("restarted %+v", restarted(rt))
 	}
-	w := rt.restarted[0]
+	w := restarted(rt)[0]
 	if w.Name != "_git" || w.Dir != h.load(t, "T").Repos[repo].Worktree || len(w.Command) != 1 || w.Command[0] != "lazygit" {
 		t.Fatalf("restarted %+v", w)
 	}
@@ -163,7 +154,7 @@ func TestDashExtraWindows(t *testing.T) {
 	if m.noteErr {
 		t.Fatal(m.note)
 	}
-	if _, open := rt.window("_mon"); open {
+	if _, open := rt.Window(rt.SessionName("T"), "_mon"); open {
 		t.Fatal("X left _mon open")
 	}
 }
@@ -199,8 +190,8 @@ func TestExtraWindowNamesRefused(t *testing.T) {
 // A window renamed by hand to a name tspace would never give is not listed:
 // it could not be closed by the name shown.
 func TestStatusSkipsForeignWindowNames(t *testing.T) {
-	h, rt, _ := extraWindowTask(t)
-	rt.started = append(rt.started, runtime.Window{Name: "_v~41"}, runtime.Window{Name: "vim"})
+	h, rt, repo := extraWindowTask(t)
+	rt.Seed(rt.SessionName("T"), map[string]runtime.PaneState{task.RootWindowName: {}, repo: {}, "_mon": {}, "_v~41": {}, "vim": {}})
 	ts := h.app.aggregator().Task(context.Background(), h.load(t, "T"))
 	for _, e := range ts.Extra {
 		if e.Name != "_git" && e.Name != "_mon" {

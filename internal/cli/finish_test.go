@@ -6,12 +6,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wuyuz99/taskspace/internal/runtime/runtimetest"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
 func TestTaskCreateStart(t *testing.T) {
 	h := newHarness(t)
-	rt := &layoutRuntime{}
+	rt := runtimetest.New()
 	h.app.Runtime = rt
 	if err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--agent", "claude", "--repo", "backend="+h.repo, "--start"); err != nil {
 		t.Fatal(err)
@@ -20,10 +21,10 @@ func TestTaskCreateStart(t *testing.T) {
 	if _, err := os.Stat(tk.Repos["backend"].Worktree); err != nil {
 		t.Fatalf("worktree not created: %v", err)
 	}
-	if _, ok := rt.window("backend"); !ok {
-		t.Fatalf("session not started: %+v", rt.started)
+	if _, ok := startedWindow(rt, "backend"); !ok {
+		t.Fatalf("session not started: %+v", started(rt))
 	}
-	if !strings.Contains(h.out.String(), "session tspace-PAY-1 is up") {
+	if !strings.Contains(h.out.String(), "session tspace@PAY-1 is up") {
 		t.Fatalf("out:\n%s", h.out.String())
 	}
 }
@@ -110,13 +111,13 @@ func TestCleanRmOfEmptiedTask(t *testing.T) {
 	if err := h.exec(t, h.app.newRepoCmd(), "rm", "PAY-1", repo, "--keep-worktree"); err != nil {
 		t.Fatal(err)
 	}
-	rt := &layoutRuntime{running: true}
+	rt := sessionWith("PAY-1")
 	h.app.Runtime = rt
 	err := h.exec(t, h.app.newCleanCmd(), "PAY-1", "--rm")
 	if err == nil || !strings.Contains(err.Error(), "kept the record of PAY-1") || !strings.Contains(err.Error(), repo) {
 		t.Fatalf("clean --rm = %v", err)
 	}
-	if !rt.stopped {
+	if !stopped(rt) {
 		t.Error("session left running")
 	}
 	if !h.app.Store.Exists("PAY-1") {
