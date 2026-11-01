@@ -7,6 +7,11 @@ upgrade.
 
 ### Fixed
 
+- The Codex signal recipe restores `working` after an approved tool returns,
+  including a failed command. The recipe uses
+  `--hook --if-blocked` to preserve signals the hook does not own and avoid
+  resetting their ages on ordinary tool completions. If you pasted the earlier
+  recipe, update `hooks.json` and trust the changed hooks in Codex's `/hooks`.
 - Commands launched in task worktrees clear inherited Git repository context,
   including `GIT_DIR` and `GIT_WORK_TREE`: `shell`, `exec`, `post_create`,
   terminal/editor launchers, and tmux, zellij and adapter windows. New

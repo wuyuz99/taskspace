@@ -186,10 +186,14 @@ signals; `tspace restart` clears the window's own.
 #### Recipes for other agents
 
 Any agent that can run a command on its own events can report. Pick the
-events closest to "a prompt was submitted", "waiting on a person" and "the
-turn ended", and run `tspace signal --quiet` with `working`, `blocked` and
-`done`. Keep `--quiet`: some agents show a hook's output to the model, and
-some refuse output that isn't JSON.
+events closest to "a prompt was submitted", "waiting on a person", "a tool
+completed" (including failures), and "the turn ended". Run `tspace signal
+--quiet` with `working`, `--hook blocked`, `--hook --if-blocked working`,
+and `done`, respectively. The tool hook only clears a blocked signal owned
+by the same hook thread; other signals and their ages stay unchanged.
+`--hook` reads the event's JSON from stdin, using `agent_id` as its owner
+or `main` when absent. Keep `--quiet`: some agents show a hook's output to
+the model, and some refuse output that isn't JSON.
 
 **Codex** reads user hooks from `~/.codex/hooks.json` (under `$CODEX_HOME` if
 that is set), in the same shape as Claude Code. It has no notification event,
@@ -200,11 +204,21 @@ for `blocked`:
 {
   "hooks": {
     "UserPromptSubmit":  [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet working" }] }],
-    "PermissionRequest": [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet blocked" }] }],
+    "PermissionRequest": [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet --hook blocked" }] }],
+    "PostToolUse":       [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet --hook --if-blocked working" }] }],
     "Stop":              [{ "hooks": [{ "type": "command", "command": "tspace signal --quiet done" }] }]
   }
 }
 ```
+
+[Codex's `PostToolUse`](https://learn.chatgpt.com/docs/hooks#posttooluse)
+runs after supported tools return output, including shell commands that exit
+nonzero. It restores `working` after an approved command returns; while that
+command is still running the signal can remain `blocked`. Hosted tools such
+as web search do not fire this hook. The guard does not match tool IDs: a
+parallel tool with the same owner can still clear another tool's prompt.
+Whether Codex names subagents in its hooks is unconfirmed; if it doesn't,
+their tools count as the main agent's and can clear its prompt too.
 
 Codex runs a new or changed hook only after you trust it: open `/hooks` in
 Codex once after adding these. A hook that prints nothing leaves the approval
