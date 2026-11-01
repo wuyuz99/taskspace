@@ -6,8 +6,6 @@
 
 > **Worktrees are per-repository. Features aren't.**
 
-<a id="the-problem"></a>
-
 `tspace` gives a development task one workspace across several Git repositories.
 It creates sibling worktrees on task branches and opens their shells in one
 terminal session. Coding agents are optional external commands.
@@ -159,40 +157,6 @@ records the original design; the guides above describe shipped behaviour.
 For a change, start with the [development checks](docs/DEVELOPMENT.md) and keep
 it focused. [Issues](https://github.com/wuyuz99/taskspace/issues) are the place
 to report a problem or discuss a proposal.
-
-## Earlier README sections
-
-<details>
-<summary>Previous section links and their new locations</summary>
-
-- <a id="choose-branches"></a>[Choose branches](docs/BRANCHING.md#choose-branches)
-- <a id="set-your-agent-once"></a>[Set your agent once](docs/CODING_AGENTS.md#set-your-agent-once)
-- <a id="run-an-agent-per-repository"></a>[Run an agent per repository](docs/CODING_AGENTS.md#run-an-agent-per-repository)
-- <a id="recover-a-stopped-agent"></a>[Recover a stopped agent](docs/CODING_AGENTS.md#recover-a-stopped-agent)
-- <a id="open-more-windows-as-you-go"></a>[Open more windows as you go](docs/WORKFLOWS.md#open-more-windows-as-you-go)
-- <a id="work-with-ordinary-shells"></a>[Work with ordinary shells](docs/WORKFLOWS.md#work-with-ordinary-shells)
-- <a id="every-worktree-in-one-editor-window-editor"></a>[Every worktree in one editor window: editor](docs/WORKFLOWS.md#every-worktree-in-one-editor-window-editor)
-- <a id="adopting-a-worktree-you-already-have-import"></a>[Adopting a worktree you already have: import](docs/WORKFLOWS.md#adopting-a-worktree-you-already-have-import)
-- <a id="fresh-worktrees-are-empty-post_create"></a>[Fresh worktrees are empty: post_create](docs/WORKFLOWS.md#fresh-worktrees-are-empty-post_create)
-- <a id="application-and-service-isolation"></a>[Application and service isolation](docs/WORKFLOWS.md#application-and-service-isolation)
-- <a id="reusable-projects"></a>[Reusable projects](docs/CONFIGURATION.md#reusable-projects)
-- <a id="update-repository-settings"></a>[Update repository settings](docs/CONFIGURATION.md#update-repository-settings)
-- <a id="where-things-live"></a>[Where things live](docs/CONFIGURATION.md#where-things-live)
-- <a id="record-formats-and-upgrades"></a>[Record formats and upgrades](docs/CONFIGURATION.md#record-formats-and-upgrades)
-- <a id="human-readable-task-context"></a>[Human-readable task context](docs/TASK_CONTEXT.md#human-readable-task-context)
-- <a id="workspace-structure"></a>[Workspace structure](docs/WORKSPACE.md#workspace-structure)
-- <a id="enter-the-whole-workspace"></a>[Enter the whole workspace](docs/WORKSPACE.md#enter-the-whole-workspace)
-- <a id="choose-a-multiplexer"></a>[Choose a multiplexer](docs/MULTIPLEXERS.md)
-- <a id="status"></a>[Status](docs/STATUS.md#status)
-- <a id="signals"></a>[Signals](docs/STATUS.md#signals)
-- <a id="dashboard"></a>[Dashboard](docs/STATUS.md#dashboard)
-- <a id="safety"></a>[Safety](docs/SAFETY.md#safety)
-- <a id="commands"></a>[Commands](docs/COMMANDS.md#commands)
-- <a id="development"></a>[Development](docs/DEVELOPMENT.md#development)
-- <a id="current-limitations"></a>[Current limitations](docs/PROJECT_STATUS.md#current-limitations)
-- <a id="roadmap"></a>[Roadmap](docs/PROJECT_STATUS.md#roadmap)
-
-</details>
 
 ## License
 
