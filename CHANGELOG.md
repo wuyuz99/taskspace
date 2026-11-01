@@ -7,6 +7,9 @@ upgrade.
 
 ### Changed
 
+- Prebuilt binaries are now the main way to install. Each release also publishes
+  its archives without the version in the name, so the install commands always
+  fetch the latest release.
 - `tspace start --interrupted` brings back what the session last ran, from a
   snapshot taken after each command that changes it and whenever `status` or
   dash sees a change. A window whose agent had already exited no longer comes

@@ -29,23 +29,32 @@ schedule their work.
 - **Git** and existing local repositories for the quick start below.
 - **tmux** for terminal sessions (`brew install tmux` on macOS). zellij 0.44+
   and custom adapters are also supported; see [multiplexers](docs/MULTIPLEXERS.md).
-- **Go 1.26+** for the recommended installation command. Prebuilt binaries are
-  available if you do not use Go.
 
 Metadata commands and `start --no-runtime` can work without a multiplexer.
 No coding agent, ticket tracker or external account is required.
 
 ## Install
 
-With Go 1.26 or later:
+Download the latest release for Linux or macOS (amd64 or arm64):
+
+```bash
+os=$(uname -s | tr '[:upper:]' '[:lower:]')
+arch=$(uname -m | sed -e s/x86_64/amd64/ -e s/aarch64/arm64/)
+tmp=$(mktemp -d)
+curl -fsSL "https://github.com/wuyuz99/taskspace/releases/latest/download/tspace_${os}_${arch}.tar.gz" |
+  tar -xzf - -C "$tmp" --strip-components=1
+sudo install -m 0755 "$tmp/tspace" /usr/local/bin/tspace   # or anywhere on PATH
+tspace --version
+```
+
+With Go 1.26 or later, you can instead run:
 
 ```bash
 go install github.com/wuyuz99/taskspace/cmd/tspace@latest
 ```
 
-Add `$(go env GOPATH)/bin` (usually `~/go/bin`) to your `PATH`.
-For [prebuilt Linux/macOS binaries or a source build](docs/INSTALL.md), see the
-installation guide.
+The [installation guide](docs/INSTALL.md) covers upgrades, checksums, a specific
+version and source builds.
 
 ## Quick start
 
