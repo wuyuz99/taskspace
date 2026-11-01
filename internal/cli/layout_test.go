@@ -25,6 +25,15 @@ func sessionWith(task string, windows ...string) *runtimetest.Fake {
 	return rt
 }
 
+// deadSession is sessionWith, every window's command having exited.
+func deadSession(task string, windows ...string) *runtimetest.Fake {
+	rt := sessionWith(task, windows...)
+	for _, w := range windows {
+		rt.Exit(rt.SessionName(task), w)
+	}
+	return rt
+}
+
 func started(rt *runtimetest.Fake) []runtime.Window {
 	var out []runtime.Window
 	for _, c := range rt.Calls(runtimetest.OpStart) {
@@ -616,7 +625,7 @@ func TestTaskUpdateAgentAtRootInARunningSession(t *testing.T) {
 		t.Fatalf("windows changed: opened=%v started=%v", opened(rt), started(rt))
 	}
 	// With a root window open already, restarting it is what runs the agent.
-	h.app.Runtime = &stubRuntime{}
+	h.app.Runtime = runtimetest.New()
 	if err := h.exec(t, h.app.newTaskCmd(), "update", "PAY-1", "--agent-in", "backend"); err != nil {
 		t.Fatal(err)
 	}

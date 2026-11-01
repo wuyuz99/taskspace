@@ -1,43 +1,14 @@
 package cli
 
 import (
-	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/wuyuz99/taskspace/internal/runtime"
+	"github.com/wuyuz99/taskspace/internal/runtime/runtimetest"
 )
-
-type openRuntime struct {
-	stubRuntime
-	calls               []string
-	windows             []runtime.Window
-	startErr, attachErr error
-}
-
-func (r *openRuntime) Start(_ context.Context, _ string, windows []runtime.Window) error {
-	r.calls = append(r.calls, "start")
-	r.windows = windows
-	return r.startErr
-}
-func (r *openRuntime) State(context.Context, string) (runtime.SessionState, error) {
-	r.calls = append(r.calls, "state")
-	panes := map[string]runtime.PaneState{}
-	for _, w := range r.windows {
-		panes[w.Name] = runtime.PaneState{Dead: true}
-	}
-	return runtime.SessionState{Exists: true, Panes: panes}, nil
-}
-func (r *openRuntime) Attach(context.Context, string) error {
-	r.calls = append(r.calls, "attach")
-	return r.attachErr
-}
-func (r *openRuntime) Restart(context.Context, string, runtime.Window) error {
-	panic("open must not restart existing agents")
-}
 
 func TestOpenPreparesAndResumesWorkspace(t *testing.T) {
 	h := newHarness(t)
@@ -50,13 +21,13 @@ func TestOpenPreparesAndResumesWorkspace(t *testing.T) {
 	if err := h.exec(t, h.app.newTaskCmd(), "handoff", "PAY-142", "Frontend next"); err != nil {
 		t.Fatal(err)
 	}
-	rt := &openRuntime{}
-	h.app.Runtime = rt
+	rt := h.fake()
+	rt.ExitAtStart("backend")
 	if err := h.exec(t, h.app.newOpenCmd(), "PAY-142"); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(rt.calls, ",") != "state,start,state,attach" {
-		t.Fatalf("calls: %v", rt.calls)
+	if len(started(rt)) == 0 || len(rt.Calls(runtimetest.OpAttach)) != 1 {
+		t.Fatalf("calls: %v", rt.Calls())
 	}
 	if !strings.Contains(h.out.String(), "Expired cards") || !strings.Contains(h.out.String(), "Frontend next") {
 		t.Fatalf("context missing: %s", h.out.String())
@@ -78,22 +49,26 @@ func TestOpenPreparesAndResumesWorkspace(t *testing.T) {
 	if b, err := os.ReadFile(wip); err != nil || string(b) != "keep this" {
 		t.Fatal("reopening lost work")
 	}
+	if got := restarted(rt); len(got) != 0 {
+		t.Fatalf("open restarted existing agents: %+v", got)
+	}
 }
 
 func TestOpenFailureDoesNotAttach(t *testing.T) {
 	h := newHarness(t)
 	h.startedTask(t, "t")
-	rt := &openRuntime{startErr: errors.New("runtime failed")}
-	h.app.Runtime = rt
-	if err := h.exec(t, h.app.newOpenCmd(), "t"); !errors.Is(err, rt.startErr) {
+	rt := h.fake()
+	startErr, attachErr := errors.New("runtime failed"), errors.New("attach failed")
+	rt.Fail(runtimetest.OpStart, startErr)
+	if err := h.exec(t, h.app.newOpenCmd(), "t"); !errors.Is(err, startErr) {
 		t.Fatalf("error: %v", err)
 	}
-	if strings.Join(rt.calls, ",") != "state,start" {
-		t.Fatalf("attached after failure: %v", rt.calls)
+	if got := rt.Calls(runtimetest.OpAttach); len(got) != 0 {
+		t.Fatalf("attached after failure: %v", got)
 	}
-	rt.startErr = nil
-	rt.attachErr = errors.New("attach failed")
-	if err := h.exec(t, h.app.newOpenCmd(), "t"); !errors.Is(err, rt.attachErr) {
+	rt.Fail(runtimetest.OpStart, nil)
+	rt.Fail(runtimetest.OpAttach, attachErr)
+	if err := h.exec(t, h.app.newOpenCmd(), "t"); !errors.Is(err, attachErr) {
 		t.Fatalf("attach error hidden: %v", err)
 	}
 }

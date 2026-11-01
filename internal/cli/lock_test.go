@@ -174,8 +174,8 @@ func TestStartUsesWhatItsHookChanged(t *testing.T) {
 	if err := h.exec(t, h.app.newStartCmd(), "PAY-1"); err != nil {
 		t.Fatalf("start: %v\n%s", err, h.errb.String())
 	}
-	rt := h.app.Runtime.(*stubRuntime)
-	for _, w := range rt.started {
+	rt := h.fake()
+	for _, w := range started(rt) {
 		if w.Name == "backend" {
 			if len(w.Command) == 0 || w.Command[len(w.Command)-1] != "hook-agent" {
 				t.Fatalf("backend launched %v, not the hook's agent", w.Command)
@@ -183,7 +183,7 @@ func TestStartUsesWhatItsHookChanged(t *testing.T) {
 			return
 		}
 	}
-	t.Fatalf("backend not started: %+v", rt.started)
+	t.Fatalf("backend not started: %+v", started(rt))
 }
 
 // create --start runs start under create's lock; a hook start runs still

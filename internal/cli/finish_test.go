@@ -42,7 +42,7 @@ func TestTaskCreateStartNeedsARepo(t *testing.T) {
 // A start that fails leaves the task created, and says so.
 func TestTaskCreateStartFailureKeepsTheTask(t *testing.T) {
 	h := newHarness(t)
-	h.app.Runtime = &openRuntime{startErr: os.ErrPermission}
+	h.fake().Fail(runtimetest.OpStart, os.ErrPermission)
 	err := h.exec(t, h.app.newTaskCmd(), "create", "PAY-1", "--repo", "backend="+h.repo, "--start")
 	if err == nil || !strings.Contains(err.Error(), "was created, but starting it failed") {
 		t.Fatalf("create --start = %v", err)

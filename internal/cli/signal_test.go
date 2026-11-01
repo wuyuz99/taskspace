@@ -143,6 +143,7 @@ func TestSignalsAreClearedWithTheSession(t *testing.T) {
 		}
 	}
 
+	h.app.Runtime = deadSession("PAY-142", repo)
 	set()
 	if err := h.exec(t, h.app.newRestartCmd(), "PAY-142", repo); err != nil {
 		t.Fatal(err)
@@ -357,15 +358,15 @@ func TestStartTellsEachWindowWhichItIs(t *testing.T) {
 	if err := h.exec(t, h.app.newStartCmd(), tk.Name); err != nil {
 		t.Fatal(err)
 	}
-	rt := h.app.Runtime.(*stubRuntime)
+	rt := h.fake()
 	want := map[string]bool{task.RootWindowName: true}
 	for _, name := range tk.RepoNames() {
 		want[name] = true
 	}
-	if len(rt.started) != len(want) {
-		t.Fatalf("started %d windows, want %d", len(rt.started), len(want))
+	if len(started(rt)) != len(want) {
+		t.Fatalf("started %d windows, want %d", len(started(rt)), len(want))
 	}
-	for _, w := range rt.started {
+	for _, w := range started(rt) {
 		env := strings.Join(w.Env, " ")
 		if !strings.HasPrefix(env+" ", "TSPACE_TASK=PAY-142 TSPACE_WINDOW="+w.Name+" TSPACE_ROOT="+h.app.Store.Root()+" ") || !want[w.Name] {
 			t.Errorf("window %s env = %q", w.Name, env)
@@ -377,8 +378,8 @@ func TestStartTellsEachWindowWhichItIs(t *testing.T) {
 func TestStartReportsASessionThatDiedOnLaunch(t *testing.T) {
 	h := newHarness(t)
 	tk := h.startedTask(t, "PAY-142")
-	rt := h.app.Runtime.(*stubRuntime)
-	rt.vanished = true
+	rt := h.fake()
+	rt.VanishAtStart()
 	err := h.exec(t, h.app.newStartCmd(), tk.Name)
 	if err == nil || !strings.Contains(err.Error(), "exited right after it started") {
 		t.Fatalf("start = %v, want the session reported gone", err)
@@ -392,8 +393,8 @@ func TestStartWarnsAboutWindowsThatExitedOnLaunch(t *testing.T) {
 	h := newHarness(t)
 	tk := h.startedRootTask(t, "PAY-142")
 	repo := tk.RepoNames()[0]
-	rt := h.app.Runtime.(*stubRuntime)
-	rt.dead = map[string]bool{task.RootWindowName: true, repo: true}
+	rt := h.fake()
+	rt.ExitAtStart(task.RootWindowName, repo)
 	if err := h.exec(t, h.app.newStartCmd(), tk.Name); err != nil {
 		t.Fatal(err)
 	}

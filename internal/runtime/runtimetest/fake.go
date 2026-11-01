@@ -49,6 +49,7 @@ type Fake struct {
 	onStop   func()
 	crashing map[string]bool
 	inside   bool
+	vanish   bool
 }
 
 // New returns a fake with no sessions.
@@ -125,6 +126,14 @@ func (f *Fake) Window(session, window string) (runtime.Window, bool) {
 		return w, true
 	}
 	return runtime.Window{Name: window}, true
+}
+
+// VanishAtStart makes a session end the moment Start returns, as one whose
+// every command died on launch does.
+func (f *Fake) VanishAtStart() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.vanish = true
 }
 
 func contains(ops []Op, op Op) bool {
@@ -255,6 +264,10 @@ func (f *Fake) Start(_ context.Context, session string, windows []runtime.Window
 				f.exit(session, id)
 			}
 		}
+	}
+	if f.vanish {
+		delete(f.sessions, session)
+		delete(f.windows, session)
 	}
 	return nil
 }

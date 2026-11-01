@@ -91,6 +91,7 @@ func TestContextRenderingNeutralizesTerminalEscapes(t *testing.T) {
 	if err := h.exec(t, h.app.newTaskCmd(), "handoff", "PAY-142", "next\x1b[2Jsteps"); err != nil {
 		t.Fatal(err)
 	}
+	h.app.Runtime = sessionWith("PAY-142")
 	if err := h.exec(t, h.app.newAttachCmd(), "PAY-142"); err != nil {
 		t.Fatal(err)
 	}
@@ -198,6 +199,7 @@ func TestTaskNotesSurviveCleanAndAppearOnAttach(t *testing.T) {
 	if err := h.exec(t, h.app.newTaskCmd(), "handoff", "ticket-work", "Run checkout tests next"); err != nil {
 		t.Fatal(err)
 	}
+	h.app.Runtime = sessionWith("ticket-work")
 	if err := h.exec(t, h.app.newAttachCmd(), "ticket-work"); err != nil {
 		t.Fatal(err)
 	}
