@@ -217,6 +217,8 @@ nonzero. It restores `working` after an approved command returns; while that
 command is still running the signal can remain `blocked`. Hosted tools such
 as web search do not fire this hook. The guard does not match tool IDs: a
 parallel tool with the same owner can still clear another tool's prompt.
+Whether Codex names subagents in its hooks is unconfirmed; if it doesn't,
+their tools count as the main agent's and can clear its prompt too.
 
 Codex runs a new or changed hook only after you trust it: open `/hooks` in
 Codex once after adding these. A hook that prints nothing leaves the approval
