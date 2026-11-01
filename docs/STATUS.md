@@ -235,8 +235,8 @@ yourself can write `.context/signals/WINDOW.json` directly, as described above.
 
 ### Dashboard
 
-`tspace dash` is the same information, live and full-screen, for supervising
-several agents at once:
+`tspace dash` is the same information, live and full-screen, for working
+across several tasks:
 
 ```
 tspace dash  2 tasks · 1 blocked · 1 dead  22:53:17

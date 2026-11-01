@@ -30,7 +30,7 @@ func (a *App) newDashCmd() *cobra.Command {
 			"the agent's own signal, else the window's bell, else a long silence, as\n" +
 			"in `tspace status --help`. Below the table it shows the selected row's\n" +
 			"directory, where its state came from, and its handoff. It is `tspace\n" +
-			"status` for a person supervising several agents; everything it does is\n" +
+			"status` for a person working across several tasks; everything it does is\n" +
 			"also a command. Extra windows, opened with `tspace window`, are _NAME\n" +
 			"rows under their task: enter, X and r work on them as on any window, r\n" +
 			"only on a saved one.\n\n" +
