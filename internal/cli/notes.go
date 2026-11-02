@@ -1,11 +1,9 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"net/url"
 	"os"
-	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -54,28 +52,6 @@ func (d *taskDetails) readBrief(cmd *cobra.Command) (string, error) {
 	return string(b), nil
 }
 
-// apply sets the record's identity fields. The brief is not one of them; it is
-// written to the task's note file once the record itself exists.
-func (d *taskDetails) apply(cmd *cobra.Command, t *task.Task) {
-	if cmd.Flags().Changed("title") {
-		t.Title = d.title
-	}
-	if cmd.Flags().Changed("ticket") {
-		t.Ticket = d.ticket
-	}
-	if cmd.Flags().Changed("ticket-url") {
-		t.TicketURL = d.ticketURL
-	}
-}
-
-// applyBrief stores an imported brief, after the task record is on disk.
-func (a *App) applyBrief(cmd *cobra.Command, t *task.Task, brief string) error {
-	if !cmd.Flags().Changed("brief") && !cmd.Flags().Changed("brief-file") {
-		return nil
-	}
-	return a.Store.WriteNote(t.Name, task.BriefFile, brief)
-}
-
 func (a *App) newTaskUpdateCmd() *cobra.Command {
 	var d taskDetails
 	var agent agentOptions
@@ -93,7 +69,6 @@ func (a *App) newTaskUpdateCmd() *cobra.Command {
 			"  tspace task update PAY-142 --agent-at-root\n" +
 			"  tspace task update PAY-142 --agent-in backend",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			moving := atRoot || cmd.Flags().Changed("agent-in")
 			if atRoot && cmd.Flags().Changed("agent-in") {
 				return fmt.Errorf("choose either --agent-at-root or --agent-in")
 			}
@@ -107,63 +82,40 @@ func (a *App) newTaskUpdateCmd() *cobra.Command {
 			if err := resume.validate(cmd); err != nil {
 				return err
 			}
-			t, unlock, err := a.lockTask(cmd, args[0], false)
+			name, err := a.resolveTask(args[0])
 			if err != nil {
 				return err
 			}
-			defer unlock()
-			from := t.AgentWindow()
-			hadRoot := t.HasRootWindow()
-			if cmd.Flags().Changed("agent-in") {
-				if agentIn == task.RootWindowName {
-					return fmt.Errorf("%s is the root window; use --agent-at-root", agentIn)
-				}
-				if _, ok := t.Repo(agentIn); !ok {
-					return fmt.Errorf("task %q has no repo named %q (has: %s)", t.Name, agentIn, joinNames(t.RepoNames()))
-				}
-				if !t.CanRunAgentIn(agentIn) {
-					return fmt.Errorf("%s has an agent of its own, which its window runs; clear it first with tspace repo update %s %s --shell", agentIn, t.Name, agentIn)
-				}
-				t.AgentRepo = agentIn
-				// A root window there was may be running; it stays, as a shell.
-				t.RootWindow = hadRoot
-			}
-			if atRoot {
-				t.AgentRepo = ""
-				// Kept from now on, as RemoveRepo keeps it: the agent's history
-				// is in the task directory.
-				t.RootWindow = true
-			}
-			d.apply(cmd, t)
-			before := t.Agent
-			setAgent := agent.apply(cmd, t)
-			var resumeCleared bool
-			t.Resume, resumeCleared = resume.apply(cmd, t.Resume, setAgent && !slices.Equal(before, t.Agent))
-			if len(t.Resume) > 0 && len(t.Agent) == 0 {
-				return fmt.Errorf("--resume resumes the task's agent, and it has none; give one with --agent")
-			}
-			if err := a.Store.Save(t); err != nil {
+			flags := cmd.Flags()
+			res, err := a.workspaceFor(cmd).UpdateTask(cmd.Context(), name, workspace.UpdateTaskOptions{
+				SetTitle: flags.Changed("title"), Title: d.title,
+				SetTicket: flags.Changed("ticket"), Ticket: d.ticket,
+				SetTicketURL: flags.Changed("ticket-url"), TicketURL: d.ticketURL,
+				SetBrief: flags.Changed("brief") || flags.Changed("brief-file"), Brief: brief,
+				SetAgent: flags.Changed("agent"), Agent: agent.argv, Shell: agent.shell,
+				SetResume: flags.Changed("resume"), Resume: resume.argv, NoResume: resume.none,
+				AgentAtRoot: atRoot, SetAgentIn: flags.Changed("agent-in"), AgentIn: agentIn,
+			})
+			if err != nil {
 				return err
 			}
-			if err := a.applyBrief(cmd, t, brief); err != nil {
-				return err
-			}
+			t := res.Task
 			a.printf("updated task %s\n", t.Name)
-			if resumeCleared {
+			if res.ResumeCleared {
 				a.warnf("note: the resume command went with the old agent; set one for this agent with --resume\n")
 			}
 			if resume.changed(cmd) {
 				a.printf("  resume: %s\n", resumeDisplay(t.Resume))
 			}
-			if setAgent {
+			if res.AgentSet {
 				window := t.AgentWindow()
 				if window == t.AgentRepo && len(t.Repos[window].Agent) > 0 {
 					a.warnf("note: %s has an agent of its own, which its window keeps running\n", window)
 				}
 				a.printf("  agent: %s (window %s; applies on window creation or explicit restart)\n", agentDisplay(task.Repo{Agent: t.Agent}), window)
 			}
-			if moving {
-				a.reportAgentMove(cmd.Context(), t, from, hadRoot)
+			if res.Move != nil {
+				a.reportAgentMove(t, res.Move)
 			}
 			return nil
 		}}
@@ -175,11 +127,10 @@ func (a *App) newTaskUpdateCmd() *cobra.Command {
 	return cmd
 }
 
-// reportAgentMove says where the task's agent now runs, having run in window
-// from, and in a running session, what to restart for it to move there.
-// hadRoot is whether the task had a root window before.
-func (a *App) reportAgentMove(ctx context.Context, t *task.Task, from string, hadRoot bool) {
-	to := t.AgentWindow()
+// reportAgentMove says where the task's agent now runs and, in a running
+// session, what to restart for it to move there.
+func (a *App) reportAgentMove(t *task.Task, m *workspace.AgentMove) {
+	to, from := m.To, m.From
 	if to == from {
 		if to == task.RootWindowName {
 			// root_window is set now, if it was not, so it stays put.
@@ -189,33 +140,21 @@ func (a *App) reportAgentMove(ctx context.Context, t *task.Task, from string, ha
 		}
 		return
 	}
-	// Whatever ran in the new window before, a shell or another agent, was not
-	// this agent: it starts there fresh rather than resume a conversation
-	// that is not its own. restart --resume still resumes on request.
-	if err := a.Store.ForgetLaunched(t.Name, to); err != nil {
-		a.warnf("tspace: %v\n", err)
-	}
 	if len(t.Agent) == 0 {
 		a.printf("  agent window: %s (was %s; the task has no agent, so a shell runs there until one is set with --agent)\n", to, from)
 		return
 	}
 	a.printf("  agent window: %s (was %s, which now runs %s)\n", to, from, agentDisplay(task.Repo{Agent: t.WindowAgent(from)}))
-	// An agent that resumes by directory finds its conversation where it ran.
-	if len(t.Resume) > 0 && a.Store.Launched(t.Name, from) {
+	if m.Conversation {
 		a.warnf("note: %s's agent resumes by directory; its conversation from %s stays there\n", t.Name, a.windowDir(t, from))
 	}
-	running, err := a.workspace().SessionUp(ctx, t.Name)
-	if err != nil {
-		a.warnf("tspace: %v; if it is running, the agent moves when its windows are restarted\n", err)
-		return
-	}
-	if !running {
+	if !m.Running {
 		return
 	}
 	// Nothing is restarted here: the agent may be in the middle of something.
 	// It leaves its old window first, so two never run at once.
 	a.printf("  %s is running, so the agent is still in %s; once it exits there:\n", t.Name, from)
-	if to == task.RootWindowName && !hadRoot {
+	if to == task.RootWindowName && !m.HadRoot {
 		a.printf("    tspace start %s (opens the root window with the agent)\n", t.Name)
 	} else {
 		a.printf("    tspace restart %s %s (runs it in %s, once what runs there exits)\n", t.Name, restartTarget(to), to)
@@ -316,20 +255,17 @@ func (a *App) newTaskNoteCmd(handoff bool) *cobra.Command {
 				_, err = fmt.Fprint(a.Out, out)
 				return err
 			}
-			t, unlock, err := a.lockTask(cmd, args[0], false)
+			ws := a.workspaceFor(cmd)
+			taskName, err := a.resolveTask(args[0])
 			if err != nil {
 				return err
 			}
-			defer unlock()
-			// Upgraded first, or moving an inline note afterwards would undo
-			// this write; see task.CurrentVersion.
-			if t.Outdated() {
-				if err := a.Store.Save(t); err != nil {
+			if edit {
+				// The editor writes the file itself, for as long as it is open.
+				t, err := ws.NotesReady(cmd.Context(), taskName)
+				if err != nil {
 					return err
 				}
-			}
-			if edit {
-				unlock() // the editor writes the file itself, for as long as it is open
 				return a.editTaskNote(cmd.Context(), t, noteFile)
 			}
 			var note string
@@ -343,7 +279,8 @@ func (a *App) newTaskNoteCmd(handoff bool) *cobra.Command {
 				}
 				note = string(b)
 			}
-			if err := a.Store.WriteNote(t.Name, noteFile, note); err != nil {
+			t, err := ws.WriteNote(cmd.Context(), taskName, noteFile, note)
+			if err != nil {
 				return err
 			}
 			if note == "" {

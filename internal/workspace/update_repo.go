@@ -77,9 +77,9 @@ func (s *Service) UpdateRepo(ctx context.Context, name, repo string, opts Update
 	agentChanged := (opts.SetAgent || opts.Shell) && !slices.Equal(before, after)
 	var cleared bool
 	if taskAgent {
-		t.Resume, cleared = opts.resume(t.Resume, agentChanged)
+		t.Resume, cleared = nextResume(opts.SetResume, opts.Resume, opts.NoResume, t.Resume, agentChanged)
 	} else {
-		r.Resume, cleared = opts.resume(r.Resume, agentChanged)
+		r.Resume, cleared = nextResume(opts.SetResume, opts.Resume, opts.NoResume, r.Resume, agentChanged)
 	}
 	if opts.SetHook {
 		r.PostCreate = opts.PostCreate
@@ -103,19 +103,4 @@ func (s *Service) UpdateRepo(ctx context.Context, name, repo string, opts Update
 		return nil, err
 	}
 	return &UpdateRepoResult{Task: t, Notes: notes, TaskAgent: taskAgent, ResumeCleared: cleared}, nil
-}
-
-// resume returns the resume command to record. A changed agent drops the old
-// one, which resumed a different program, unless a new one is given; cleared
-// says so.
-func (o UpdateRepoOptions) resume(current []string, agentChanged bool) (resume []string, cleared bool) {
-	switch {
-	case o.SetResume:
-		return o.Resume, false
-	case o.NoResume:
-		return nil, false
-	case agentChanged:
-		return nil, len(current) > 0
-	}
-	return current, false
 }

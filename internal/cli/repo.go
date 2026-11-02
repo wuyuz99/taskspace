@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"context"
+	"cmp"
 	"fmt"
 	"strings"
 
@@ -177,18 +177,6 @@ func (a *App) newRepoAddCmd() *cobra.Command {
 	return cmd
 }
 
-func firstNonEmpty(a, b string) string {
-	if a != "" {
-		return a
-	}
-	return b
-}
-
-// addRepo validates the repository and records it on the task.
-func (a *App) addRepo(ctx context.Context, t *task.Task, c *task.Config, path string, opts addRepoOptions) error {
-	return a.workspace().AddRepo(ctx, t, c, expandHome(path), opts)
-}
-
 // removedRepoText is repo rm's last line, which dash shows too.
 func removedRepoText(repo, taskName string) string {
 	return fmt.Sprintf("removed %s from %s", repo, taskName)
@@ -240,7 +228,7 @@ func (a *App) newRepoMoveCmd() *cobra.Command {
 				return err
 			}
 			a.printf("%s\n", movedRepoText(args[1], args[0], to, name))
-			a.printf("start its window with: tspace start %s %s\n", to, firstNonEmpty(name, args[1]))
+			a.printf("start its window with: tspace start %s %s\n", to, cmp.Or(name, args[1]))
 			return nil
 		},
 	}
