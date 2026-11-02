@@ -9,6 +9,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -173,13 +174,26 @@ func (a *App) dashLoad(ctx context.Context) dashData {
 	for _, t := range tasks {
 		byName[t.Name] = t
 		info := dashTask{Title: t.Title, Ticket: t.Ticket}
-		// Read, never written: a refresh every two seconds must not write.
+		// Read, never upgraded: a refresh every two seconds must not rewrite
+		// notes or records. Only the session snapshot follows what it sees.
 		if _, n, err := a.Store.Notes(t); err == nil {
 			info.Handoff = n
 		}
 		d.Tasks[t.Name] = info
 	}
-	for _, ts := range a.aggregator().All(ctx, tasks) {
+	// Tasks are queried at once, so warnings may arrive together.
+	var warned sync.Mutex
+	observer := a.workspace()
+	observer.Progress = func(e workspace.Event) {
+		if w, ok := e.(workspace.Warning); ok {
+			warned.Lock()
+			defer warned.Unlock()
+			d.Warn = append(d.Warn, w.Text)
+		}
+	}
+	agg := a.aggregator()
+	agg.Observer = observer
+	for _, ts := range agg.All(ctx, tasks) {
 		if ts.RuntimeErr != nil {
 			d.Warn = append(d.Warn, fmt.Sprintf("%s: runtime could not be queried: %v", ts.Task, ts.RuntimeErr))
 		}

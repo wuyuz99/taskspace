@@ -10,6 +10,8 @@ upgrade.
 - The snapshot of what a session runs, and what tspace remembers of unsaved
   windows, are written atomically, so a crash during a write no longer makes
   `start --interrupted` bring back the whole task (#169).
+- A session snapshot that fails while dash refreshes shows as a warning in dash
+  instead of being written over its screen (#167).
 
 ## v0.3.0 — 2026-11-01
 
