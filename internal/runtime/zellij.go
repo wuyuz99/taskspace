@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	osexec "os/exec"
@@ -37,6 +38,10 @@ type Zellij struct {
 	StopGrace time.Duration
 	// Shell overrides the interactive shell used for agent-less windows.
 	Shell string
+	// attachWait bounds creating a session, and goneWait is how long a new
+	// session may stay unlisted before it counts as lost.
+	attachWait time.Duration
+	goneWait   time.Duration
 
 	mu       sync.Mutex
 	selected map[string]string // session -> window for the next Attach
@@ -47,7 +52,7 @@ func NewZellij(r tsexec.Runner) *Zellij {
 	if r == nil {
 		r = tsexec.Real()
 	}
-	return &Zellij{run: r, StopGrace: 2 * time.Second}
+	return &Zellij{run: r, StopGrace: 2 * time.Second, attachWait: 10 * time.Second, goneWait: 2 * time.Second}
 }
 
 func (z *Zellij) zellij(ctx context.Context, args ...string) (tsexec.Result, error) {
@@ -169,7 +174,14 @@ func (z *Zellij) Start(ctx context.Context, session string, windows []Window) er
 	return nil
 }
 
-// create starts a detached session from a layout holding every window.
+// errSessionLost says a new session went away while it was starting.
+var errSessionLost = errors.New("zellij session lost while starting")
+
+// create starts a detached session from a layout holding every window. A
+// server panics if a client leaves before its session is set up, so a zellij
+// command that another process runs at that moment can take the new session
+// down and leave attach waiting forever. Nothing has run yet, so it is safe
+// to try once more.
 func (z *Zellij) create(ctx context.Context, session string, windows []Window) error {
 	f, err := os.CreateTemp("", "tspace-zellij-*.kdl")
 	if err != nil {
@@ -183,7 +195,24 @@ func (z *Zellij) create(ctx context.Context, session string, windows []Window) e
 	if werr != nil {
 		return werr
 	}
-	if _, err := z.detached(ctx, "--layout", f.Name(), "attach", "--create-background", session); err != nil {
+	err = z.launch(ctx, session, f.Name(), windows)
+	if errors.Is(err, errSessionLost) {
+		err = z.launch(ctx, session, f.Name(), windows)
+	}
+	if errors.Is(err, errSessionLost) {
+		return fmt.Errorf("zellij session %s went away while starting, twice; zellij can do this when another zellij command runs at that moment. Run the start again", session)
+	}
+	return err
+}
+
+// launch starts one attempt at the session and waits for its windows.
+func (z *Zellij) launch(ctx context.Context, session, layout string, windows []Window) error {
+	attach, cancel := context.WithTimeout(ctx, z.attachWait)
+	defer cancel()
+	if _, err := z.detached(attach, "--layout", layout, "attach", "--create-background", session); err != nil {
+		if ctx.Err() == nil && attach.Err() != nil {
+			return errSessionLost
+		}
 		return fmt.Errorf("create zellij session %s: %w", session, err)
 	}
 	// attach returns before the server has read the layout, and a server that
@@ -193,10 +222,18 @@ func (z *Zellij) create(ctx context.Context, session string, windows []Window) e
 	// windows missing, and a second Start would try to add them again. The
 	// launch delay keeps even a pane that closes on exit around long enough to
 	// be seen.
+	var missing time.Time
 	for deadline := time.Now().Add(layoutTimeout); ; {
 		panes, exists, err := z.panes(ctx, session)
 		if err == nil && len(missingWindows(paneState(session, panes, exists), windows)) == 0 {
 			return nil
+		}
+		if err != nil || exists {
+			missing = time.Time{}
+		} else if missing.IsZero() {
+			missing = time.Now()
+		} else if time.Since(missing) >= z.goneWait {
+			return errSessionLost
 		}
 		if time.Now().After(deadline) {
 			return fmt.Errorf("zellij session %s started without tspace's layout; inspect it, then run: zellij kill-session %s", session, session)

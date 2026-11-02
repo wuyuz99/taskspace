@@ -20,6 +20,13 @@ upgrade.
   back as `interrupted`; the rest show `no-session`. The task's `interrupted`
   field in `--json` is unchanged.
 
+### Fixed
+
+- Starting a task on zellij can no longer hang. zellij can crash a new session
+  if another zellij command runs at that moment, which left `tspace start`
+  waiting forever or blaming the layout. tspace now retries once, then says
+  what happened.
+
 ## v0.2.1 — 2026-10-31
 
 ### Fixed
