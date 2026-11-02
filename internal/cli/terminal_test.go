@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/wuyuz99/taskspace/internal/fspath"
 )
 
 func TestTerminalArgv(t *testing.T) {
@@ -51,7 +53,7 @@ func TestOpenInNewTab(t *testing.T) {
 		t.Fatal(err)
 	}
 	env := readShellEnv(t, out)
-	if !samePath(env["TSPACE_ROOT"], h.app.Store.Root()) {
+	if !fspath.Same(env["TSPACE_ROOT"], h.app.Store.Root()) {
 		t.Errorf("the tab's TSPACE_ROOT = %q", env["TSPACE_ROOT"])
 	}
 	if !strings.HasSuffix(env["ARGS"], " attach PAY-1") {

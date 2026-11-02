@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wuyuz99/taskspace/internal/fspath"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
@@ -79,7 +80,7 @@ func TestShellOpensTheWorktreeWithTaskEnvironment(t *testing.T) {
 	}
 	env := readShellEnv(t, out)
 	wt := tk.Repos[repo].Worktree
-	if !samePath(env["PWD"], wt) {
+	if !fspath.Same(env["PWD"], wt) {
 		t.Errorf("shell ran in %q, want %q", env["PWD"], wt)
 	}
 	want := map[string]string{
@@ -115,7 +116,7 @@ func TestShellRootCreatesTheTaskDirectory(t *testing.T) {
 	}
 	env := readShellEnv(t, out)
 	dir := h.app.Store.TaskDir("empty")
-	if !samePath(env["PWD"], dir) || env["TSPACE_REPO"] != "" {
+	if !fspath.Same(env["PWD"], dir) || env["TSPACE_REPO"] != "" {
 		t.Errorf("root shell: PWD=%q REPO=%q, want %q and no repo", env["PWD"], env["TSPACE_REPO"], dir)
 	}
 }

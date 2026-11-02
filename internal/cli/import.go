@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/wuyuz99/taskspace/internal/fspath"
 	"github.com/wuyuz99/taskspace/internal/git"
 	"github.com/wuyuz99/taskspace/internal/task"
 	"github.com/wuyuz99/taskspace/internal/workspace"
@@ -81,7 +82,7 @@ func (a *App) newImportCmd() *cobra.Command {
 					return fmt.Errorf("%w; %s", err, nameHint)
 				}
 				for _, other := range sources {
-					if samePath(other.main, s.main) {
+					if fspath.Same(other.main, s.main) {
 						return fmt.Errorf("%s and %s are both worktrees of %s, and a task has one worktree of a repository", other.top, s.top, s.main)
 					}
 					// Their directories may differ only in case, which is
@@ -137,12 +138,12 @@ func (a *App) newImportCmd() *cobra.Command {
 					return undo(fmt.Errorf("task %s already has a repo named %s; %s", t.Name, s.name, nameHint))
 				}
 				for _, other := range t.RepoNames() {
-					if samePath(t.Repos[other].Path, s.main) {
+					if fspath.Same(t.Repos[other].Path, s.main) {
 						return undo(fmt.Errorf("%s is already attached to task %q as %q", s.main, t.Name, other))
 					}
 				}
 				s.dest = a.Store.WorktreePath(t.Name, s.name)
-				s.inPlace = samePath(s.top, s.dest)
+				s.inPlace = fspath.Same(s.top, s.dest)
 				if s.inPlace {
 					continue
 				}
@@ -243,14 +244,14 @@ func (a *App) inspectImport(ctx context.Context, arg string, tasks []*task.Task)
 	}
 	for _, owner := range tasks {
 		for _, repo := range owner.RepoNames() {
-			if wt := owner.Repos[repo].Worktree; wt != "" && samePath(wt, top) {
+			if wt := owner.Repos[repo].Worktree; wt != "" && fspath.Same(wt, top) {
 				return nil, fmt.Errorf("%s is %s's %s; run tspace repo rm %s %s --keep-worktree before importing it", top, owner.Name, repo, owner.Name, repo)
 			}
 		}
 	}
 	// A directory in use cannot be moved on Windows, and elsewhere the
 	// shell would be left in one that is gone.
-	if cwd, err := os.Getwd(); err == nil && within(cwd, top) {
+	if cwd, err := os.Getwd(); err == nil && fspath.Within(cwd, top) {
 		return nil, fmt.Errorf("run import from outside %s, which it moves", top)
 	}
 	list, err := a.Git.Worktrees(ctx, top)
@@ -262,7 +263,7 @@ func (a *App) inspectImport(ctx context.Context, arg string, tasks []*task.Task)
 		return nil, fmt.Errorf("%s: git lists no worktrees", top)
 	case list[0].Bare:
 		return nil, fmt.Errorf("%s belongs to the bare repository %s; tspace needs a repository with a checkout of its own", top, list[0].Path)
-	case samePath(list[0].Path, top):
+	case fspath.Same(list[0].Path, top):
 		return nil, fmt.Errorf("%s is its repository's main checkout, which cannot be moved; register it with tspace config repo NAME %s, and a task makes its own worktree", top, top)
 	}
 	main, err := a.Git.Validate(ctx, filepath.FromSlash(list[0].Path))
@@ -271,7 +272,7 @@ func (a *App) inspectImport(ctx context.Context, arg string, tasks []*task.Task)
 	}
 	branch, found := "", false
 	for _, w := range list {
-		if !samePath(w.Path, top) {
+		if !fspath.Same(w.Path, top) {
 			continue
 		}
 		switch {

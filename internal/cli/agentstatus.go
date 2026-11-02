@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 	tsexec "github.com/wuyuz99/taskspace/internal/exec"
+	"github.com/wuyuz99/taskspace/internal/fspath"
 	"github.com/wuyuz99/taskspace/internal/status"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
@@ -74,7 +75,7 @@ func (c claudeAgents) Published(ctx context.Context) (map[string]status.Publishe
 		if s.Kind != "interactive" || s.Cwd == "" {
 			continue
 		}
-		key := status.DirKey(s.Cwd)
+		key := fspath.Key(s.Cwd)
 		if prev, ok := out[key]; ok && rank[prev.State] >= rank[state] {
 			continue
 		}

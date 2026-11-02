@@ -10,6 +10,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	tsexec "github.com/wuyuz99/taskspace/internal/exec"
+	"github.com/wuyuz99/taskspace/internal/fspath"
 	"github.com/wuyuz99/taskspace/internal/runtime"
 	"github.com/wuyuz99/taskspace/internal/status"
 	"github.com/wuyuz99/taskspace/internal/task"
@@ -41,13 +42,13 @@ func TestClaudeAgentsPublished(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p := got[status.DirKey(a)]; p.State != status.ReportState(task.SignalBlocked) || p.Message != "approve Bash" || p.Source != "claude" {
+	if p := got[fspath.Key(a)]; p.State != status.ReportState(task.SignalBlocked) || p.Message != "approve Bash" || p.Source != "claude" {
 		t.Errorf("a = %+v, want the waiting session", p)
 	}
-	if p := got[status.DirKey(b)]; p.State != status.ReportIdle {
+	if p := got[fspath.Key(b)]; p.State != status.ReportIdle {
 		t.Errorf("b = %+v", p)
 	}
-	if _, ok := got[status.DirKey(c)]; ok || len(got) != 2 {
+	if _, ok := got[fspath.Key(c)]; ok || len(got) != 2 {
 		t.Errorf("published = %+v", got)
 	}
 

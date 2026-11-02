@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/wuyuz99/taskspace/internal/fspath"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
@@ -83,7 +84,7 @@ func (s *Service) OpenWindow(ctx context.Context, name string, o OpenWindowOptio
 			return nil, err
 		}
 		place, repo, dir = repoName, repoName, r.Worktree
-	} else if !isDir(dir) && !later {
+	} else if !fspath.IsDir(dir) && !later {
 		return nil, fmt.Errorf("task directory %s is missing; run: tspace start %s", dir, t.Name)
 	}
 

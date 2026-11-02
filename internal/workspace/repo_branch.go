@@ -5,10 +5,9 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
-	goruntime "runtime"
 	"strings"
 
+	"github.com/wuyuz99/taskspace/internal/fspath"
 	tsgit "github.com/wuyuz99/taskspace/internal/git"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
@@ -91,7 +90,7 @@ func (s *Service) MoveRepoBranch(ctx context.Context, t *task.Task, name string,
 			// else's to rename, the user's clone included.
 			if wt, err := s.Git.FindWorktreeForBranch(ctx, r.Path, r.Branch); err != nil {
 				return r, nil, err
-			} else if wt != nil && !SamePath(wt.Path, r.Worktree) {
+			} else if wt != nil && !fspath.Same(wt.Path, r.Worktree) {
 				return r, nil, fmt.Errorf("%s is checked out at %s, outside the task; repo update will not rename it there", r.Branch, wt.Path)
 			}
 			// Stashes are found by the branch named in their message, in a
@@ -262,19 +261,4 @@ func FetchNote(err error) string {
 		return ""
 	}
 	return fmt.Sprintf(" (fetch failed: %v)", err)
-}
-
-// SamePath reports whether two paths name the same place, as git and tspace
-// spell them: the directory itself when it exists, else the cleaned names.
-func SamePath(x, y string) bool {
-	if a, err := os.Stat(x); err == nil {
-		if b, err := os.Stat(y); err == nil && os.SameFile(a, b) {
-			return true
-		}
-	}
-	cx, cy := filepath.Clean(filepath.FromSlash(x)), filepath.Clean(filepath.FromSlash(y))
-	if goruntime.GOOS == "windows" || goruntime.GOOS == "darwin" {
-		return strings.EqualFold(cx, cy)
-	}
-	return cx == cy
 }

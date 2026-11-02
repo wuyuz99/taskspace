@@ -10,13 +10,13 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"runtime/debug"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 	tsexec "github.com/wuyuz99/taskspace/internal/exec"
+	"github.com/wuyuz99/taskspace/internal/fspath"
 	tsgit "github.com/wuyuz99/taskspace/internal/git"
 	"github.com/wuyuz99/taskspace/internal/runtime"
 	"github.com/wuyuz99/taskspace/internal/task"
@@ -131,45 +131,15 @@ func shortcut(cmd *cobra.Command, name string) *cobra.Command {
 // around it. It does not switch to that root: which state a command touches
 // stays the explicit choice of TSPACE_ROOT.
 func (a *App) warnNearerRoot(dir string) {
-	if within(dir, a.Store.Root()) {
+	if fspath.Within(dir, a.Store.Root()) {
 		return
 	}
 	near := task.NearestRoot(dir)
-	if near == "" || sameDir(near, a.Store.Root()) {
+	if near == "" || fspath.Same(near, a.Store.Root()) {
 		return
 	}
 	a.warnf("tspace: note: this directory is in the tspace root %s, but tspace is using %s; set %s=%s to use the one here\n",
 		near, a.Store.Root(), task.EnvRoot, near)
-}
-
-// within reports whether dir is root or below it, as written or with symlinks
-// resolved; the written form is checked first because it costs nothing.
-func within(dir, root string) bool {
-	if isWithin(dir, root) {
-		return true
-	}
-	rd, err := filepath.EvalSymlinks(dir)
-	if err != nil {
-		return false
-	}
-	rr, err := filepath.EvalSymlinks(root)
-	return err == nil && isWithin(rd, rr)
-}
-
-func isWithin(dir, root string) bool {
-	rel, err := filepath.Rel(root, dir)
-	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
-}
-
-// sameDir reports whether two paths name one directory, through symlinks and
-// case-insensitive file systems.
-func sameDir(x, y string) bool {
-	a, err := os.Stat(x)
-	if err != nil {
-		return false
-	}
-	b, err := os.Stat(y)
-	return err == nil && os.SameFile(a, b)
 }
 
 // checksRoot reports whether cmd should warn about a nearer root: not shell
