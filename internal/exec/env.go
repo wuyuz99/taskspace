@@ -15,6 +15,7 @@ import (
 // authentication supplied through them; see issue #132. Hook editor, author
 // and quarantine context are also cleared, even when the user exported them:
 // nothing distinguishes the two, and a persistent server would keep them.
+// What git adds to run a hook's programs is dropped too; see withoutHookExecPath.
 func RepositoryEnv(env []string) []string {
 	out := make([]string, 0, len(env))
 	keys := RepositoryEnvVars()
@@ -28,7 +29,40 @@ func RepositoryEnv(env []string) []string {
 		}
 		out = append(out, entry)
 	}
-	return out
+	return withoutHookExecPath(out)
+}
+
+// withoutHookExecPath drops GIT_EXEC_PATH and the same directory at the front
+// of PATH, which is how git runs a hook. A multiplexer server started from a
+// hook would otherwise keep both for every window, and on a system where the
+// directory is versioned, git there breaks once it is upgraded (#137).
+// GIT_EXEC_PATH set on its own, or not first in PATH, is the user's, and kept.
+func withoutHookExecPath(env []string) []string {
+	exec, path := -1, -1
+	for i, entry := range env {
+		key, _, _ := strings.Cut(entry, "=")
+		if runtime.GOOS == "windows" {
+			key = strings.ToUpper(key)
+		}
+		switch key {
+		case "GIT_EXEC_PATH":
+			exec = i
+		case "PATH":
+			path = i
+		}
+	}
+	if exec < 0 || path < 0 {
+		return env
+	}
+	_, dir, _ := strings.Cut(env[exec], "=")
+	key, list, _ := strings.Cut(env[path], "=")
+	first, rest, _ := strings.Cut(list, string(os.PathListSeparator))
+	if dir == "" || first != dir {
+		return env
+	}
+	out := slices.Clone(env)
+	out[path] = key + "=" + rest
+	return slices.Delete(out, exec, exec+1)
 }
 
 // RepositoryEnvVars returns Git's repository-local and hook-context variables.
