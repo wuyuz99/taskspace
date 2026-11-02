@@ -42,62 +42,90 @@ func (s *Service) MoveRepo(ctx context.Context, old, repo, to, name string) erro
 		return err
 	}
 	defer unlock()
-	src, err := s.Store.Load(old)
+	p, err := s.planRepoMove(ctx, old, repo, to, name)
 	if err != nil {
 		return err
 	}
-	dst, err := s.Store.Load(to)
-	if err != nil {
-		return err
+	return s.moveRepo(ctx, p)
+}
+
+// repoMove is what MoveRepo will do, decided before anything moves.
+type repoMove struct {
+	old, repo, to, name string
+	src, dst            *task.Task
+	// previous is dst as it was, for the rollback.
+	previous *task.Task
+	r        task.Repo
+	// windows are the saved windows that go along, renamed for dst.
+	windows []task.Window
+	// from and dest are the worktree's paths; present says it exists.
+	from, dest string
+	present    bool
+}
+
+// planRepoMove runs every check of MoveRepo.
+func (s *Service) planRepoMove(ctx context.Context, old, repo, to, name string) (*repoMove, error) {
+	p := &repoMove{old: old, repo: repo, to: to, name: name}
+	var err error
+	if p.src, err = s.Store.Load(old); err != nil {
+		return nil, err
 	}
+	if p.dst, err = s.Store.Load(to); err != nil {
+		return nil, err
+	}
+	src, dst := p.src, p.dst
 	r, ok := src.Repo(repo)
 	if !ok {
-		return src.NoRepo(repo)
+		return nil, src.NoRepo(repo)
 	}
+	p.r = r
 	if existing, ok := dst.Repo(name); ok {
-		return fmt.Errorf("task %q already has a repo named %q (%s); use --name to pick another", to, name, existing.Path)
+		return nil, fmt.Errorf("task %q already has a repo named %q (%s); use --name to pick another", to, name, existing.Path)
 	}
 	for _, other := range dst.RepoNames() {
 		if fspath.Same(dst.Repos[other].Path, r.Path) {
-			return fmt.Errorf("%s is already attached to task %q as %q", r.Path, to, other)
+			return nil, fmt.Errorf("%s is already attached to task %q as %q", r.Path, to, other)
 		}
 	}
-	var windows []task.Window
 	for _, w := range src.Windows {
 		if w.Repo != repo {
 			continue
 		}
 		if _, taken := dst.SavedWindow(w.Name); taken {
-			return fmt.Errorf("task %q already has a saved window %s, which %s would bring along", to, w.SessionName(), repo)
+			return nil, fmt.Errorf("task %q already has a saved window %s, which %s would bring along", to, w.SessionName(), repo)
 		}
 		w.Repo = name
-		windows = append(windows, w)
+		p.windows = append(p.windows, w)
 	}
-	if err := s.checkMoveWindows(ctx, src, dst, repo, name, windows); err != nil {
-		return err
+	if err := s.checkMoveWindows(ctx, src, dst, repo, name, p.windows); err != nil {
+		return nil, err
 	}
 
-	from, dest := r.Worktree, s.Store.WorktreePath(to, name)
-	if expected := s.Store.WorktreePath(old, repo); filepath.Clean(from) != filepath.Clean(expected) {
-		return fmt.Errorf("%s's worktree is outside its expected path %s", repo, expected)
+	p.from, p.dest = r.Worktree, s.Store.WorktreePath(to, name)
+	if expected := s.Store.WorktreePath(old, repo); filepath.Clean(p.from) != filepath.Clean(expected) {
+		return nil, fmt.Errorf("%s's worktree is outside its expected path %s", repo, expected)
 	}
-	if _, err := os.Lstat(dest); err == nil {
-		return fmt.Errorf("%s already exists; it is where %s's worktree goes", dest, name)
+	if _, err := os.Lstat(p.dest); err == nil {
+		return nil, fmt.Errorf("%s already exists; it is where %s's worktree goes", p.dest, name)
 	} else if !os.IsNotExist(err) {
-		return err
+		return nil, err
 	}
-	present, err := s.movableWorktree(ctx, r.Path, from)
-	if err != nil {
-		return err
+	if p.present, err = s.movableWorktree(ctx, r.Path, p.from); err != nil {
+		return nil, err
 	}
-	if cwd, err := os.Getwd(); err == nil && present && fspath.Within(cwd, from) {
-		return fmt.Errorf("run repo move from outside %s, which it moves", from)
+	if cwd, err := os.Getwd(); err == nil && p.present && fspath.Within(cwd, p.from) {
+		return nil, fmt.Errorf("run repo move from outside %s, which it moves", p.from)
 	}
-	previous, err := s.Store.Load(to)
-	if err != nil {
-		return err
+	if p.previous, err = s.Store.Load(to); err != nil {
+		return nil, err
 	}
+	return p, nil
+}
 
+// moveRepo carries out p, undoing what it did if a step fails.
+func (s *Service) moveRepo(ctx context.Context, p *repoMove) error {
+	old, repo, to, name := p.old, p.repo, p.to, p.name
+	src, dst, r, from, dest := p.src, p.dst, p.r, p.from, p.dest
 	// Without a carrier, say before anything moves what stays behind.
 	carriers := s.carriers(s.conversationConfig())
 	var resumed []movedDir
@@ -110,7 +138,7 @@ func (s *Service) MoveRepo(ctx context.Context, old, repo, to, name string) erro
 		s.warnConversationsLeft(old, resumed, nil)
 	}
 	var moved []movedDir
-	if present {
+	if p.present {
 		moved = append(moved, newMovedDir(repo, from, dest))
 	}
 	// What Launched says goes with the agent that ran, once its conversation
@@ -120,7 +148,7 @@ func (s *Service) MoveRepo(ctx context.Context, old, repo, to, name string) erro
 	leftAgent := repo == src.AgentRepo && len(r.Agent) == 0 && len(src.Agent) > 0
 
 	var undo undoLog
-	if present {
+	if p.present {
 		root := s.Store.TaskDir(to)
 		if _, err := os.Stat(root); os.IsNotExist(err) {
 			if err := os.MkdirAll(root, 0o755); err != nil {
@@ -140,7 +168,7 @@ func (s *Service) MoveRepo(ctx context.Context, old, repo, to, name string) erro
 	first := len(dst.Repos) == 0
 	r.Worktree = dest
 	dst.SetRepo(name, r)
-	dst.Windows = append(dst.Windows, windows...)
+	dst.Windows = append(dst.Windows, p.windows...)
 	openRoot := s.SettleLayout(ctx, dst, first)
 	if err := ctx.Err(); err != nil {
 		return undo.rollback(err)
@@ -149,7 +177,7 @@ func (s *Service) MoveRepo(ctx context.Context, old, repo, to, name string) erro
 	if err := s.Store.Save(dst); err != nil {
 		return undo.rollback(err)
 	}
-	undo = append(undo, func() error { return s.Store.Save(previous) })
+	undo = append(undo, func() error { return s.Store.Save(p.previous) })
 	if err := s.Store.Save(src); err != nil {
 		return undo.rollback(err)
 	}
@@ -168,7 +196,7 @@ func (s *Service) MoveRepo(ctx context.Context, old, repo, to, name string) erro
 		carried = s.carryConversations(old, carriers, moved)
 		s.warnConversationsLeft(old, resumed, carried)
 	}
-	s.moveRunData(old, repo, to, name, launched && carried[repo], windows)
+	s.moveRunData(old, repo, to, name, launched && carried[repo], p.windows)
 	return nil
 }
 

@@ -77,8 +77,80 @@ type launched struct {
 // launch is Start up to its windows being launched, under the lock ctx
 // holds. With NoRuntime it launches nothing and returns no launched.
 func (s *Service) launch(ctx context.Context, t *task.Task, opts StartOptions) (*StartResult, *launched, error) {
+	names, err := startRepos(t, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	t, created, err := s.ensureWorktrees(ctx, t, names)
+	if err != nil {
+		return nil, nil, err
+	}
+	result := &StartResult{Task: t, Session: s.Runtime.SessionName(t.Name)}
+	p := s.planWindows(t, opts, names, created)
+	if opts.NoRuntime {
+		return result, nil, nil
+	}
+	if p.atRoot {
+		// A multiplexer cannot open a window in a directory that does not exist.
+		if err := os.MkdirAll(s.Store.TaskDir(t.Name), 0o755); err != nil {
+			return nil, nil, err
+		}
+	}
+	s.report(Launching{Task: t, Root: p.withRoot, Repos: names})
+	if err := s.Runtime.Available(ctx); err != nil {
+		s.warnf("worktrees are ready, but the runtime is unavailable: %v", err)
+		return nil, nil, err
+	}
+
+	// Unreadable, the session counts as new: checkLaunched then waits, and no
+	// signals are cleared on a guess.
+	before, stateErr := s.Runtime.State(ctx, result.Session)
+	// Signals left by a session that is gone describe agents that are no
+	// longer there, and windows remembered from it are not coming back.
+	if stateErr == nil && !before.Exists {
+		if err := s.Store.ClearSignals(t.Name); err != nil {
+			s.warnf("tspace: %v", err)
+		}
+		if err := s.Store.ForgetWindows(t.Name); err != nil {
+			s.warnf("tspace: %v", err)
+		}
+	}
+	if err := s.ensureContextDir(t); err != nil {
+		return nil, nil, err
+	}
+	// Only a window not already there is launched, resumed or not. Without
+	// the session's state that is unknown, so nothing is taken as resumed.
+	for name := range p.fresh {
+		if _, open := before.Pane(name); stateErr != nil || (open && before.Exists) {
+			delete(p.fresh, name)
+		}
+	}
+	if err := s.Runtime.Start(ctx, result.Session, p.windows); err != nil {
+		return nil, nil, err
+	}
+	at := time.Now()
+	for _, w := range p.windows {
+		if _, ok := p.fresh[w.Name]; ok {
+			s.report(Resumed{Task: t.Name, Window: w.Name, Command: w.Command})
+		}
+		if !task.IsExtraWindow(w.Name) {
+			if err := s.Store.MarkLaunched(t.Name, w.Name); err != nil {
+				s.warnf("tspace: %v", err)
+			}
+		}
+	}
+	return result, &launched{
+		task: t, session: result.Session, at: at,
+		before:  before,
+		windows: p.windows, names: append([]string{task.RootWindowName}, names...), fresh: p.fresh,
+	}, nil
+}
+
+// startRepos is the repositories Start brings up: those named, those Restore
+// held, or all of them; none for --root.
+func startRepos(t *task.Task, opts StartOptions) ([]string, error) {
 	if opts.Root && (len(opts.Repos) > 0 || !t.HasRootWindow()) {
-		return nil, nil, fmt.Errorf("--root requires a task with a root window and no repository arguments")
+		return nil, fmt.Errorf("--root requires a task with a root window and no repository arguments")
 	}
 	var names []string
 	var err error
@@ -89,18 +161,25 @@ func (s *Service) launch(ctx context.Context, t *task.Task, opts StartOptions) (
 			}
 		}
 	} else if names, err = selectRepos(t, opts.Repos); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if opts.Root {
 		names = nil
 	}
 	if opts.Restore == nil && len(names) == 0 && !opts.Root {
-		return nil, nil, fmt.Errorf("task %q has no repositories; add one with: tspace repo add %s REPO", t.Name, t.Name)
+		return nil, fmt.Errorf("task %q has no repositories; add one with: tspace repo add %s REPO", t.Name, t.Name)
 	}
+	return names, nil
+}
 
+// ensureWorktrees creates the missing worktrees of names, running each new
+// one's post_create hook, and returns the record as the hooks left it, with
+// the bases git resolved, and which worktrees it created.
+func (s *Service) ensureWorktrees(ctx context.Context, t *task.Task, names []string) (*task.Task, map[string]bool, error) {
 	created := map[string]bool{}
 	bases := map[string]string{}
 	hooked := false
+	var err error
 	for _, name := range names {
 		// What an earlier repository's hook changed applies to this one.
 		if hooked {
@@ -117,22 +196,22 @@ func (s *Service) launch(ctx context.Context, t *task.Task, opts StartOptions) (
 			return nil, nil, fmt.Errorf("%s: %w", name, err)
 		}
 		s.report(WorktreeReady{Repo: name, Branch: r.Branch, Result: res})
-
-		if res.Created {
-			created[name] = true
-			// Whatever ran in an earlier worktree here went with it.
-			if err := s.Store.ForgetLaunched(t.Name, name); err != nil {
-				s.warnf("tspace: %v", err)
-			}
-			hooked = hooked || r.PostCreate != ""
-			if err := s.RunPostCreate(ctx, t, name, r); err != nil {
-				// A half-provisioned worktree the user can inspect beats
-				// destroying one, so this is a warning, not a rollback.
-				s.report(HookFailed{Repo: name, Err: err})
-			}
-			if res.Base != "" && r.Base != res.Base {
-				bases[name] = res.Base
-			}
+		if !res.Created {
+			continue
+		}
+		created[name] = true
+		// Whatever ran in an earlier worktree here went with it.
+		if err := s.Store.ForgetLaunched(t.Name, name); err != nil {
+			s.warnf("tspace: %v", err)
+		}
+		hooked = hooked || r.PostCreate != ""
+		if err := s.RunPostCreate(ctx, t, name, r); err != nil {
+			// A half-provisioned worktree the user can inspect beats
+			// destroying one, so this is a warning, not a rollback.
+			s.report(HookFailed{Repo: name, Err: err})
+		}
+		if res.Base != "" && r.Base != res.Base {
+			bases[name] = res.Base
 		}
 	}
 
@@ -159,107 +238,62 @@ func (s *Service) launch(ctx context.Context, t *task.Task, opts StartOptions) (
 			return nil, nil, err
 		}
 	}
-	result := &StartResult{Task: t, Session: s.Runtime.SessionName(t.Name)}
-	// The root window comes first, so a fresh session opens on the agent that
-	// can see every repository. Naming repositories starts only those. A
-	// single-repo task has none: its agent runs in the repository.
-	var windows []runtime.Window
+	return t, created, nil
+}
+
+// windowPlan is the windows Start launches.
+type windowPlan struct {
+	windows []runtime.Window
 	// fresh holds what a resumed window would run instead.
-	fresh := map[string]runtime.Window{}
+	fresh map[string]runtime.Window
+	// withRoot says the root window is among them, and atRoot that some
+	// window opens at the task's root.
+	withRoot, atRoot bool
+}
+
+// planWindows decides the windows for names. The root window comes first, so
+// a fresh session opens on the agent that can see every repository. Naming
+// repositories starts only those. A single-repo task has none: its agent runs
+// in the repository.
+func (s *Service) planWindows(t *task.Task, opts StartOptions, names []string, created map[string]bool) windowPlan {
+	p := windowPlan{fresh: map[string]runtime.Window{}}
 	resume := func(w runtime.Window) runtime.Window {
 		if argv := t.ResumeFor(w.Name); len(argv) > 0 && !created[w.Name] && s.Store.Launched(t.Name, w.Name) && !opts.Fresh {
-			fresh[w.Name] = w
+			p.fresh[w.Name] = w
 			w.Command = ExpandArgv(s.Store, t, argv)
 		}
 		return w
 	}
-	withRoot := len(opts.Repos) == 0 && t.HasRootWindow()
+	p.withRoot = len(opts.Repos) == 0 && t.HasRootWindow()
 	if opts.Restore != nil {
-		withRoot = opts.Restore.Root && t.HasRootWindow()
+		p.withRoot = opts.Restore.Root && t.HasRootWindow()
 	}
-	if withRoot {
-		windows = append(windows, resume(RootWindow(s.Store, t)))
+	if p.withRoot {
+		p.windows = append(p.windows, resume(RootWindow(s.Store, t)))
 	}
 	for _, name := range names {
-		windows = append(windows, resume(RepoWindow(s.Store, t, name)))
+		p.windows = append(p.windows, resume(RepoWindow(s.Store, t, name)))
 	}
 	// Saved windows go with what is started: those at the root with the whole
 	// task, the rest with their repositories. The root window alone has none.
-	atRoot := withRoot
+	p.atRoot = p.withRoot
 	for _, w := range t.Windows {
 		switch {
 		case opts.Restore != nil:
 			if !slices.Contains(opts.Restore.Windows, w.Name) {
 				continue
 			}
-			atRoot = atRoot || w.Repo == ""
+			p.atRoot = p.atRoot || w.Repo == ""
 		case opts.Root:
 			continue
 		case w.Repo == "" && len(opts.Repos) == 0:
-			atRoot = true
+			p.atRoot = true
 		case w.Repo == "" || !slices.Contains(names, w.Repo):
 			continue
 		}
-		windows = append(windows, ExtraWindow(s.Store, t, w))
+		p.windows = append(p.windows, ExtraWindow(s.Store, t, w))
 	}
-
-	if opts.NoRuntime {
-		return result, nil, nil
-	}
-	if atRoot {
-		// A multiplexer cannot open a window in a directory that does not exist.
-		if err := os.MkdirAll(s.Store.TaskDir(t.Name), 0o755); err != nil {
-			return nil, nil, err
-		}
-	}
-	s.report(Launching{Task: t, Root: withRoot, Repos: names})
-	if err := s.Runtime.Available(ctx); err != nil {
-		s.warnf("worktrees are ready, but the runtime is unavailable: %v", err)
-		return nil, nil, err
-	}
-
-	// Unreadable, the session counts as new: checkLaunched then waits, and no
-	// signals are cleared on a guess.
-	before, stateErr := s.Runtime.State(ctx, result.Session)
-	// Signals left by a session that is gone describe agents that are no
-	// longer there, and windows remembered from it are not coming back.
-	if stateErr == nil && !before.Exists {
-		if err := s.Store.ClearSignals(t.Name); err != nil {
-			s.warnf("tspace: %v", err)
-		}
-		if err := s.Store.ForgetWindows(t.Name); err != nil {
-			s.warnf("tspace: %v", err)
-		}
-	}
-	if err := s.ensureContextDir(t); err != nil {
-		return nil, nil, err
-	}
-	// Only a window not already there is launched, resumed or not. Without
-	// the session's state that is unknown, so nothing is taken as resumed.
-	for name := range fresh {
-		if _, open := before.Pane(name); stateErr != nil || (open && before.Exists) {
-			delete(fresh, name)
-		}
-	}
-	if err := s.Runtime.Start(ctx, result.Session, windows); err != nil {
-		return nil, nil, err
-	}
-	at := time.Now()
-	for _, w := range windows {
-		if _, ok := fresh[w.Name]; ok {
-			s.report(Resumed{Task: t.Name, Window: w.Name, Command: w.Command})
-		}
-		if !task.IsExtraWindow(w.Name) {
-			if err := s.Store.MarkLaunched(t.Name, w.Name); err != nil {
-				s.warnf("tspace: %v", err)
-			}
-		}
-	}
-	return result, &launched{
-		task: t, session: result.Session, at: at,
-		before:  before,
-		windows: windows, names: append([]string{task.RootWindowName}, names...), fresh: fresh,
-	}, nil
+	return p
 }
 
 // settle finishes what launch started: once what it launched has had its
