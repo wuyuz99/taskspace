@@ -261,9 +261,7 @@ checkout-redesign/frontend  agent/checkout-redesign
   signal   blocked, 3m ago: totals endpoint: round per line or per order?
   handoff  API done, tests pass.
 
-enter attach · space expand · s/x task · S/X window · r restart · D clean · R delete
-- remove repo · m move repo · t tab · c clear · n new · N rename · w window
-W save window · I interrupted · q quit
+enter attach · space expand · n new · ? keys · q quit
 ```
 
 `enter` attaches to the selected window and detaching brings you back; inside

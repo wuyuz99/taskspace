@@ -268,6 +268,8 @@ type dashModel struct {
 	gone, made, madeWindow string
 	// form is open while its fields are typed in.
 	form *dashForm
+	// keys says the ? panel is open.
+	keys bool
 	// offered says the first refresh has offered to start interrupted tasks.
 	offered bool
 	// attach is set when the program quits in order to attach.
@@ -437,6 +439,11 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	}
+	// Any key closes the panel, and only that: it may be D or R.
+	if m.keys {
+		m.keys = false
+		return m, nil
+	}
 	// Esc on a long note puts it away; it quits only once nothing is open.
 	if len(m.noteLines()) > 1 {
 		m = m.foldNote()
@@ -463,6 +470,9 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg.String() {
+	case "?":
+		m.keys = true
+		return m, nil
 	case "n":
 		m.form = m.createForm()
 		return m, nil
@@ -837,6 +847,8 @@ func reportStyle(r *status.Report) lipgloss.Style {
 const (
 	// dashDetailLines is the height kept for everything that is not the table.
 	dashDetailLines = 13
+	// dashPanelRoom is the ? panel's lines that fit in the detail pane's room.
+	dashPanelRoom = 8
 	// dashTableLines is the least a long note leaves for the rest: the header,
 	// the table at its smallest, and the keys.
 	dashTableLines = 8
@@ -884,9 +896,15 @@ func (m dashModel) View() string {
 	now := time.Now()
 	note := m.noteLines()
 	legend := dashLegend(m.width)
-	// The form replaces the legend, and takes the detail pane's room.
+	// The form replaces the legend, and takes the detail pane's room, as the
+	// ? panel does unless it needs more.
 	extra := 0
-	if m.form == nil {
+	switch {
+	case m.form != nil:
+	case m.keys:
+		legend = dashKeyPanel(m.width)
+		extra = max(len(legend)-dashPanelRoom, 0)
+	default:
 		extra = len(legend) - 1
 	}
 
@@ -929,8 +947,8 @@ func (m dashModel) View() string {
 		b.WriteString("no tasks yet; press n to create one (tspace task create NAME)\n")
 	} else {
 		m.table(&b, now, max(len(note)-1, 0)+extra)
-		// The form takes the detail pane's room.
-		if m.form == nil {
+		// The form and the ? panel take the detail pane's room.
+		if m.form == nil && !m.keys {
 			m.detail(&detail, now)
 		}
 	}
