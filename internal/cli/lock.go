@@ -20,3 +20,20 @@ func (a *App) lockTask(cmd *cobra.Command, name string, lifecycle bool) (*task.T
 	cmd.SetContext(ctx)
 	return t, unlock, nil
 }
+
+// configFor reads the config for cmd. A command writing it holds the config's
+// lock until unlock, so what it saves was read under the lock; one only
+// showing it does not wait.
+func (a *App) configFor(cmd *cobra.Command, writing bool) (c *task.Config, unlock func(), err error) {
+	unlock = func() {}
+	if writing {
+		if unlock, err = a.Store.LockConfig(cmd.Context()); err != nil {
+			return nil, nil, err
+		}
+	}
+	if c, err = a.Store.LoadConfig(); err != nil {
+		unlock()
+		return nil, nil, err
+	}
+	return c, unlock, nil
+}

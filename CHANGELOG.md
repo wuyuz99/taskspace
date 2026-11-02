@@ -14,6 +14,7 @@ upgrade.
   instead of being written over its screen (#167).
 - dash's key legend wraps instead of being cut at the terminal's width, so every
   key is on screen (#168).
+- `tspace config` commands run at once no longer lose one another's changes (#170).
 
 ## v0.3.0 — 2026-11-01
 

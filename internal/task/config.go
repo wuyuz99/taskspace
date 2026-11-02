@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"time"
 )
 
 // Config holds user-wide defaults.
@@ -135,6 +137,41 @@ func (s *Store) LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("parse config %s: %w", s.ConfigPath(), err)
 	}
 	return &c, nil
+}
+
+// LockConfig takes the config's lock, waiting for it until ctx is done, and
+// returns what releases it. config.json is one file for every task, so a
+// command that reads it to change it holds this from before it reads. The OS
+// drops the lock if the process dies, and the file is never deleted, as with
+// task locks; see Lock.
+func (s *Store) LockConfig(ctx context.Context) (func(), error) {
+	path := s.ConfigPath() + ".lock"
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, fmt.Errorf("lock config: %w", err)
+	}
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("lock config: %w", err)
+	}
+	for {
+		ok, err := tryLockFile(f)
+		if err != nil {
+			f.Close()
+			return nil, fmt.Errorf("lock config: %w", err)
+		}
+		if ok {
+			return func() {
+				_ = unlockFile(f)
+				_ = f.Close()
+			}, nil
+		}
+		select {
+		case <-ctx.Done():
+			f.Close()
+			return nil, fmt.Errorf("waiting for the config: %w", ctx.Err())
+		case <-time.After(lockPoll):
+		}
+	}
 }
 
 // SaveConfig replaces the config file atomically.

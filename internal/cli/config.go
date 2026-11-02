@@ -121,6 +121,11 @@ func (a *App) newConfigRepoCmd() *cobra.Command {
 				return fmt.Errorf("%q cannot be a repository name, because it reads as a subcommand; %s", name, hint)
 			}
 			if unset {
+				c, unlock, err := a.configFor(cmd, true)
+				if err != nil {
+					return err
+				}
+				defer unlock()
 				if _, ok := c.Repos[name]; !ok {
 					return fmt.Errorf("no repository registered as %q%s", name, registeredHint(c))
 				}
@@ -162,6 +167,13 @@ func (a *App) newConfigRepoCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// Locked only now: a clone can take minutes, and whatever changed
+			// meanwhile is kept by reading the config again.
+			c, unlock, err := a.configFor(cmd, true)
+			if err != nil {
+				return err
+			}
+			defer unlock()
 			for _, other := range c.RepoNames() {
 				if other != name && c.Repos[other] == canonical {
 					return fmt.Errorf("%s is already registered as %q", canonical, other)
@@ -264,10 +276,11 @@ func (a *App) newConfigBranchPrefixCmd() *cobra.Command {
 			if unset && len(args) > 0 {
 				return fmt.Errorf("choose either a prefix or --unset")
 			}
-			c, err := a.Store.LoadConfig()
+			c, unlock, err := a.configFor(cmd, unset || len(args) > 0)
 			if err != nil {
 				return err
 			}
+			defer unlock()
 			switch {
 			case unset:
 				c.BranchPrefix = nil
@@ -310,10 +323,11 @@ func (a *App) newConfigTicketPatternCmd() *cobra.Command {
 			if unset && len(args) > 0 {
 				return fmt.Errorf("choose either a pattern or --unset")
 			}
-			c, err := a.Store.LoadConfig()
+			c, unlock, err := a.configFor(cmd, unset || len(args) > 0)
 			if err != nil {
 				return err
 			}
+			defer unlock()
 			switch {
 			case unset:
 				c.TicketPattern = ""
@@ -398,10 +412,11 @@ func (a *App) newConfigProgramCmd(p configProgram) *cobra.Command {
 			if unset && len(args) > 0 {
 				return fmt.Errorf("choose either a command or --unset")
 			}
-			c, err := a.Store.LoadConfig()
+			c, unlock, err := a.configFor(cmd, unset || len(args) > 0)
 			if err != nil {
 				return err
 			}
+			defer unlock()
 			field := p.field(c)
 			switch {
 			case unset:
@@ -486,10 +501,11 @@ func (a *App) newConfigAgentCmd() *cobra.Command {
 			if unset && len(args) > 0 {
 				return fmt.Errorf("choose either a command or --unset")
 			}
-			c, err := a.Store.LoadConfig()
+			c, unlock, err := a.configFor(cmd, unset || len(args) > 0)
 			if err != nil {
 				return err
 			}
+			defer unlock()
 			before := c.Agent
 			switch {
 			case unset:
@@ -540,10 +556,11 @@ func (a *App) newConfigResumeCmd() *cobra.Command {
 			if unset && len(args) > 0 {
 				return fmt.Errorf("choose either a command or --unset")
 			}
-			c, err := a.Store.LoadConfig()
+			c, unlock, err := a.configFor(cmd, unset || len(args) > 0)
 			if err != nil {
 				return err
 			}
+			defer unlock()
 			switch {
 			case unset:
 				c.Resume = nil

@@ -126,10 +126,11 @@ func (a *App) newConfigAgentStatusCmd() *cobra.Command {
 					return fmt.Errorf("tspace cannot read %q's status (can: %s)", n, strings.Join(names, ", "))
 				}
 			}
-			c, err := a.Store.LoadConfig()
+			c, unlock, err := a.configFor(cmd, unset || len(args) > 0)
 			if err != nil {
 				return err
 			}
+			defer unlock()
 			switch {
 			case unset:
 				c.AgentStatus = nil
