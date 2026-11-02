@@ -77,24 +77,9 @@ func (s *Store) WriteNote(taskName, file, text string) error {
 		}
 		return nil
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("create %s: %w", filepath.Dir(path), err)
-	}
-	// Written through a temp file so an interrupted save cannot truncate a note
-	// the user spent time on. 0600 for the same reason task records are.
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+file+".*.tmp")
-	if err != nil {
-		return fmt.Errorf("write note %s: %w", path, err)
-	}
-	defer os.Remove(tmp.Name())
-	if _, err := tmp.WriteString(text); err != nil {
-		tmp.Close()
-		return fmt.Errorf("write note %s: %w", path, err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("write note %s: %w", path, err)
-	}
-	if err := os.Rename(tmp.Name(), path); err != nil {
+	// Atomic so an interrupted save cannot truncate a note the user spent time
+	// on. 0600 for the same reason task records are.
+	if err := WriteFileAtomic(path, []byte(text), 0o600); err != nil {
 		return fmt.Errorf("write note %s: %w", path, err)
 	}
 	return nil

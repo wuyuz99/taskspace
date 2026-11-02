@@ -3,6 +3,14 @@
 What changed in each release of tspace; see [Installation](docs/INSTALL.md) to
 upgrade.
 
+## Unreleased
+
+### Fixed
+
+- The snapshot of what a session runs, and what tspace remembers of unsaved
+  windows, are written atomically, so a crash during a write no longer makes
+  `start --interrupted` bring back the whole task (#169).
+
 ## v0.3.0 — 2026-11-01
 
 ### Changed
