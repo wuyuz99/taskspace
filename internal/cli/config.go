@@ -46,7 +46,7 @@ func (a *App) newConfigCmd() *cobra.Command {
 				a.printf("ticket pattern: %s%s\n", c.TicketPattern, ticketPatternProblem(c))
 			}
 			if len(c.AgentStatus) > 0 {
-				a.printf("agent status: %s\n", agentStatusDisplay(c.AgentStatus))
+				a.printf("agent status: %s (deprecated)\n", agentStatusDisplay(c.AgentStatus))
 			}
 			if len(c.CarryConversations) > 0 {
 				a.printf("conversations carried: %s\n", carryConversationsDisplay(c.CarryConversations))

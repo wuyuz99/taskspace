@@ -19,6 +19,10 @@ var agentStatusSources = map[string]func(tsexec.Runner) status.PublishedReader{
 	"claude": func(r tsexec.Runner) status.PublishedReader { return agents.ClaudeAgents{Run: r} },
 }
 
+// agentStatusDeprecated says why config agent-status is going (#140).
+const agentStatusDeprecated = "it is deprecated and goes in the release after 0.4: " +
+	"Claude Code's hooks report the same states; install them with: tspace config hooks claude"
+
 // agentStatusReaders are the integrations the config turns on.
 func agentStatusReaders(c *task.Config, r tsexec.Runner) []status.PublishedReader {
 	var out []status.PublishedReader
@@ -38,8 +42,9 @@ func (a *App) newConfigAgentStatusCmd() *cobra.Command {
 	}
 	slices.Sort(names)
 	cmd := &cobra.Command{
-		Use:   "agent-status [AGENT... | --unset]",
-		Short: "Show or choose the agents whose own status tspace reads",
+		Use:        "agent-status [AGENT... | --unset]",
+		Short:      "Show or choose the agents whose own status tspace reads",
+		Deprecated: agentStatusDeprecated,
 		Long: "Some agents publish what their sessions are doing through an interface of\n" +
 			"their own. Naming one here has status and dash read it, matching each\n" +
 			"session to the window running in its directory. It is off unless chosen,\n" +

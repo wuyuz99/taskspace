@@ -23,6 +23,13 @@ upgrade.
   (#137). Where that directory is versioned, as with Homebrew, git in those
   windows can stop working once git is upgraded.
 
+### Deprecated
+
+- `tspace config agent-status`, which goes in the release after 0.4 (#140).
+  Claude Code's hooks, from `tspace config hooks claude`, report the same
+  states. A setting already in `config.json` keeps working, and `status`
+  warns about it.
+
 ### Removed
 
 - Task records with no format version are refused, with their notes left

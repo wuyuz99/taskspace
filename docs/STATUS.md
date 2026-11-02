@@ -89,6 +89,11 @@ only. An adapter can supply them; see [Multiplexers](MULTIPLEXERS.md).
 
 #### Published status
 
+**Deprecated.** `config agent-status` goes in the release after 0.4. Claude
+Code's hooks, from `tspace config hooks claude`, report the same states. Until
+then a setting already in `config.json` keeps working, and `status` warns
+about it.
+
 Some agents report what each of their sessions is doing through an interface
 of their own. tspace can read one, matching each session to the window that
 runs in its directory, once you turn it on:
