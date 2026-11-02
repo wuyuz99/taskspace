@@ -394,9 +394,8 @@ func (z *Zellij) Restart(ctx context.Context, session string, w Window) error {
 	for n := len(w.Env); n >= 0; n-- {
 		older := w
 		older.Env = w.Env[:n]
-		want := strings.Join(z.launchArgv(older), " ")
 		for _, p := range tab {
-			if p.Held && p.TerminalCommand == want {
+			if p.Held && z.launchedAs(p.TerminalCommand, older) {
 				_, err := z.action(ctx, session, "send-keys", "--pane-id", p.target(), "Enter")
 				return err
 			}
@@ -706,20 +705,32 @@ const launchDelay = "0.25"
 // launchArgv is the window's command behind the launch delay. The wrapper
 // execs the command, so the pane's process is the command itself once it runs.
 //
-// The wrapper's $0 fingerprints the directory and the exact argv. zellij
-// reports a pane's command space-joined and not its directory, so the
-// fingerprint is what lets Restart tell a held pane would rerun what w asks for.
+// The wrapper's $0 is the window's launchTag. zellij reports a pane's command
+// space-joined and not its directory, so the tag is what lets Restart tell a
+// held pane would rerun what w asks for.
 func (z *Zellij) launchArgv(w Window) []string {
-	return zellijLaunch(w.Dir, launchArgv(w, z.Shell))
+	return append([]string{"sh", "-c", "sleep " + launchDelay + `; exec "$@"`, z.launchTag(w)}, launchArgv(w, z.Shell)...)
 }
 
-func zellijLaunch(dir string, argv []string) []string {
+// launchTag fingerprints what w runs: its directory, its environment and its
+// command, each word apart. What launchArgv clears is left out, so a change
+// to that list does not make every held pane look changed (#136).
+func (z *Zellij) launchTag(w Window) string {
 	h := sha256.New()
-	h.Write([]byte(dir))
-	for _, a := range argv {
+	h.Write([]byte(w.Dir))
+	for _, kv := range w.Env {
+		h.Write([]byte{0})
+		h.Write([]byte(kv))
+	}
+	h.Write([]byte{1})
+	for _, a := range commandArgv(w, z.Shell) {
 		h.Write([]byte{0})
 		h.Write([]byte(a))
 	}
-	tag := fmt.Sprintf("tspace-%x", h.Sum(nil)[:6])
-	return append([]string{"sh", "-c", "sleep " + launchDelay + `; exec "$@"`, tag}, argv...)
+	return fmt.Sprintf("tspace-%x", h.Sum(nil)[:6])
+}
+
+// launchedAs says a pane's space-joined command is w's launch, by its tag.
+func (z *Zellij) launchedAs(command string, w Window) bool {
+	return strings.Contains(command+" ", " "+z.launchTag(w)+" ")
 }

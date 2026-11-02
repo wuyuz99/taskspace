@@ -235,6 +235,27 @@ func TestZellijLaunchFingerprintKeepsArgvApart(t *testing.T) {
 	}
 }
 
+// A held pane launched with another list of variables to clear is still the
+// same launch; one with another command or directory is not.
+func TestZellijLaunchTagLeavesOutTheClearedVariables(t *testing.T) {
+	z := zellijWith(tsexec.NewFake())
+	held := strings.Replace(strings.Join(z.launchArgv(backend), " "), " -u GIT_DIR ", " -u GIT_DIR -u GIT_NEW ", 1)
+	if !strings.Contains(held, "GIT_NEW") {
+		t.Fatalf("no -u GIT_DIR in %s", held)
+	}
+	if !z.launchedAs(held, backend) {
+		t.Errorf("%s is not taken as %v's launch", held, backend)
+	}
+	moved, changed := backend, backend
+	moved.Dir = "/wt/elsewhere"
+	changed.Command = []string{"codex", "--yolo"}
+	for _, w := range []Window{moved, changed} {
+		if z.launchedAs(held, w) {
+			t.Errorf("%s is taken as %v's launch", held, w)
+		}
+	}
+}
+
 func TestZellijStateListsSessionsOnlyWhenNeeded(t *testing.T) {
 	f := tsexec.NewFake().RespondOut("list-panes", zellijPanesJSON)
 	if _, err := zellijWith(f).State(ctx(), "tspace@t"); err != nil {
