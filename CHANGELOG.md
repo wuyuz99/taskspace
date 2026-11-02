@@ -16,6 +16,13 @@ upgrade.
   key is on screen (#168).
 - `tspace config` commands run at once no longer lose one another's changes (#170).
 
+### Changed
+
+- dash and `status` ask the multiplexer once per refresh on tmux and zellij
+  instead of once or twice per task, inspect at most 8 worktrees at once, and
+  dash gives up on a refresh after 10 seconds and says so, where a hung command
+  used to stop it refreshing without a word (#174).
+
 ## v0.3.0 — 2026-11-01
 
 ### Changed

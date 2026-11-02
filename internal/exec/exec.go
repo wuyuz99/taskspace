@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 )
 
 // Result is the outcome of a finished command.
@@ -66,6 +67,9 @@ func IsExit(err error) bool {
 
 type real struct{}
 
+// waitDelay is how long a command with a deadline gets to close its pipes.
+const waitDelay = time.Second
+
 type envKey struct{}
 
 // WithEnv supplies the complete environment for a subprocess without changing
@@ -83,6 +87,11 @@ func (real) Run(ctx context.Context, dir string, argv ...string) (Result, error)
 	}
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = dir
+	// Past a deadline, stop waiting for output: something the command left
+	// behind may hold its pipes open for as long as it runs.
+	if _, ok := ctx.Deadline(); ok {
+		cmd.WaitDelay = waitDelay
+	}
 	if env, ok := ctx.Value(envKey{}).([]string); ok {
 		cmd.Env = env
 		// Go updates PWD to match Dir only for an inherited environment.
@@ -96,6 +105,9 @@ func (real) Run(ctx context.Context, dir string, argv ...string) (Result, error)
 	cmd.Stderr = &stderr
 
 	err := cmd.Run()
+	if errors.Is(err, exec.ErrWaitDelay) {
+		err = nil // it succeeded; only its leftovers were cut off
+	}
 	res := Result{
 		Stdout:   stdout.String(),
 		Stderr:   stderr.String(),

@@ -136,6 +136,8 @@ type dashData struct {
 // dashLoad gathers a refresh. It prints nothing: the screen belongs to the
 // dashboard, so problems come back as warnings to draw.
 func (a *App) dashLoad(ctx context.Context) dashData {
+	ctx, cancel := context.WithTimeout(ctx, dashRefreshLimit)
+	defer cancel()
 	d := dashData{Tasks: map[string]dashTask{}, At: time.Now()}
 	tasks, err := a.Store.List()
 	var skipped *task.SkippedError
@@ -171,6 +173,7 @@ func (a *App) dashLoad(ctx context.Context) dashData {
 	}
 	agg := a.aggregator()
 	agg.Observer = observer
+	before := len(d.Warn)
 	for _, ts := range agg.All(ctx, tasks) {
 		if ts.RuntimeErr != nil {
 			d.Warn = append(d.Warn, fmt.Sprintf("%s: runtime could not be queried: %v", ts.Task, ts.RuntimeErr))
@@ -204,8 +207,16 @@ func (a *App) dashLoad(ctx context.Context) dashData {
 			})
 		}
 	}
+	// One line for all of it, not one for each thing that was given up on.
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		d.Warn = append(d.Warn[:before], fmt.Sprintf("refresh gave up after %s; what is shown may be out of date", dashRefreshLimit))
+	}
 	return d
 }
+
+// dashRefreshLimit bounds a refresh. Without it one hung command would hold
+// every later refresh back, and the screen would go stale with no sign of it.
+var dashRefreshLimit = 10 * time.Second
 
 type (
 	dashDataMsg   dashData
