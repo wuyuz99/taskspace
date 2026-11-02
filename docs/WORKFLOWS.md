@@ -147,6 +147,33 @@ Run it where the editor runs. From WSL, `code` opens the workspace through VS
 Code's WSL support, with the paths as WSL sees them; on a remote machine, the
 paths are that machine's, for an editor connected to it.
 
+## On a remote machine, over SSH
+
+Run tspace where the code and the agents are. Install it on that machine, as in
+[Installation](INSTALL.md), with git and a multiplexer, and connect:
+
+```bash
+ssh -t dev-box tspace
+```
+
+`tspace` with no command opens dash there. Sessions belong to the multiplexer on
+that machine, so agents keep running when you disconnect, or when your laptop
+sleeps, and dash shows them when you come back. Detaching from a session returns
+you to dash; quitting dash and closing the connection leaves everything running.
+
+A few things differ from working locally:
+
+- State, worktrees and notes are on the remote machine, and each machine has its
+  own tasks. There is no dash across machines.
+- dash's `t` runs `config terminal` on the machine dash runs on, which has no
+  terminal of yours to open a tab in. Use `enter` instead, or connect again
+  and run `tspace attach TASK`.
+- `tspace editor TASK --print` writes the workspace file and prints its path,
+  for an editor connected to that machine to open.
+- A multiplexer server keeps the environment it started with. If you forward an
+  SSH agent, a later connection's agent may not reach windows already open.
+  Credentials stored on the remote machine avoid that.
+
 ## Adopting a worktree you already have: `import`
 
 A worktree you made yourself with `git worktree add` can become a task's:

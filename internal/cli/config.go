@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	neturl "net/url"
 	"os"
@@ -164,27 +165,8 @@ func (a *App) newConfigRepoCmd() *cobra.Command {
 					return err
 				}
 			}
-			canonical, err := a.Git.Validate(cmd.Context(), path)
+			canonical, err := a.registerRepo(cmd.Context(), name, path)
 			if err != nil {
-				return err
-			}
-			// Locked only now: a clone can take minutes, and whatever changed
-			// meanwhile is kept by reading the config again.
-			c, unlock, err := a.configFor(cmd, true)
-			if err != nil {
-				return err
-			}
-			defer unlock()
-			for _, other := range c.RepoNames() {
-				if other != name && fspath.Same(c.Repos[other], canonical) {
-					return fmt.Errorf("%s is already registered as %q", canonical, other)
-				}
-			}
-			if c.Repos == nil {
-				c.Repos = map[string]string{}
-			}
-			c.Repos[name] = canonical
-			if err := a.Store.SaveConfig(c); err != nil {
 				return err
 			}
 			a.printf("registered %s: %s\n", name, canonical)
@@ -194,6 +176,35 @@ func (a *App) newConfigRepoCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&unset, "unset", false, "forget a registered repository")
 	cmd.Flags().StringVar(&into, "into", "", "clone a URL into this directory instead of $TSPACE_ROOT/repos/NAME")
 	return cmd
+}
+
+// registerRepo validates the repository at path and registers it as name, and
+// returns its canonical path. dash's form and config repo both end here. The
+// config is locked and read only now: a clone before this can take minutes.
+func (a *App) registerRepo(ctx context.Context, name, path string) (string, error) {
+	canonical, err := a.Git.Validate(ctx, path)
+	if err != nil {
+		return "", err
+	}
+	unlock, err := a.Store.LockConfig(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer unlock()
+	c, err := a.Store.LoadConfig()
+	if err != nil {
+		return "", err
+	}
+	for _, other := range c.RepoNames() {
+		if other != name && fspath.Same(c.Repos[other], canonical) {
+			return "", fmt.Errorf("%s is already registered as %q", canonical, other)
+		}
+	}
+	if c.Repos == nil {
+		c.Repos = map[string]string{}
+	}
+	c.Repos[name] = canonical
+	return canonical, a.Store.SaveConfig(c)
 }
 
 // cloneRepo clones url into dest, an absolute path, for config repo, and

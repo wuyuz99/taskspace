@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 	tsexec "github.com/wuyuz99/taskspace/internal/exec"
 	"github.com/wuyuz99/taskspace/internal/fspath"
@@ -280,6 +281,16 @@ func Execute(ctx context.Context) int {
 		return 1
 	}
 
+	root := app.newRootCmd()
+	if err := root.ExecuteContext(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "tspace: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+// newRootCmd builds the command tree.
+func (a *App) newRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "tspace",
 		Short: "Manage multi-repo, multi-worktree coding-agent tasks",
@@ -299,8 +310,9 @@ func Execute(ctx context.Context) int {
 			"  tspace stop PAY-142                          end the session, keep the worktrees\n" +
 			"  tspace clean PAY-142                         remove the worktrees, if nothing is lost\n" +
 			"  tspace task rm PAY-142                       delete the record and its notes\n\n" +
-			"`tspace open TASK` is start and attach in one step, and `tspace dash` watches\n" +
-			"every task at once.\n\n" +
+			"`tspace open TASK` is start and attach in one step. tspace with no command\n" +
+			"opens dash, which shows every task, and on a first run walks through\n" +
+			"registering a repository and creating a task.\n\n" +
 			"State lives in $TSPACE_ROOT, by default ~/.tspace:\n\n" +
 			"  tasks/TASK.json                     the task record\n" +
 			"  worktrees/TASK/                     the task root, where the root agent runs\n" +
@@ -320,7 +332,14 @@ func Execute(ctx context.Context) int {
 			"Use '.' as TASK inside its directory or a worktree. editor, attach,\n" +
 			"task show and exec -- COMMAND can omit TASK there. status without a\n" +
 			"task still lists all tasks; clean, stop and rm require an explicit name.",
-		Version:       buildVersion(),
+		Version: buildVersion(),
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			// dash for a person; a script that left the command out gets the help.
+			if !isTerminal(a.Out) || !isatty.IsTerminal(os.Stdin.Fd()) {
+				return cmd.Help()
+			}
+			return a.runDash(cmd.Context(), defaultDashInterval)
+		},
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
@@ -329,46 +348,41 @@ func Execute(ctx context.Context) int {
 			return
 		}
 		if cwd, err := os.Getwd(); err == nil {
-			app.warnNearerRoot(cwd)
+			a.warnNearerRoot(cwd)
 		}
 	}
-	root.PersistentFlags().BoolVar(&app.noTitle, "no-title", false,
+	root.PersistentFlags().BoolVar(&a.noTitle, "no-title", false,
 		"do not set the terminal tab title")
 
 	root.AddCommand(
-		app.newInitCmd(),
-		app.newConfigCmd(),
-		app.newTaskCmd(),
-		app.newProjectCmd(),
-		app.newRepoCmd(),
-		app.newStartCmd(),
-		app.newOpenCmd(),
-		app.newRestartCmd(),
-		app.newStopCmd(),
-		app.newAttachCmd(),
-		app.newShellCmd(),
-		app.newWindowCmd(),
-		app.newPathCmd(),
-		app.newExecCmd(),
-		app.newStatusCmd(),
-		app.newDashCmd(),
-		app.newSignalCmd(),
-		app.newCleanCmd(),
-		app.newImportCmd(),
-		app.newEditorCmd(),
-		shortcut(app.newTaskCreateCmd(), "new"),
+		a.newInitCmd(),
+		a.newConfigCmd(),
+		a.newTaskCmd(),
+		a.newProjectCmd(),
+		a.newRepoCmd(),
+		a.newStartCmd(),
+		a.newOpenCmd(),
+		a.newRestartCmd(),
+		a.newStopCmd(),
+		a.newAttachCmd(),
+		a.newShellCmd(),
+		a.newWindowCmd(),
+		a.newPathCmd(),
+		a.newExecCmd(),
+		a.newStatusCmd(),
+		a.newDashCmd(),
+		a.newSignalCmd(),
+		a.newCleanCmd(),
+		a.newImportCmd(),
+		a.newEditorCmd(),
+		shortcut(a.newTaskCreateCmd(), "new"),
 	)
 	// cobra adds its completion group only on Execute; added now, it is
 	// covered too.
 	root.InitDefaultCompletionCmd()
 	requireSubcommand(root)
 	addTaskArgumentHelp(root)
-
-	if err := root.ExecuteContext(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "tspace: %v\n", err)
-		return 1
-	}
-	return 0
+	return root
 }
 
 // addTaskArgumentHelp adds the "." and omitted-TASK lines to the help of
