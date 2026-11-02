@@ -1,7 +1,7 @@
 // Package cli implements tspace's commands.
 //
-// This is the only package that formats anything for humans. git, runtime and
-// status all return data; rendering happens here.
+// This package lays out everything people see. git, runtime and status return
+// data, and workspace reports events; rendering them happens here.
 package cli
 
 import (

@@ -40,10 +40,6 @@ const (
 	envWindow = workspace.EnvWindow
 )
 
-func (a *App) windowEnv(taskName, window string) []string {
-	return workspace.WindowEnv(a.Store, taskName, window)
-}
-
 func (a *App) newSignalCmd() *cobra.Command {
 	var taskName, repo string
 	var root, clear, quiet, hook, ifBlocked, unlessBlocked, keepReported bool
@@ -74,8 +70,8 @@ func (a *App) newSignalCmd() *cobra.Command {
 			"--quiet is for hooks that run in every session, inside a task or not: it\n" +
 			"prints nothing, and outside a task it does nothing and succeeds. A hook's\n" +
 			"output can end up in front of the agent, which has no use for it.\n\n" +
-			"Four flags let a hook report what it sees without disturbing anything else\n" +
-			"anything else the agent said:\n\n" +
+			"Four flags let a hook report what it sees without disturbing anything\n" +
+			"else the agent said:\n\n" +
 			"  --hook            read the hook's JSON from stdin. Its agent_id, or \"main\"\n" +
 			"                    without one, owns a blocked signal this writes\n" +
 			"  --if-blocked      with --hook: write only over a blocked signal a hook\n" +

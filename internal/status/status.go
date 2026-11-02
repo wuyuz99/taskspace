@@ -1,8 +1,7 @@
 // Package status aggregates git and runtime state into what tspace shows the user.
 //
-// Every status query in tspace funnels through Aggregator.Task. That is deliberate:
-// when notifications arrive (agent finished, agent blocked, run failed), they
-// attach here, at one place, rather than being sprinkled through the commands.
+// Every status query in tspace funnels through an Aggregator, so that each view
+// of a task sees the same thing.
 package status
 
 import (
@@ -283,7 +282,6 @@ func (a *Aggregator) task(ctx context.Context, t *task.Task, published map[strin
 
 	var wg sync.WaitGroup
 	for i, name := range names {
-		i, name := i, name
 		repo := t.Repos[name]
 		wg.Add(1)
 		go func() {
@@ -433,7 +431,6 @@ func (a *Aggregator) All(ctx context.Context, tasks []*task.Task) []TaskStatus {
 
 	var wg sync.WaitGroup
 	for i, t := range tasks {
-		i, t := i, t
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

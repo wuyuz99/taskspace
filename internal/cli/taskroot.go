@@ -101,10 +101,5 @@ func (o *resumeOptions) apply(cmd *cobra.Command, current []string, agentChanged
 // defaultsToRoot reports whether an omitted repository means the task root.
 func defaultsToRoot(t *task.Task, repoArg string) bool { return workspace.DefaultsToRoot(t, repoArg) }
 
-// rootWindow and expandArgv are the lifecycle service's; see package
-// workspace.
+// rootWindow is the lifecycle service's; see package workspace.
 func (a *App) rootWindow(t *task.Task) runtime.Window { return workspace.RootWindow(a.Store, t) }
-
-func (a *App) expandArgv(t *task.Task, argv []string) []string {
-	return workspace.ExpandArgv(a.Store, t, argv)
-}

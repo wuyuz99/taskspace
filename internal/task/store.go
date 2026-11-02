@@ -138,9 +138,8 @@ func (s *Store) WorktreePath(taskName, repoName string) string {
 	return filepath.Join(s.TaskDir(taskName), repoName)
 }
 
-// ContextDir is reserved for future cross-repo task context. Reserving the
-// location now means every worktree can reach it as ../.context/ later without
-// a migration. Unused in v0.1.
+// ContextDir holds the task's notes, signals and editor workspace, which every
+// worktree reaches as ../.context/.
 func (s *Store) ContextDir(taskName string) string {
 	return filepath.Join(s.TaskDir(taskName), ".context")
 }
