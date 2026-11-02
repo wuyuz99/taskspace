@@ -161,8 +161,7 @@ application resources; see [service isolation](docs/WORKFLOWS.md#application-and
 **Early-stage, Unix-only.** The command surface can change;
 [CHANGELOG.md](CHANGELOG.md) lists what each release changed. See
 [current limitations and possible follow-ups](docs/PROJECT_STATUS.md) before
-relying on a particular workflow. The [implementation plan](docs/IMPLEMENTATION_PLAN.md)
-records the original design; the guides above describe shipped behaviour.
+relying on a particular workflow.
 
 For a change, start with the [development checks](docs/DEVELOPMENT.md) and keep
 it focused. [Issues](https://github.com/wuyuz99/taskspace/issues) are the place

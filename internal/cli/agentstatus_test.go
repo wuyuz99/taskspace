@@ -89,3 +89,23 @@ func TestStatusReadsPublishedAgentStatus(t *testing.T) {
 		}
 	}
 }
+
+// A setting left in the config keeps working, and says it is going (#140).
+func TestAgentStatusIsDeprecated(t *testing.T) {
+	h := newHarness(t)
+	if err := h.exec(t, h.app.newConfigCmd(), "agent-status", "claude"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.out.String()+h.errb.String(), "deprecated") {
+		t.Fatalf("config agent-status says nothing of going:\n%s%s", h.out.String(), h.errb.String())
+	}
+	h.out.Reset()
+	h.errb.Reset()
+	h.app.run = tsexec.NewFake().RespondOut("claude agents --json", "[]")
+	if err := h.exec(t, h.app.newStatusCmd()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.errb.String(), "config agent-status is set; it is deprecated") {
+		t.Fatalf("status warns:\n%s", h.errb.String())
+	}
+}

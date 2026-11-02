@@ -244,7 +244,8 @@ func (a *App) newStatusCmd() *cobra.Command {
 			"  bell   the window rang the bell; this outranks only a working signal\n" +
 			"  quiet  an agent's window has printed nothing for 10 minutes: a hint\n" +
 			"         that it may be waiting, never a claim that it is\n\n" +
-			"An agent turned on with `tspace config agent-status` adds its own\n" +
+			"An agent turned on with `tspace config agent-status`, which is\n" +
+			"deprecated, adds its own\n" +
 			"published status after the signal, as working, blocked or idle followed\n" +
 			"by the agent's name. Like the bell, it outranks a working signal it\n" +
 			"contradicts, and it outranks the bell.\n\n" +
@@ -266,6 +267,9 @@ func (a *App) newStatusCmd() *cobra.Command {
 				return fmt.Errorf("--interval must be at least 200ms")
 			}
 			ctx := cmd.Context()
+			if c, err := a.Store.LoadConfig(); err == nil && len(c.AgentStatus) > 0 {
+				a.warnf("tspace: config agent-status is set; %s\n", agentStatusDeprecated)
+			}
 			for {
 				// Tasks are re-read on every pass, so a watch picks up tasks
 				// created and removed while it runs.
