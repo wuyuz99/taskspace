@@ -32,10 +32,11 @@ func (a *App) newConfigMultiplexerCmd() *cobra.Command {
 			if unset && len(args) > 0 {
 				return fmt.Errorf("choose either a multiplexer or --unset")
 			}
-			c, err := a.Store.LoadConfig()
+			c, unlock, err := a.configFor(cmd, unset || len(args) > 0)
 			if err != nil {
 				return err
 			}
+			defer unlock()
 			if !unset && len(args) == 0 {
 				a.printMultiplexer(c)
 				return nil

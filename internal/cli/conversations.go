@@ -116,10 +116,11 @@ func (a *App) newConfigCarryConversationsCmd() *cobra.Command {
 					return fmt.Errorf("tspace cannot carry %q's conversations (can: %s)", n, strings.Join(names, ", "))
 				}
 			}
-			c, err := a.Store.LoadConfig()
+			c, unlock, err := a.configFor(cmd, unset || len(args) > 0)
 			if err != nil {
 				return err
 			}
+			defer unlock()
 			switch {
 			case unset:
 				c.CarryConversations = nil
