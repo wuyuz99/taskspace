@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wuyuz99/taskspace/internal/fspath"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
@@ -62,7 +63,7 @@ func TestEditorWorkspaceFile(t *testing.T) {
 		t.Fatalf("folders %s", got)
 	}
 	// The editor finds the folders where the file says.
-	if !isDir(filepath.Join(filepath.Dir(path), "..", "backend")) {
+	if !fspath.IsDir(filepath.Join(filepath.Dir(path), "..", "backend")) {
 		t.Fatal("folder path does not lead to the worktree")
 	}
 

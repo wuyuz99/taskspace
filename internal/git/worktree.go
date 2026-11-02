@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	tsexec "github.com/wuyuz99/taskspace/internal/exec"
+	"github.com/wuyuz99/taskspace/internal/fspath"
 )
 
 // Worktree is one entry from `git worktree list --porcelain`.
@@ -95,9 +96,9 @@ func (g *Git) FindWorktree(ctx context.Context, repo, path string) (*Worktree, e
 	if err != nil {
 		return nil, err
 	}
-	want := canonical(path)
+	want := fspath.Canonical(path)
 	for i := range list {
-		if canonical(list[i].Path) == want {
+		if fspath.Canonical(list[i].Path) == want {
 			return &list[i], nil
 		}
 	}
@@ -116,33 +117,6 @@ func (g *Git) FindWorktreeForBranch(ctx context.Context, repo, branch string) (*
 		}
 	}
 	return nil, nil
-}
-
-func canonical(p string) string {
-	if p == "" {
-		return ""
-	}
-	abs, err := filepath.Abs(p)
-	if err != nil {
-		abs = p
-	}
-	abs = filepath.Clean(abs)
-	// Resolve the deepest directory that still exists. git records worktree
-	// paths with symlinks resolved (on macOS /var is /private/var), and a
-	// worktree deleted by hand cannot be resolved itself, so without its
-	// parents it would never match its own stale registration.
-	rest := ""
-	for dir := abs; ; {
-		if resolved, err := filepath.EvalSymlinks(dir); err == nil {
-			return filepath.Join(resolved, rest)
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return abs
-		}
-		rest = filepath.Join(filepath.Base(dir), rest)
-		dir = parent
-	}
 }
 
 // Prune drops worktree records whose directories have disappeared.
@@ -303,7 +277,7 @@ func (g *Git) verifyWorktree(ctx context.Context, repo, path string) error {
 			if l = strings.TrimSpace(l); l == "" {
 				return nil, fmt.Errorf("git returned no %s", flags[i])
 			}
-			lines[i] = canonical(l)
+			lines[i] = fspath.Canonical(l)
 		}
 		return lines, nil
 	}
@@ -312,7 +286,7 @@ func (g *Git) verifyWorktree(ctx context.Context, repo, path string) error {
 		return err
 	}
 	top, common, gitDir := got[0], got[1], got[2]
-	if top != canonical(path) {
+	if top != fspath.Canonical(path) {
 		return fmt.Errorf("directory belongs to worktree %s", top)
 	}
 	want, err := resolve(repo, "--git-common-dir")
@@ -328,7 +302,7 @@ func (g *Git) verifyWorktree(ctx context.Context, repo, path string) error {
 		if err != nil {
 			return err
 		}
-		if len(list) == 0 || canonical(list[0].Path) != canonical(path) {
+		if len(list) == 0 || fspath.Canonical(list[0].Path) != fspath.Canonical(path) {
 			return fmt.Errorf("directory uses the main worktree's Git metadata")
 		}
 		return nil
@@ -337,7 +311,7 @@ func (g *Git) verifyWorktree(ctx context.Context, repo, path string) error {
 	if err != nil {
 		return fmt.Errorf("read worktree backlink: %w", err)
 	}
-	if canonical(strings.TrimSpace(string(backlink))) != canonical(filepath.Join(path, ".git")) {
+	if fspath.Canonical(strings.TrimSpace(string(backlink))) != fspath.Canonical(filepath.Join(path, ".git")) {
 		return fmt.Errorf("Git metadata points to a different worktree location")
 	}
 	return nil

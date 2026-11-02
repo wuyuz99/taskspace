@@ -6,14 +6,13 @@ package status
 
 import (
 	"context"
-	"path/filepath"
-	goruntime "runtime"
 	"slices"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/wuyuz99/taskspace/internal/fspath"
 	tsgit "github.com/wuyuz99/taskspace/internal/git"
 	"github.com/wuyuz99/taskspace/internal/runtime"
 	"github.com/wuyuz99/taskspace/internal/task"
@@ -192,35 +191,18 @@ func (a *Aggregator) published(ctx context.Context) map[string]Published {
 			continue
 		}
 		for dir, p := range got {
-			if _, ok := out[DirKey(dir)]; !ok {
-				out[DirKey(dir)] = p
+			if _, ok := out[fspath.Key(dir)]; !ok {
+				out[fspath.Key(dir)] = p
 			}
 		}
 	}
 	return out
 }
 
-// DirKey is the form directories are compared in, so that the path an
-// agent reports and the one tspace recorded match when they name the same
-// place.
-func DirKey(dir string) string {
-	if dir == "" {
-		return ""
-	}
-	if r, err := filepath.EvalSymlinks(dir); err == nil {
-		dir = r
-	}
-	dir = filepath.Clean(dir)
-	if goruntime.GOOS == "windows" || goruntime.GOOS == "darwin" {
-		dir = strings.ToLower(dir)
-	}
-	return dir
-}
-
 func (a *Aggregator) task(ctx context.Context, t *task.Task, published map[string]Published) TaskStatus {
 	out := TaskStatus{Task: t.Name}
 	pub := func(dir string) *Published {
-		if p, ok := published[DirKey(dir)]; ok && dir != "" {
+		if p, ok := published[fspath.Key(dir)]; ok && dir != "" {
 			return &p
 		}
 		return nil

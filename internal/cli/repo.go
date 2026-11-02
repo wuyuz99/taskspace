@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -176,15 +175,6 @@ func (a *App) newRepoAddCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.PostCreate, "post-create", "",
 		`shell command run once in a new worktree, e.g. 'cp "$TSPACE_REPO_PATH/.env" . && pnpm install'`)
 	return cmd
-}
-
-// samePath reports whether two paths name the same place, as git and tspace
-// spell them.
-func samePath(x, y string) bool { return workspace.SamePath(x, y) }
-
-func isDir(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && info.IsDir()
 }
 
 func firstNonEmpty(a, b string) string {

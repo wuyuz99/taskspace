@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/wuyuz99/taskspace/internal/fspath"
 )
 
 func TestLooksLikeURL(t *testing.T) {
@@ -50,7 +52,7 @@ func TestConfigRepoClonesAURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !samePath(c.Repos["backend"], want) {
+	if !fspath.Same(c.Repos["backend"], want) {
 		t.Fatalf("registered %q, want %q", c.Repos["backend"], want)
 	}
 	if got := gitIn(t, want, "remote", "get-url", "origin"); got != url {
@@ -72,7 +74,7 @@ func TestConfigRepoClonesAURL(t *testing.T) {
 	if err := h.exec(t, h.app.newConfigCmd(), "repo", "api", fileURL(other), "--into", into); err != nil {
 		t.Fatal(err)
 	}
-	if c, _ := h.app.Store.LoadConfig(); !samePath(c.Repos["api"], into) {
+	if c, _ := h.app.Store.LoadConfig(); !fspath.Same(c.Repos["api"], into) {
 		t.Fatalf("api registered at %q", c.Repos["api"])
 	}
 	if err := h.exec(t, h.app.newConfigCmd(), "repo", "web", h.repo, "--into", into); err == nil {

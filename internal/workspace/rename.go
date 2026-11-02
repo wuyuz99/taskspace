@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 
+	"github.com/wuyuz99/taskspace/internal/fspath"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
@@ -55,7 +55,7 @@ func (s *Service) Rename(ctx context.Context, old, name string, opts RenameOptio
 			return err
 		}
 	}
-	if cwd, err := os.Getwd(); err == nil && pathInside(cwd, from) {
+	if cwd, err := os.Getwd(); err == nil && fspath.Within(cwd, from) {
 		return fmt.Errorf("run task rename from outside %s", from)
 	}
 	var cfg *task.Config
@@ -74,7 +74,7 @@ func (s *Service) Rename(ctx context.Context, old, name string, opts RenameOptio
 	var plans []plan
 	for _, repo := range t.RepoNames() {
 		r := t.Repos[repo]
-		if pathInside(r.Path, from) {
+		if fspath.Within(r.Path, from) {
 			return fmt.Errorf("%s's source repository is inside %s; move it outside before renaming", repo, from)
 		}
 		expected := s.Store.WorktreePath(old, repo)
@@ -118,7 +118,7 @@ func (s *Service) Rename(ctx context.Context, old, name string, opts RenameOptio
 				if err != nil {
 					return err
 				}
-				if wt != nil && !sameDirectory(wt.Path, p.from) {
+				if wt != nil && !fspath.Same(wt.Path, p.from) {
 					return fmt.Errorf("%s is checked out at %s; rename without --branches", r.Branch, wt.Path)
 				}
 			}
@@ -144,7 +144,7 @@ func (s *Service) Rename(ctx context.Context, old, name string, opts RenameOptio
 					if other.Name == old && repo == p.repo {
 						continue
 					}
-					if sameDirectory(claim.Path, r.Path) && (claim.Branch == r.Branch || claim.Base == r.Branch) {
+					if fspath.Same(claim.Path, r.Path) && (claim.Branch == r.Branch || claim.Base == r.Branch) {
 						return fmt.Errorf("branch %s is also recorded by %s's %s; rename without --branches", r.Branch, other.Name, repo)
 					}
 				}
@@ -323,7 +323,7 @@ func (s *Service) movableWorktree(ctx context.Context, repo, path string) (prese
 	if err != nil {
 		return false, err
 	}
-	if len(all) > 0 && sameDirectory(all[0].Path, path) {
+	if len(all) > 0 && fspath.Same(all[0].Path, path) {
 		return false, fmt.Errorf("%s is a main checkout", path)
 	}
 	return true, nil
@@ -341,27 +341,4 @@ func (u undoLog) rollback(cause error) error {
 		}
 	}
 	return cause
-}
-
-func pathInside(path, root string) bool {
-	if p, err := filepath.EvalSymlinks(path); err == nil {
-		path = p
-	}
-	if p, err := filepath.EvalSymlinks(root); err == nil {
-		root = p
-	}
-	rel, err := filepath.Rel(root, path)
-	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
-}
-
-func sameDirectory(a, b string) bool {
-	if filepath.Clean(a) == filepath.Clean(b) {
-		return true
-	}
-	x, err := os.Stat(a)
-	if err != nil {
-		return false
-	}
-	y, err := os.Stat(b)
-	return err == nil && os.SameFile(x, y)
 }

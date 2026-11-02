@@ -11,6 +11,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
+	"github.com/wuyuz99/taskspace/internal/fspath"
 	"github.com/wuyuz99/taskspace/internal/task"
 	"github.com/wuyuz99/taskspace/internal/workspace"
 )
@@ -141,7 +142,7 @@ func (a *App) newConfigRepoCmd() *cobra.Command {
 			}
 			path := expandHome(args[1])
 			// A directory by that name wins over reading it as a URL.
-			clone := looksLikeURL(args[1]) && !isDir(path)
+			clone := looksLikeURL(args[1]) && !fspath.IsDir(path)
 			if into != "" && !clone {
 				return fmt.Errorf("--into says where to clone a URL; %s is a path", args[1])
 			}
@@ -155,7 +156,7 @@ func (a *App) newConfigRepoCmd() *cobra.Command {
 				}
 				// Refused before cloning, so no clone is left behind.
 				for _, other := range c.RepoNames() {
-					if other != name && samePath(c.Repos[other], dest) {
+					if other != name && fspath.Same(c.Repos[other], dest) {
 						return fmt.Errorf("%s is already registered as %q", dest, other)
 					}
 				}
@@ -175,7 +176,7 @@ func (a *App) newConfigRepoCmd() *cobra.Command {
 			}
 			defer unlock()
 			for _, other := range c.RepoNames() {
-				if other != name && c.Repos[other] == canonical {
+				if other != name && fspath.Same(c.Repos[other], canonical) {
 					return fmt.Errorf("%s is already registered as %q", canonical, other)
 				}
 			}

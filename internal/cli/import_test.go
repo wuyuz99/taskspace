@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wuyuz99/taskspace/internal/fspath"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
@@ -39,7 +40,7 @@ func TestImportAdoptsAWorktree(t *testing.T) {
 	}
 	name := tk.RepoNames()[0]
 	r := tk.Repos[name]
-	if r.Branch != "fix-login" || !samePath(r.Path, h.repo) || r.Base == "" {
+	if r.Branch != "fix-login" || !fspath.Same(r.Path, h.repo) || r.Base == "" {
 		t.Fatalf("recorded %+v", r)
 	}
 	if _, err := os.Stat(wt); !os.IsNotExist(err) {
@@ -444,7 +445,7 @@ func TestImportAfterRepoRmKeepWorktree(t *testing.T) {
 				t.Fatal(err)
 			}
 			got := h.load(t, target).Repos[name]
-			if got.Branch != original.Branch || !samePath(got.Path, original.Path) {
+			if got.Branch != original.Branch || !fspath.Same(got.Path, original.Path) {
 				t.Fatalf("imported %+v, originally %+v", got, original)
 			}
 			if b, err := os.ReadFile(filepath.Join(got.Worktree, ".env")); err != nil || string(b) != "keep me" {

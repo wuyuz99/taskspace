@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/wuyuz99/taskspace/internal/fspath"
 )
 
 func TestEnsureWorktreeCreatesFromResolvedBase(t *testing.T) {
@@ -422,7 +424,7 @@ func TestFindWorktreeForBranch(t *testing.T) {
 	if found == nil {
 		t.Fatal("FindWorktreeForBranch = nil, want the worktree")
 	}
-	if canonical(found.Path) != canonical(wt) {
+	if fspath.Canonical(found.Path) != fspath.Canonical(wt) {
 		t.Errorf("Path = %q, want %q", found.Path, wt)
 	}
 

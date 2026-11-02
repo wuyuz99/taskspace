@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/wuyuz99/taskspace/internal/fspath"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
@@ -84,7 +85,7 @@ func (s *Service) AddRepo(ctx context.Context, t *task.Task, c *task.Config, pat
 			t.Name, name, existing.Path)
 	}
 	for _, other := range t.RepoNames() {
-		if t.Repos[other].Path == canonical {
+		if fspath.Same(t.Repos[other].Path, canonical) {
 			return fmt.Errorf("%s is already attached to task %q as %q", canonical, t.Name, other)
 		}
 	}
@@ -219,7 +220,7 @@ func ParseRepoSpec(spec string) (RepoSpec, error) {
 	}
 	// A directory that exists as typed is taken literally, so a path that
 	// happens to contain '@' or ':' still works.
-	if looksLikePath(rest) && isDir(ExpandHome(rest)) {
+	if looksLikePath(rest) && fspath.IsDir(ExpandHome(rest)) {
 		s.Source = rest
 		return s, nil
 	}
@@ -269,16 +270,11 @@ func (s *Service) AddRepoSpec(ctx context.Context, t *task.Task, c *task.Config,
 		if p, ok := c.Repos[r.Source]; ok {
 			path = p
 			opts.Name = cmp.Or(opts.Name, r.Source)
-		} else if !isDir(r.Source) {
+		} else if !fspath.IsDir(r.Source) {
 			return fmt.Errorf("no repository registered as %q%s", r.Source, RegisteredHint(c))
 		}
 	}
 	return s.AddRepo(ctx, t, c, ExpandHome(path), opts)
-}
-
-func isDir(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && info.IsDir()
 }
 
 // ExpandHome resolves a leading ~ so that paths typed in a shell that did not

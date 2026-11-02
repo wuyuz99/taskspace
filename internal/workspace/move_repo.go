@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/wuyuz99/taskspace/internal/fspath"
 	"github.com/wuyuz99/taskspace/internal/runtime"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
@@ -58,7 +59,7 @@ func (s *Service) MoveRepo(ctx context.Context, old, repo, to, name string) erro
 		return fmt.Errorf("task %q already has a repo named %q (%s); use --name to pick another", to, name, existing.Path)
 	}
 	for _, other := range dst.RepoNames() {
-		if sameDirectory(dst.Repos[other].Path, r.Path) {
+		if fspath.Same(dst.Repos[other].Path, r.Path) {
 			return fmt.Errorf("%s is already attached to task %q as %q", r.Path, to, other)
 		}
 	}
@@ -90,7 +91,7 @@ func (s *Service) MoveRepo(ctx context.Context, old, repo, to, name string) erro
 	if err != nil {
 		return err
 	}
-	if cwd, err := os.Getwd(); err == nil && present && pathInside(cwd, from) {
+	if cwd, err := os.Getwd(); err == nil && present && fspath.Within(cwd, from) {
 		return fmt.Errorf("run repo move from outside %s, which it moves", from)
 	}
 	// Migrate legacy notes before beginning the transaction, so that putting

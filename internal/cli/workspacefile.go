@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+	"github.com/wuyuz99/taskspace/internal/fspath"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
@@ -90,7 +91,7 @@ func (a *App) writeCodeWorkspace(t *task.Task) (string, error) {
 	var missing []string
 	for _, name := range t.RepoNames() {
 		wt := t.Repos[name].Worktree
-		if !isDir(wt) {
+		if !fspath.IsDir(wt) {
 			missing = append(missing, name)
 			continue
 		}
@@ -128,7 +129,7 @@ func (a *App) writeCodeWorkspace(t *task.Task) (string, error) {
 					if !filepath.IsAbs(p) {
 						p = filepath.Join(dir, p)
 					}
-					if !within(p, taskDir) {
+					if !fspath.Within(p, taskDir) {
 						folders = append(folders, f)
 					}
 				}
