@@ -30,6 +30,7 @@ upgrade.
   form, as `tspace config repo` does.
 - [Working in a task](docs/WORKFLOWS.md) covers running tspace on a remote machine
   over SSH.
+- `tspace shell` in a worktree sets `TSPACE_REPO_PATH`, as `post_create` hooks have.
 - [Formats](docs/FORMATS.md) says what `status --json`, task records and the
   adapter protocol promise: they only change in ways older readers can still
   read (#176).

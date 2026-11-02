@@ -294,6 +294,20 @@ func WindowEnv(st *task.Store, taskName, window string) []string {
 	return []string{EnvTask + "=" + taskName, EnvWindow + "=" + window, task.EnvRoot + "=" + st.Root()}
 }
 
+// RepoEnv is the environment of a command tspace runs in one of the task's
+// worktrees outside the session: a post_create hook, or tspace shell, where
+// name is empty and r.Worktree the task's root. It names no window, so signal
+// goes by directory.
+func RepoEnv(st *task.Store, t *task.Task, name string, r task.Repo) []string {
+	return append(WindowEnv(st, t.Name, ""),
+		"TSPACE_REPO="+name,
+		"TSPACE_REPO_PATH="+r.Path,
+		"TSPACE_WORKTREE="+r.Worktree,
+		"TSPACE_TASK_DIR="+st.TaskDir(t.Name),
+		"TSPACE_CONTEXT_DIR="+st.ContextDir(t.Name),
+	)
+}
+
 // RootWindow is the task's window at its workspace root.
 func RootWindow(st *task.Store, t *task.Task) runtime.Window {
 	return runtime.Window{Name: task.RootWindowName, Dir: st.TaskDir(t.Name), Command: ExpandArgv(st, t, t.RootAgent()), Env: WindowEnv(st, t.Name, task.RootWindowName)}
@@ -390,8 +404,7 @@ func ResolveRepo(t *task.Task, repoArg string) (task.Repo, string, error) {
 	}
 	r, ok := t.Repo(name)
 	if !ok {
-		return task.Repo{}, "", fmt.Errorf("task %q has no repo named %q (has: %s)",
-			t.Name, name, strings.Join(names, ", "))
+		return task.Repo{}, "", t.NoRepo(name)
 	}
 	return r, name, nil
 }

@@ -10,9 +10,22 @@ import (
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
-// ForceAdvice is the part of a refusal that says how to override it. dash
-// runs no --force of its own, so it names the command there instead.
+// ForceAdvice is the part of a refusal that says how to override it.
 const ForceAdvice = "re-run with --force"
+
+// RefusedError is a refusal that --force overrides, with ForceAdvice between
+// Before and After. dash runs no --force of its own, so it names the command
+// there instead, with Instead.
+type RefusedError struct {
+	Before, After string
+}
+
+func (e *RefusedError) Error() string { return e.Before + ForceAdvice + e.After }
+
+// Instead is the refusal with command in place of ForceAdvice.
+func (e *RefusedError) Instead(command string) string {
+	return e.Before + "run " + command + e.After
+}
 
 // CleanOptions shape Clean.
 type CleanOptions struct {
@@ -46,7 +59,7 @@ func (s *Service) Clean(ctx context.Context, name string, opts CleanOptions) err
 		for _, name := range opts.Repos {
 			r, ok := t.Repo(name)
 			if !ok {
-				return fmt.Errorf("task %q has no repo named %q (has: %s)", t.Name, name, strings.Join(t.RepoNames(), ", "))
+				return t.NoRepo(name)
 			}
 			only.Repos[name] = r
 		}
@@ -70,9 +83,11 @@ func (s *Service) Clean(ctx context.Context, name string, opts CleanOptions) err
 		return err
 	}
 	if blocked := blockers(plans); len(blocked) > 0 && !opts.Force {
-		return fmt.Errorf("refusing to clean %s; work would be lost:\n\n%s\n\n"+
-			"commit, push or stash it, or %s to discard it",
-			t.Name, strings.Join(blocked, "\n"), ForceAdvice)
+		return &RefusedError{
+			Before: fmt.Sprintf("refusing to clean %s; work would be lost:\n\n%s\n\ncommit, push or stash it, or ",
+				t.Name, strings.Join(blocked, "\n")),
+			After: " to discard it",
+		}
 	}
 
 	// Stop the runtime only once the safety checks have passed, so a refused
@@ -94,9 +109,11 @@ func (s *Service) Clean(ctx context.Context, name string, opts CleanOptions) err
 			return err
 		}
 		if blocked := blockers(plans); len(blocked) > 0 && !opts.Force {
-			return fmt.Errorf("%s, but kept the worktrees; work appeared as its agents stopped:\n\n%s\n\n"+
-				"commit, push or stash it, or %s to discard it; tspace start %s brings the windows back",
-				stoppedWhat, strings.Join(blocked, "\n"), ForceAdvice, t.Name)
+			return &RefusedError{
+				Before: fmt.Sprintf("%s, but kept the worktrees; work appeared as its agents stopped:\n\n%s\n\ncommit, push or stash it, or ",
+					stoppedWhat, strings.Join(blocked, "\n")),
+				After: " to discard it; tspace start " + t.Name + " brings the windows back",
+			}
 		}
 	}
 
@@ -270,11 +287,11 @@ func (s *Service) inspectForClean(ctx context.Context, t *task.Task, wantBranchI
 			}
 			if n := st.DirtyCount(); n > 0 {
 				p.Blockers = append(p.Blockers,
-					fmt.Sprintf("  %s: %d uncommitted change%s in %s", name, n, plural(n), r.Worktree))
+					fmt.Sprintf("  %s: %d uncommitted change%s in %s", name, n, Plural(n), r.Worktree))
 			}
 			if st.Stashes > 0 {
 				p.Blockers = append(p.Blockers,
-					fmt.Sprintf("  %s: %d stash%s on %s", name, st.Stashes, stashPlural(st.Stashes), r.Branch))
+					fmt.Sprintf("  %s: %d stash%s on %s", name, st.Stashes, StashPlural(st.Stashes), r.Branch))
 			}
 			// A locked worktree is git's way of saying "someone meant this to
 			// stay"; report it rather than surfacing a raw git failure later.
@@ -308,14 +325,16 @@ func blockers(plans []cleanPlan) []string {
 	return out
 }
 
-func plural(n int) string {
+// Plural is the ending for n of a noun, such as "commit" + Plural(n).
+func Plural(n int) string {
 	if n == 1 {
 		return ""
 	}
 	return "s"
 }
 
-func stashPlural(n int) string {
+// StashPlural is Plural for a noun ending in -sh, such as "stash".
+func StashPlural(n int) string {
 	if n == 1 {
 		return ""
 	}

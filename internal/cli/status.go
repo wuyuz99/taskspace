@@ -13,6 +13,7 @@ import (
 	"github.com/wuyuz99/taskspace/internal/runtime"
 	"github.com/wuyuz99/taskspace/internal/status"
 	"github.com/wuyuz99/taskspace/internal/task"
+	"github.com/wuyuz99/taskspace/internal/workspace"
 )
 
 // The types here are the contract of `tspace status --json`, written out
@@ -434,10 +435,10 @@ func gitSummary(r status.RepoStatus) string {
 
 	s := "clean"
 	if n := r.Detail.DirtyCount(); n > 0 {
-		s = fmt.Sprintf("dirty (%d file%s)", n, plural(n))
+		s = fmt.Sprintf("dirty (%d file%s)", n, workspace.Plural(n))
 	}
 	if r.Detail.Stashes > 0 {
-		s += fmt.Sprintf(", %d stash%s", r.Detail.Stashes, stashPlural(r.Detail.Stashes))
+		s += fmt.Sprintf(", %d stash%s", r.Detail.Stashes, workspace.StashPlural(r.Detail.Stashes))
 	}
 	if r.Detail.Ahead > 0 {
 		s += fmt.Sprintf(", ahead %d", r.Detail.Ahead)
@@ -446,7 +447,7 @@ func gitSummary(r status.RepoStatus) string {
 		s += fmt.Sprintf(", behind %d", r.Detail.Behind)
 	}
 	if r.Unpushed > 0 {
-		s += fmt.Sprintf(", %d commit%s not pushed", r.Unpushed, plural(r.Unpushed))
+		s += fmt.Sprintf(", %d commit%s not pushed", r.Unpushed, workspace.Plural(r.Unpushed))
 	}
 	return s
 }

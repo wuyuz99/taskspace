@@ -112,5 +112,5 @@ be combined with a repository. `shell` creates the root if necessary, even befor
 repositories are added, but does not create worktrees or start a session. `path`
 only prints it. Shells expose `TSPACE_TASK_DIR`, `TSPACE_CONTEXT_DIR`, `TSPACE_TASK`,
 `TSPACE_WORKTREE` (the current directory), `TSPACE_REPO` (empty at the task root),
-and `TSPACE_ROOT`.
+`TSPACE_REPO_PATH` (the source repository, in a worktree) and `TSPACE_ROOT`.
 The root shell has a task-only terminal label.

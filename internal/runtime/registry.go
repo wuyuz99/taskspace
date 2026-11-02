@@ -70,15 +70,16 @@ func New(name string, adapter []string, r tsexec.Runner) (Runtime, error) {
 // invalid. Commands that need no session still work; the rest report err.
 type Unavailable struct{ Err error }
 
-func (u Unavailable) Available(context.Context) error                  { return u.Err }
-func (u Unavailable) SessionName(task string) string                   { return sessionName(task) }
-func (u Unavailable) HasSession(context.Context, string) (bool, error) { return false, u.Err }
-func (u Unavailable) Start(context.Context, string, []Window) error    { return u.Err }
-func (u Unavailable) OpenWindow(context.Context, string, Window) error { return u.Err }
-func (u Unavailable) Restart(context.Context, string, Window) error    { return u.Err }
-func (u Unavailable) Stop(context.Context, string) error               { return u.Err }
-func (u Unavailable) Attach(context.Context, string) error             { return u.Err }
-func (u Unavailable) Select(context.Context, string, string) error     { return u.Err }
+func (u Unavailable) Available(context.Context) error                   { return u.Err }
+func (u Unavailable) SessionName(task string) string                    { return sessionName(task) }
+func (u Unavailable) HasSession(context.Context, string) (bool, error)  { return false, u.Err }
+func (u Unavailable) Start(context.Context, string, []Window) error     { return u.Err }
+func (u Unavailable) OpenWindow(context.Context, string, Window) error  { return u.Err }
+func (u Unavailable) Restart(context.Context, string, Window) error     { return u.Err }
+func (u Unavailable) Stop(context.Context, string) error                { return u.Err }
+func (u Unavailable) CloseWindow(context.Context, string, string) error { return u.Err }
+func (u Unavailable) Attach(context.Context, string) error              { return u.Err }
+func (u Unavailable) Select(context.Context, string, string) error      { return u.Err }
 func (u Unavailable) RenameWindow(context.Context, string, string, string) error {
 	return u.Err
 }

@@ -12,8 +12,6 @@ import (
 	"os"
 	osexec "os/exec"
 	"path/filepath"
-	"runtime"
-	"slices"
 	"strings"
 
 	tsexec "github.com/wuyuz99/taskspace/internal/exec"
@@ -33,44 +31,8 @@ func New(r tsexec.Runner) *Git {
 }
 
 func (g *Git) git(ctx context.Context, dir string, args ...string) (tsexec.Result, error) {
-	ctx = tsexec.WithEnv(ctx, RepositoryEnv(os.Environ()))
+	ctx = tsexec.WithoutRepositoryEnv(ctx)
 	return g.run.Run(ctx, dir, append([]string{"git"}, args...)...)
-}
-
-// RepositoryEnv clears Git's repository-local context (git rev-parse
-// --local-env-vars), as required when a hook operates on another repository.
-// SSH/askpass settings and global/system config file locations survive.
-// GIT_CONFIG_COUNT and GIT_CONFIG_PARAMETERS are dropped, including any
-// authentication supplied through them; see issue #132. Hook editor, author
-// and quarantine context are also cleared, even when the user exported them:
-// nothing distinguishes the two, and a persistent server would keep them.
-func RepositoryEnv(env []string) []string {
-	out := make([]string, 0, len(env))
-	keys := RepositoryEnvVars()
-	for _, entry := range env {
-		key, _, _ := strings.Cut(entry, "=")
-		if runtime.GOOS == "windows" {
-			key = strings.ToUpper(key)
-		}
-		if slices.Contains(keys, key) {
-			continue
-		}
-		out = append(out, entry)
-	}
-	return out
-}
-
-// RepositoryEnvVars returns Git's repository-local and hook-context variables.
-// Launchers must unset these even when only a persistent server has them.
-func RepositoryEnvVars() []string {
-	return []string{
-		"GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CONFIG", "GIT_CONFIG_PARAMETERS",
-		"GIT_CONFIG_COUNT", "GIT_OBJECT_DIRECTORY", "GIT_DIR", "GIT_WORK_TREE",
-		"GIT_IMPLICIT_WORK_TREE", "GIT_GRAFT_FILE", "GIT_INDEX_FILE",
-		"GIT_NO_REPLACE_OBJECTS", "GIT_REPLACE_REF_BASE", "GIT_PREFIX",
-		"GIT_SHALLOW_FILE", "GIT_COMMON_DIR", "GIT_EDITOR", "GIT_SEQUENCE_EDITOR",
-		"GIT_QUARANTINE_PATH", "GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_AUTHOR_DATE",
-	}
 }
 
 // ok runs a git command and reports whether it exited zero, discarding the
@@ -499,7 +461,7 @@ func (g *Git) FullRefName(ctx context.Context, repo, ref string) (string, error)
 // leaves url out, as it may hold a token.
 func (g *Git) Clone(ctx context.Context, url, dest string, in io.Reader, out io.Writer) error {
 	cmd := osexec.CommandContext(ctx, "git", "clone", "--origin", "origin", "--", url, dest)
-	cmd.Env = RepositoryEnv(os.Environ())
+	cmd.Env = tsexec.RepositoryEnv(os.Environ())
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = in, out, out
 	return cmd.Run()
 }

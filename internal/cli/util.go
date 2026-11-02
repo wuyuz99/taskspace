@@ -77,17 +77,3 @@ func attachFailed(err error, taskName string) error {
 	}
 	return fmt.Errorf("%w\nattaching needs a terminal; the session is up, so from a script use: tspace status %s", err, taskName)
 }
-
-func plural(n int) string {
-	if n == 1 {
-		return ""
-	}
-	return "s"
-}
-
-func stashPlural(n int) string {
-	if n == 1 {
-		return ""
-	}
-	return "es"
-}

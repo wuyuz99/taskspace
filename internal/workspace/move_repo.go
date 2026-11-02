@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/wuyuz99/taskspace/internal/fspath"
 	"github.com/wuyuz99/taskspace/internal/runtime"
@@ -53,7 +52,7 @@ func (s *Service) MoveRepo(ctx context.Context, old, repo, to, name string) erro
 	}
 	r, ok := src.Repo(repo)
 	if !ok {
-		return fmt.Errorf("task %q has no repo named %q (has: %s)", old, repo, strings.Join(src.RepoNames(), ", "))
+		return src.NoRepo(repo)
 	}
 	if existing, ok := dst.Repo(name); ok {
 		return fmt.Errorf("task %q already has a repo named %q (%s); use --name to pick another", to, name, existing.Path)

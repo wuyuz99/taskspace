@@ -107,10 +107,8 @@ func (m dashModel) openWindow(taskName, place string, f *dashForm) tea.Cmd {
 	}
 	return func() tea.Msg {
 		var out, warn bytes.Buffer
-		sub := *m.app
-		sub.Out, sub.Err = &out, &warn
-		sub.noWait = true
-		res, err := sub.workspace().OpenWindow(m.ctx, taskName, opts)
+		_, ws := m.quiet(&out, &warn)
+		res, err := ws.OpenWindow(m.ctx, taskName, opts)
 		if err != nil {
 			return dashDoneMsg{err: err}
 		}
@@ -127,10 +125,8 @@ func (m dashModel) openWindow(taskName, place string, f *dashForm) tea.Cmd {
 func (m dashModel) saveWindow(row dashRow) tea.Cmd {
 	return func() tea.Msg {
 		var out, warn bytes.Buffer
-		sub := *m.app
-		sub.Out, sub.Err = &out, &warn
-		sub.noWait = true
-		err := sub.workspace().SaveOpenWindow(m.ctx, row.Task, row.Window)
+		_, ws := m.quiet(&out, &warn)
+		err := ws.SaveOpenWindow(m.ctx, row.Task, row.Window)
 		text := append(lines(out.String()), lines(warn.String())...)
 		return dashDoneMsg{text: strings.Join(text, "; "), err: err}
 	}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/wuyuz99/taskspace/internal/runtime"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
@@ -43,11 +42,7 @@ func (s *Service) StopWindow(ctx context.Context, name, window string) error {
 }
 
 func (s *Service) closeWindow(ctx context.Context, name, window string) error {
-	rt, ok := s.Runtime.(runtime.WindowCloser)
-	if !ok {
-		return fmt.Errorf("this runtime does not support closing individual windows; stop the task first")
-	}
-	if err := rt.CloseWindow(ctx, s.Runtime.SessionName(name), window); err != nil {
+	if err := s.Runtime.CloseWindow(ctx, s.Runtime.SessionName(name), window); err != nil {
 		return err
 	}
 	// A multiplexer ends a session with its last window, and that was on

@@ -3,12 +3,9 @@ package runtime
 import (
 	"context"
 	"fmt"
-	"os"
-	osexec "os/exec"
 	"strings"
 
 	tsexec "github.com/wuyuz99/taskspace/internal/exec"
-	"github.com/wuyuz99/taskspace/internal/git"
 )
 
 // AdapterProtocol is the version of the adapter protocol tspace speaks. It is
@@ -76,7 +73,7 @@ func NewAdapter(name string, argv []string, r tsexec.Runner) *Adapter {
 }
 
 func (a *Adapter) call(ctx context.Context, args ...string) (tsexec.Result, error) {
-	return a.run.Run(tsexec.WithEnv(ctx, git.RepositoryEnv(os.Environ())), "", append(append([]string(nil), a.argv...), args...)...)
+	return a.run.Run(tsexec.WithoutRepositoryEnv(ctx), "", append(append([]string(nil), a.argv...), args...)...)
 }
 
 // windowCall runs an operation that takes WIN.
@@ -216,21 +213,16 @@ func (a *Adapter) Stop(ctx context.Context, session string) error {
 	return nil
 }
 
-// Attach implements Runtime. Like the tmux runtime, it bypasses the Runner to
-// hand the adapter the terminal.
+// Attach implements Runtime.
 func (a *Adapter) Attach(ctx context.Context, session string) error {
 	exists, err := a.HasSession(ctx, session)
 	if err != nil {
 		return err
 	}
 	if !exists {
-		return fmt.Errorf("no %s session %q; run tspace start first", a.name, session)
+		return missingSession(a.name, session)
 	}
-	argv := append(append([]string(nil), a.argv...), "attach", session)
-	cmd := osexec.CommandContext(ctx, argv[0], argv[1:]...)
-	cmd.Env = git.RepositoryEnv(cmd.Environ())
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	if err := cmd.Run(); err != nil {
+	if err := attachTerminal(ctx, append(append([]string(nil), a.argv...), "attach", session)); err != nil {
 		return fmt.Errorf("attach to %s: %w", session, err)
 	}
 	return nil

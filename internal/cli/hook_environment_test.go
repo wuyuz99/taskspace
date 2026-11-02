@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	tsgit "github.com/wuyuz99/taskspace/internal/git"
+	tsexec "github.com/wuyuz99/taskspace/internal/exec"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
@@ -48,7 +48,7 @@ env > "$HOOK_PROBE/hook-env"
 	}
 	cmd := exec.Command("git", "-c", "user.name=tspace", "-c", "user.email=t@example.invalid", "commit", "--allow-empty", "-m", "exercise hook")
 	cmd.Dir = other
-	cmd.Env = append(tsgit.RepositoryEnv(cmd.Environ()), "TSPACE_TEST_CLI=1", "TSPACE_ROOT="+h.app.Store.Root(), "TSPACE_MULTIPLEXER=tmux", "TSPACE_BIN="+self, "HOOK_PROBE="+dir)
+	cmd.Env = append(tsexec.RepositoryEnv(cmd.Environ()), "TSPACE_TEST_CLI=1", "TSPACE_ROOT="+h.app.Store.Root(), "TSPACE_MULTIPLEXER=tmux", "TSPACE_BIN="+self, "HOOK_PROBE="+dir)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("commit: %v: %s", err, out)
 	}
@@ -84,7 +84,7 @@ env > "$HOOK_PROBE/hook-env"
 	}
 	for _, name := range []string{"exec-env", "agent-env"} {
 		got := "\n" + read(name)
-		for _, key := range tsgit.RepositoryEnvVars() {
+		for _, key := range tsexec.RepositoryEnvVars() {
 			if strings.Contains(got, "\n"+key+"=") {
 				t.Errorf("%s inherited %s", name, key)
 			}

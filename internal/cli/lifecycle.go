@@ -163,7 +163,7 @@ func interruptedResult(started, failed []string, done func(string)) error {
 	case len(failed) > 0:
 		return fmt.Errorf("started %d of %d interrupted tasks; %s did not start", len(started), n, joinNames(failed))
 	default:
-		done(fmt.Sprintf("started %d interrupted task%s: %s", n, plural(n), joinNames(started)))
+		done(fmt.Sprintf("started %d interrupted task%s: %s", n, workspace.Plural(n), joinNames(started)))
 	}
 	return nil
 }

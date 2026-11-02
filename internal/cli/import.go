@@ -49,7 +49,7 @@ func (a *App) newImportCmd() *cobra.Command {
 				}
 				st := w.Status
 				if n := st.Staged + st.Modified; n > 0 {
-					a.printf("  %d uncommitted change%s kept; nothing was committed\n", n, plural(n))
+					a.printf("  %d uncommitted change%s kept; nothing was committed\n", n, workspace.Plural(n))
 				}
 				if st.Upstream != "" && (st.Ahead > 0 || st.Behind > 0) {
 					a.printf("  %s is %d ahead and %d behind %s; nothing was pushed or pulled\n", w.Branch, st.Ahead, st.Behind, st.Upstream)

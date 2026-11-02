@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wuyuz99/taskspace/internal/git"
+	tsexec "github.com/wuyuz99/taskspace/internal/exec"
 )
 
 // Window is one pane's worth of work: a named shell in a directory, optionally
@@ -84,6 +84,9 @@ type Runtime interface {
 	Restart(ctx context.Context, session string, w Window) error
 	// Stop ends the session, giving processes a chance to exit cleanly first.
 	Stop(ctx context.Context, session string) error
+	// CloseWindow ends one window the same way. A window that is not there is
+	// already closed.
+	CloseWindow(ctx context.Context, session, window string) error
 	// Attach hands the terminal over to the session.
 	Attach(ctx context.Context, session string) error
 	// Focus shows a window to the user when tspace runs inside a client that can
@@ -132,7 +135,7 @@ func unixTime(s string) time.Time {
 // env execs the command, so the pane's process is still the command itself.
 func launchArgv(w Window, shell string) []string {
 	clean := []string{"env"}
-	for _, key := range git.RepositoryEnvVars() {
+	for _, key := range tsexec.RepositoryEnvVars() {
 		clean = append(clean, "-u", key)
 	}
 	return append(append(clean, w.Env...), commandArgv(w, shell)...)
@@ -170,6 +173,20 @@ func missingWindows(st SessionState, windows []Window) []Window {
 		}
 	}
 	return missing
+}
+
+// attachTerminal runs argv on this terminal until it exits. It bypasses the
+// Runner, which captures output instead of handing the terminal over.
+func attachTerminal(ctx context.Context, argv []string) error {
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	cmd.Env = tsexec.RepositoryEnv(cmd.Environ())
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	return cmd.Run()
+}
+
+// missingSession is Attach's error for a session that isn't there.
+func missingSession(multiplexer, session string) error {
+	return fmt.Errorf("no %s session %q; run tspace start first", multiplexer, session)
 }
 
 // checkOpen refuses to open w unless its session exists and has no window of

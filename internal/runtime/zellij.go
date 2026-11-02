@@ -7,14 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	osexec "os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	tsexec "github.com/wuyuz99/taskspace/internal/exec"
-	"github.com/wuyuz99/taskspace/internal/git"
 )
 
 // Zellij implements Runtime on top of zellij (0.44 or later, for
@@ -56,7 +54,7 @@ func NewZellij(r tsexec.Runner) *Zellij {
 }
 
 func (z *Zellij) zellij(ctx context.Context, args ...string) (tsexec.Result, error) {
-	return z.run.Run(tsexec.WithEnv(ctx, git.RepositoryEnv(os.Environ())), "", append([]string{"zellij"}, args...)...)
+	return z.run.Run(tsexec.WithoutRepositoryEnv(ctx), "", append([]string{"zellij"}, args...)...)
 }
 
 // action runs a CLI action against one session. The session is always named:
@@ -250,7 +248,7 @@ func (z *Zellij) detached(ctx context.Context, args ...string) (tsexec.Result, e
 		return z.zellij(ctx, args...)
 	}
 	argv := append([]string{"env", "-u", "ZELLIJ", "-u", "ZELLIJ_SESSION_NAME", "-u", "ZELLIJ_PANE_ID", "zellij"}, args...)
-	return z.run.Run(tsexec.WithEnv(ctx, git.RepositoryEnv(os.Environ())), "", argv...)
+	return z.run.Run(tsexec.WithoutRepositoryEnv(ctx), "", argv...)
 }
 
 // layoutTimeout bounds the wait for a new session to apply its layout.
@@ -434,11 +432,9 @@ func (z *Zellij) Stop(ctx context.Context, session string) error {
 			interrupted = true
 		}
 	}
-	if interrupted && z.StopGrace > 0 {
-		select {
-		case <-time.After(z.StopGrace):
-		case <-ctx.Done():
-			return ctx.Err()
+	if interrupted {
+		if err := waitForExit(ctx, z.StopGrace); err != nil {
+			return err
 		}
 	}
 	if _, err := z.zellij(ctx, "kill-session", session); err != nil {
@@ -467,7 +463,7 @@ func (z *Zellij) Attach(ctx context.Context, session string) error {
 		return err
 	}
 	if !exists {
-		return fmt.Errorf("no zellij session %q; run tspace start first", session)
+		return missingSession("zellij", session)
 	}
 	window := z.takeSelected(session)
 	if current, inside := insideZellij(); inside {
@@ -486,9 +482,6 @@ func (z *Zellij) Attach(ctx context.Context, session string) error {
 		}
 		return nil
 	}
-	cmd := osexec.CommandContext(ctx, "zellij", "attach", session)
-	cmd.Env = git.RepositoryEnv(cmd.Environ())
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if window != "" {
 		// Clients already attached elsewhere are not ours: wait for one more.
 		if before, err := z.clients(ctx, session); err == nil {
@@ -497,7 +490,7 @@ func (z *Zellij) Attach(ctx context.Context, session string) error {
 			go z.focusWhenAttached(fctx, session, window, before)
 		}
 	}
-	if err := cmd.Run(); err != nil {
+	if err := attachTerminal(ctx, []string{"zellij", "attach", session}); err != nil {
 		return fmt.Errorf("attach to %s: %w", session, err)
 	}
 	return nil
@@ -689,14 +682,7 @@ func paneState(session string, panes []zellijPane, exists bool) SessionState {
 		if !p.Exited {
 			command = commandName(p.PaneCommand)
 		}
-		if prev, ok := st.Panes[p.TabName]; ok {
-			if command == "" {
-				command = prev.Command
-			}
-			st.Panes[p.TabName] = PaneState{Window: p.TabName, Dead: prev.Dead && p.Exited, Command: command}
-			continue
-		}
-		st.Panes[p.TabName] = PaneState{Window: p.TabName, Dead: p.Exited, Command: command}
+		st.Panes[p.TabName] = mergePane(st.Panes, PaneState{Window: p.TabName, Dead: p.Exited, Command: command})
 	}
 	return st
 }

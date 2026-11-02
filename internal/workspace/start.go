@@ -7,10 +7,9 @@ import (
 	"os"
 	osexec "os/exec"
 	"slices"
-	"strings"
 	"time"
 
-	"github.com/wuyuz99/taskspace/internal/git"
+	tsexec "github.com/wuyuz99/taskspace/internal/exec"
 	"github.com/wuyuz99/taskspace/internal/runtime"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
@@ -457,16 +456,7 @@ func (s *Service) RunPostCreate(ctx context.Context, t *task.Task, name string, 
 	cmd := osexec.CommandContext(ctx, "sh", "-c", r.PostCreate)
 	cmd.Dir = r.Worktree
 	cmd.Stdout, cmd.Stderr = s.Stdout, s.Stderr
-	cmd.Env = append(git.RepositoryEnv(cmd.Environ()),
-		EnvTask+"="+t.Name,
-		EnvWindow+"=",
-		task.EnvRoot+"="+s.Store.Root(),
-		"TSPACE_REPO="+name,
-		"TSPACE_REPO_PATH="+r.Path,
-		"TSPACE_WORKTREE="+r.Worktree,
-		"TSPACE_TASK_DIR="+s.Store.TaskDir(t.Name),
-		"TSPACE_CONTEXT_DIR="+s.Store.ContextDir(t.Name),
-	)
+	cmd.Env = append(tsexec.RepositoryEnv(cmd.Environ()), RepoEnv(s.Store, t, name, r)...)
 	// The hook runs while start holds the task, so a tspace it runs on the
 	// task inherits the lock instead of waiting for start, which waits for it.
 	if l := s.Store.HeldLock(ctx, t.Name); l != nil {
@@ -482,8 +472,7 @@ func selectRepos(t *task.Task, names []string) ([]string, error) {
 	}
 	for _, name := range names {
 		if _, ok := t.Repo(name); !ok {
-			return nil, fmt.Errorf("task %q has no repo named %q (has: %s)",
-				t.Name, name, strings.Join(t.RepoNames(), ", "))
+			return nil, t.NoRepo(name)
 		}
 	}
 	return names, nil

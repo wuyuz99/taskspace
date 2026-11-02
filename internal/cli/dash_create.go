@@ -3,7 +3,6 @@ package cli
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -87,11 +86,9 @@ func (m dashModel) create(f *dashForm) tea.Cmd {
 	}
 	return func() tea.Msg {
 		var out, warn bytes.Buffer
-		sub := *m.app
-		sub.Out, sub.Err, sub.hookOut = &out, &warn, io.Discard
-		sub.noWait = true
+		sub, ws := m.quiet(&out, &warn)
 		existed := m.app.Store.Exists(name)
-		err := sub.createTask(m.ctx, sub.workspace(), opts)
+		err := sub.createTask(m.ctx, ws, opts)
 		msg := dashDoneMsg{err: err}
 		if existed || !m.app.Store.Exists(name) {
 			return msg
