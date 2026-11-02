@@ -15,6 +15,10 @@ import (
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
+// The types here are the contract of `tspace status --json`, written out
+// rather than borrowed from status and task, so that changing those cannot
+// change it; see docs/FORMATS.md and testdata/status.json.
+
 // statusJSON is one task in `tspace status --json`.
 type statusJSON struct {
 	Task         string           `json:"task"`
@@ -37,9 +41,9 @@ type statusWindowJSON struct {
 }
 
 type statusRootJSON struct {
-	Agent   string       `json:"agent"`
-	Runtime string       `json:"runtime"`
-	Signal  *task.Signal `json:"signal,omitempty"`
+	Agent   string            `json:"agent"`
+	Runtime string            `json:"runtime"`
+	Signal  *statusSignalJSON `json:"signal,omitempty"`
 	statusPaneJSON
 }
 
@@ -50,11 +54,37 @@ type statusPaneJSON struct {
 	Output time.Time `json:"output_at,omitzero"`
 	// AgentState is the most trusted of the signal, the bell and a long
 	// silence, with which one it was.
-	AgentState *status.Report `json:"agent_state,omitempty"`
+	AgentState *statusReportJSON `json:"agent_state,omitempty"`
+}
+
+// statusSignalJSON is what an agent last reported with `tspace signal`.
+type statusSignalJSON struct {
+	State   string    `json:"state"`
+	Message string    `json:"message,omitempty"`
+	At      time.Time `json:"at"`
+}
+
+func signalJSON(s *task.Signal) *statusSignalJSON {
+	if s == nil {
+		return nil
+	}
+	return &statusSignalJSON{State: string(s.State), Message: s.Message, At: s.At}
+}
+
+// statusReportJSON is the agent_state of a window.
+type statusReportJSON struct {
+	State   string    `json:"state"`
+	Source  string    `json:"source"`
+	At      time.Time `json:"at,omitzero"`
+	Message string    `json:"message,omitempty"`
 }
 
 func paneJSON(p runtime.PaneState, r *status.Report) statusPaneJSON {
-	return statusPaneJSON{Bell: p.Bell, Output: p.Output, AgentState: r}
+	out := statusPaneJSON{Bell: p.Bell, Output: p.Output}
+	if r != nil {
+		out.AgentState = &statusReportJSON{State: string(r.State), Source: string(r.Source), At: r.At, Message: r.Message}
+	}
+	return out
 }
 
 type statusRepoJSON struct {
@@ -75,7 +105,7 @@ type statusRepoJSON struct {
 	Unpushed   int    `json:"unpushed"`
 	Error      string `json:"error,omitempty"`
 	// Signal is what the agent last reported with `tspace signal`.
-	Signal *task.Signal `json:"signal,omitempty"`
+	Signal *statusSignalJSON `json:"signal,omitempty"`
 	statusPaneJSON
 }
 
@@ -109,7 +139,7 @@ func (a *App) printStatusJSON(tasks []*task.Task, results []status.TaskStatus) e
 		}
 		// A single-repo task has no root window: "root" is null.
 		if ts.Root != nil {
-			row.Root = &statusRootJSON{Agent: ts.Root.Agent, Runtime: jsonRuntime(ts.Root.Runtime), Signal: ts.Root.Signal,
+			row.Root = &statusRootJSON{Agent: ts.Root.Agent, Runtime: jsonRuntime(ts.Root.Runtime), Signal: signalJSON(ts.Root.Signal),
 				statusPaneJSON: paneJSON(ts.Root.Pane, ts.Root.Report)}
 		}
 		if ts.RuntimeErr != nil {
@@ -132,7 +162,7 @@ func (a *App) printStatusJSON(tasks []*task.Task, results []status.TaskStatus) e
 				Ahead:      r.Detail.Ahead,
 				Behind:     r.Detail.Behind,
 				Unpushed:   r.Unpushed,
-				Signal:     r.Signal,
+				Signal:     signalJSON(r.Signal),
 
 				statusPaneJSON: paneJSON(r.Pane, r.Report),
 			}

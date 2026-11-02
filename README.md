@@ -151,6 +151,7 @@ application resources; see [service isolation](docs/WORKFLOWS.md#application-and
 | tmux, zellij and custom adapters | [Multiplexers](docs/MULTIPLEXERS.md) |
 | Moving between a task's tmux windows | [Task window navigation](docs/TMUX_NAVIGATION.md) |
 | Status, signals, dashboard and troubleshooting | [Status guide](docs/STATUS.md) |
+| What `status --json`, task records and adapters can rely on | [Formats](docs/FORMATS.md) |
 | Cleanup protections | [Safety](docs/SAFETY.md) |
 | Full command surface | [Command reference](docs/COMMANDS.md) |
 | Tests, demo playground and WSL development | [Development](docs/DEVELOPMENT.md) |

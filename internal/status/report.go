@@ -45,12 +45,12 @@ const (
 // doing", from the most trusted source that has something to say, and says
 // which source that was.
 type Report struct {
-	State  ReportState `json:"state"`
-	Source Source      `json:"source"`
+	State  ReportState
+	Source Source
 	// At is when the agent signalled, or for the multiplexer's sources when
 	// the window last printed. It is zero when that is not known.
-	At      time.Time `json:"at,omitzero"`
-	Message string    `json:"message,omitempty"`
+	At      time.Time
+	Message string
 }
 
 // Published is what an agent says about itself through an interface of its

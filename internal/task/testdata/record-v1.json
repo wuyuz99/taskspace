@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "name": "PAY-142",
+  "repos": {
+    "api": {
+      "path": "/src/api",
+      "branch": "agent/PAY-142",
+      "base": "origin/main",
+      "worktree": "/w/PAY-142/api",
+      "post_create": "make setup",
+      "agent": ["codex"],
+      "resume": ["codex", "resume", "--last"]
+    }
+  },
+  "title": "Refund flow",
+  "ticket": "PAY-142",
+  "ticket_url": "https://example.invalid/PAY-142",
+  "agent": ["claude"],
+  "resume": ["claude", "--continue"],
+  "agent_repo": "api",
+  "root_window": true
+}

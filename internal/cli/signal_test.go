@@ -121,10 +121,10 @@ func TestStatusShowsSignalsOnlyWhenThereAreSome(t *testing.T) {
 	if err := json.Unmarshal(h.out.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if s := got[0].Repos[0].Signal; s == nil || s.State != task.SignalBlocked || s.Message != "which column?" || got[0].Root.Signal != nil {
+	if s := got[0].Repos[0].Signal; s == nil || s.State != string(task.SignalBlocked) || s.Message != "which column?" || got[0].Root.Signal != nil {
 		t.Fatalf("json: %s", h.out.String())
 	}
-	if r := got[0].Repos[0].AgentState; r == nil || r.Source != status.SourceSignal || r.State != "blocked" || r.Message != "which column?" || got[0].Root.AgentState != nil {
+	if r := got[0].Repos[0].AgentState; r == nil || r.Source != string(status.SourceSignal) || r.State != "blocked" || r.Message != "which column?" || got[0].Root.AgentState != nil {
 		t.Fatalf("json agent_state: %s", h.out.String())
 	}
 }
@@ -439,10 +439,10 @@ func TestStatusAndDashReadTheMultiplexer(t *testing.T) {
 	if err := json.Unmarshal(h.out.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if s := got[0].Root.AgentState; s == nil || s.Source != status.SourceBell || !got[0].Root.Bell {
+	if s := got[0].Root.AgentState; s == nil || s.Source != string(status.SourceBell) || !got[0].Root.Bell {
 		t.Fatalf("root json: %s", h.out.String())
 	}
-	if s := got[0].Repos[0].AgentState; s == nil || s.Source != status.SourceSilence || got[0].Repos[0].Output.IsZero() {
+	if s := got[0].Repos[0].AgentState; s == nil || s.Source != string(status.SourceSilence) || got[0].Repos[0].Output.IsZero() {
 		t.Fatalf("repo json: %s", h.out.String())
 	}
 

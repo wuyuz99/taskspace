@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "name": "PAY-142",
+  "repos": {
+    "api": {
+      "path": "/src/api",
+      "branch": "agent/PAY-142",
+      "base": "origin/main",
+      "worktree": "/w/PAY-142/api"
+    }
+  },
+  "windows": [
+    {
+      "name": "mon",
+      "repo": "api",
+      "command": ["top"]
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "version": 3,
+  "name": "PAY-142",
+  "repos": {
+    "api": {
+      "path": "/src/api",
+      "branch": "feature/x",
+      "base": "origin/main",
+      "base_assumed": true,
+      "worktree": "/w/PAY-142/api"
+    }
+  }
+}

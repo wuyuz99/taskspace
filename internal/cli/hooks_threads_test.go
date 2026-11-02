@@ -278,7 +278,7 @@ func TestSignalRefusesConditionsThatMakeNoSense(t *testing.T) {
 
 // The owner is tspace's bookkeeping between hooks, not part of status --json.
 func TestSignalOwnerStaysOutOfJSON(t *testing.T) {
-	b, err := json.Marshal(task.Signal{State: task.SignalBlocked, Owner: "a1"})
+	b, err := json.Marshal(signalJSON(&task.Signal{State: task.SignalBlocked, Owner: "a1"}))
 	if err != nil {
 		t.Fatal(err)
 	}

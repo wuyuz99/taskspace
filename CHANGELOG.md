@@ -15,6 +15,12 @@ upgrade.
 - dash's key legend wraps instead of being cut at the terminal's width (#168).
 - `tspace config` commands run at once no longer lose one another's changes (#170).
 
+### Added
+
+- [Formats](docs/FORMATS.md) says what `status --json`, task records and the
+  adapter protocol promise: they only change in ways older readers can still
+  read (#176).
+
 ### Changed
 
 - dash's key legend shows only the common keys, and `?` shows every key, grouped
