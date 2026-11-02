@@ -94,7 +94,9 @@ func (a *App) runDash(ctx context.Context, interval time.Duration) error {
 
 // dashRow is one window: a task's root, or one of its repositories.
 type dashRow struct {
-	Summary int // number of windows represented by a collapsed task
+	// Windows is set on a collapsed task: every window it stands for. The
+	// row's own fields are its primary window's, with the worst state of all.
+	Windows []dashRow
 	Task    string
 	Window  string // a repository name, or task.RootWindowName
 	Branch  string
@@ -115,6 +117,19 @@ type dashRow struct {
 }
 
 func (r dashRow) root() bool { return r.Window == task.RootWindowName }
+
+// collapsed says the row is a whole task.
+func (r dashRow) collapsed() bool { return len(r.Windows) > 0 }
+
+// primary is the window a collapsed task's enter, s and x act on, as it is.
+func (r dashRow) primary() dashRow {
+	for _, w := range r.Windows {
+		if w.Window == r.Window {
+			return w
+		}
+	}
+	return r
+}
 
 // extra says the row is a window opened with `tspace window`.
 func (r dashRow) extra() bool { return task.IsExtraWindow(r.Window) }
@@ -259,7 +274,8 @@ type dashConfirm struct {
 }
 
 type dashModel struct {
-	rawRows  []dashRow
+	// windows is every window row, before tasks are collapsed.
+	windows  []dashRow
 	expanded map[string]bool
 	ctx      context.Context
 	app      *App
@@ -327,8 +343,8 @@ func (m dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The cursor follows its row, not its position: tasks come and go.
 		prev, had := m.selected()
 		m.data, m.loaded, m.loading = dashData(msg), true, false
-		m.rawRows = append([]dashRow(nil), m.data.Rows...)
-		m.data.Rows = collapseDashRows(m.rawRows, m.expanded)
+		m.windows = append([]dashRow(nil), m.data.Rows...)
+		m.data.Rows = collapseDashRows(m.windows, m.expanded)
 		// A refresh begun before the delete may still show the task.
 		present := func(name string) bool {
 			return slices.ContainsFunc(m.data.Rows, func(r dashRow) bool { return r.Task == name })
@@ -503,15 +519,10 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	// Summary state describes the whole task, but attach/start/stop target
-	// its chosen primary window. A missing sibling must not block attachment.
-	if row.Summary > 1 {
-		for _, original := range m.rawRows {
-			if original.Task == row.Task && original.Window == row.Window {
-				row.Runtime = original.Runtime
-				break
-			}
-		}
+	// A collapsed task shows the worst of its windows, but attach, start and
+	// stop act on its primary window: a missing sibling must not block them.
+	if row.collapsed() {
+		row.Runtime = row.primary().Runtime
 	}
 	m.noteErr = false
 	switch msg.String() {
@@ -526,7 +537,7 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if msg.String() == "left" {
 			m.expanded[row.Task] = false
 		}
-		m.data.Rows = collapseDashRows(m.rawRows, m.expanded)
+		m.data.Rows = collapseDashRows(m.windows, m.expanded)
 		for i, r := range m.data.Rows {
 			if r.Task == row.Task {
 				m.cursor = i
@@ -626,7 +637,7 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			"deleted "+row.Task+"; its branches are kept, with no task referring to them")
 	case "-", "m":
 		switch {
-		case row.Summary > 1:
+		case row.collapsed():
 			m.note = "expand the task with space to choose a repository"
 			return m, nil
 		case row.root():
@@ -668,7 +679,7 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "W":
 		switch {
-		case !row.extra() || row.Summary > 1:
+		case !row.extra() || row.collapsed():
 			m.note = "W saves an extra window; select its row"
 		case row.Saved:
 			m.note = row.label() + " is already saved"
@@ -679,7 +690,7 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "c":
-		if row.Summary > 1 {
+		if row.collapsed() {
 			m.note = "expand the task with space to clear a window's signal"
 			return m, nil
 		}
@@ -698,7 +709,7 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // interrupted counts the tasks shown as interrupted.
 func (m dashModel) interrupted() int {
 	seen := map[string]bool{}
-	for _, r := range m.rawRows {
+	for _, r := range m.windows {
 		if r.Runtime == status.RuntimeInterrupted {
 			seen[r.Task] = true
 		}
@@ -1027,11 +1038,9 @@ func (m dashModel) table(b *strings.Builder, now time.Time, shrink int) {
 		if r.Saved {
 			repo += " (saved)"
 		}
-		if r.Summary > 1 {
-			repo = fmt.Sprintf("(%d windows)", r.Summary)
-		}
 		git := r.Git
-		if r.Summary > 1 {
+		if r.collapsed() {
+			repo = fmt.Sprintf("(%d windows)", len(r.Windows))
 			git = rollupText(m.data.Tasks[r.Task].Rollup)
 		}
 		cells = append(cells, []string{name, repo, r.Agent, string(r.Runtime), reportSummary(r.Report, now), git})

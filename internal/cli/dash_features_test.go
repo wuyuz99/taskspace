@@ -21,7 +21,7 @@ func TestDashCollapseAndExpand(t *testing.T) {
 	}
 	m := newDashModel(t.Context(), nil, time.Second)
 	m = drive(t, m, dashDataMsg(dashData{Rows: rows}))
-	if len(m.data.Rows) != 3 || m.data.Rows[0].Summary != 2 || m.data.Rows[0].Window != task.RootWindowName {
+	if len(m.data.Rows) != 3 || len(m.data.Rows[0].Windows) != 2 || m.data.Rows[0].Window != task.RootWindowName {
 		t.Fatalf("rows %+v", m.data.Rows)
 	}
 	m = drive(t, m, key(" "))

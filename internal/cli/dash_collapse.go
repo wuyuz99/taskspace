@@ -95,7 +95,7 @@ func collapseDashRows(rows []dashRow, expanded map[string]bool) []dashRow {
 				break
 			}
 		}
-		summary.Summary = len(group)
+		summary.Windows = group
 		for _, r := range group {
 			if !r.extra() && runtimeUrgency(r.Runtime) > runtimeUrgency(summary.Runtime) {
 				summary.Runtime = r.Runtime

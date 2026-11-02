@@ -169,7 +169,7 @@ func TestDashCollapseIgnoresExtraWindowState(t *testing.T) {
 		{Task: "A", Window: "_test", Runtime: status.RuntimeDead},
 	}
 	got := collapseDashRows(rows, nil)
-	if len(got) != 1 || got[0].Summary != 4 || got[0].Runtime != status.RuntimeRunning {
+	if len(got) != 1 || len(got[0].Windows) != 4 || got[0].Runtime != status.RuntimeRunning {
 		t.Fatalf("rows %+v", got)
 	}
 }
