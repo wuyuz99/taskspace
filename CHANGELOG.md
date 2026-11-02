@@ -14,6 +14,10 @@ upgrade.
   instead of being written over its screen (#167).
 - dash's key legend wraps instead of being cut at the terminal's width (#168).
 - `tspace config` commands run at once no longer lose one another's changes (#170).
+- On zellij, a held pane is recognized by its directory, environment and
+  command alone, so a change to the Git variables tspace clears no longer makes
+  `restart` replace its tab (#136). Panes held from before this release count
+  as changed once.
 
 ### Removed
 
