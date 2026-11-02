@@ -7,19 +7,20 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wuyuz99/taskspace/internal/agents"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
 func TestHooksUpgradeAndRecoverAfterPermission(t *testing.T) {
 	for _, tc := range []struct {
-		agent  hookAgent
+		agent  agents.HookAgent
 		resume []string
 		stop   string
 	}{
-		{claudeAgent, []string{"PostToolUse", "PostToolUseFailure"}, "Stop"},
-		{geminiAgent, []string{"AfterTool"}, "AfterAgent"},
+		{agents.Claude, []string{"PostToolUse", "PostToolUseFailure"}, "Stop"},
+		{agents.Gemini, []string{"AfterTool"}, "AfterAgent"},
 	} {
-		t.Run(tc.agent.name, func(t *testing.T) {
+		t.Run(tc.agent.Name, func(t *testing.T) {
 			h := newHarness(t)
 			tk := h.startedRootTask(t, "recover")
 			chdir(t, h.app.Store.TaskDir(tk.Name))
@@ -28,9 +29,9 @@ func TestHooksUpgradeAndRecoverAfterPermission(t *testing.T) {
 			// events: upgrading must preserve them, and removal must too.
 			hooks := map[string]any{}
 			for _, event := range tc.resume {
-				hooks[event] = []hookGroup{{Hooks: []hookCommand{{Type: "command", Command: "audit"}}}}
+				hooks[event] = []agents.HookGroup{{Hooks: []agents.HookCommand{{Type: "command", Command: "audit"}}}}
 			}
-			hooks["Notification"] = []hookGroup{{Hooks: []hookCommand{{Type: "command", Command: "tspace signal --quiet blocked"}}}}
+			hooks["Notification"] = []agents.HookGroup{{Hooks: []agents.HookCommand{{Type: "command", Command: "tspace signal --quiet blocked"}}}}
 			b, err := json.Marshal(map[string]any{"hooks": hooks})
 			if err != nil {
 				t.Fatal(err)
@@ -40,7 +41,7 @@ func TestHooksUpgradeAndRecoverAfterPermission(t *testing.T) {
 			}
 			install := func(remove bool) {
 				t.Helper()
-				args := []string{"hooks", tc.agent.name, "--settings", path}
+				args := []string{"hooks", tc.agent.Name, "--settings", path}
 				if remove {
 					args = append(args, "--remove")
 				}

@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/wuyuz99/taskspace/internal/fspath"
+	"github.com/wuyuz99/taskspace/internal/jsonedit"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
@@ -109,18 +110,18 @@ func (a *App) writeCodeWorkspace(t *task.Task) (string, error) {
 	}
 	folders = append(folders, workspaceFolder{Name: notesFolder, Path: "."})
 
-	doc := &object{}
+	doc := &jsonedit.Object{}
 	b, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return "", err
 	}
 	b = bytes.TrimPrefix(b, []byte("\xef\xbb\xbf"))
 	if len(bytes.TrimSpace(b)) > 0 {
-		if doc, err = parseObject(b); err != nil {
+		if doc, err = jsonedit.Parse(b); err != nil {
 			return "", fmt.Errorf("%s is not plain JSON (%v), so tspace leaves it alone; remove it to have it written again", path, err)
 		}
 		// Folders the user added from outside the task stay, after tspace's.
-		if raw, ok := doc.get("folders"); ok {
+		if raw, ok := doc.Get("folders"); ok {
 			var had []workspaceFolder
 			if err := json.Unmarshal(raw, &had); err == nil {
 				taskDir := a.Store.TaskDir(t.Name)
@@ -136,22 +137,22 @@ func (a *App) writeCodeWorkspace(t *task.Task) (string, error) {
 			}
 		}
 	}
-	raw, err := marshalPlain(folders)
+	raw, err := jsonedit.MarshalPlain(folders)
 	if err != nil {
 		return "", err
 	}
-	if old, ok := doc.get("folders"); ok {
-		if same, err := sameJSON(old, raw); err == nil && same {
+	if old, ok := doc.Get("folders"); ok {
+		if same, err := jsonedit.Same(old, raw); err == nil && same {
 			return path, nil // nothing to change, so nothing is rewritten
 		}
 	}
-	doc.set("folders", raw)
+	doc.Set("folders", raw)
 	var out bytes.Buffer
-	if err := json.Indent(&out, doc.marshal(), "", "\t"); err != nil {
+	if err := json.Indent(&out, doc.Marshal(), "", "\t"); err != nil {
 		return "", err
 	}
 	out.WriteByte('\n')
-	if err := writeFileAtomic(path, out.Bytes()); err != nil {
+	if err := task.ReplaceFile(path, out.Bytes()); err != nil {
 		return "", err
 	}
 	return path, nil

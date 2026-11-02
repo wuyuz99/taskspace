@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wuyuz99/taskspace/internal/agents"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
@@ -30,7 +31,9 @@ func TestCodexDocumentedHooks(t *testing.T) {
 		t.Fatal("unclosed recipe JSON")
 	}
 	var recipe struct {
-		Hooks map[string][]hookGroup `json:"hooks"`
+		Hooks map[string][]struct {
+			Hooks []struct{ Command string } `json:"hooks"`
+		} `json:"hooks"`
 	}
 	if err := json.Unmarshal([]byte(section), &recipe); err != nil {
 		t.Fatal(err)
@@ -38,11 +41,11 @@ func TestCodexDocumentedHooks(t *testing.T) {
 	if len(recipe.Hooks) != 4 {
 		t.Fatalf("want four events, got %d", len(recipe.Hooks))
 	}
-	agent := hookAgent{name: "codex"}
+	agent := agents.HookAgent{Name: "codex"}
 	for event, groups := range recipe.Hooks {
 		for _, group := range groups {
 			for _, command := range group.Hooks {
-				agent.hooks = append(agent.hooks, signalHook{event: event, command: command.Command})
+				agent.Hooks = append(agent.Hooks, agents.SignalHook{Event: event, Command: command.Command})
 			}
 		}
 	}
