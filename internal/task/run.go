@@ -65,12 +65,8 @@ func (s *Store) RememberWindow(taskName string, w Window) error {
 	if err != nil {
 		return fmt.Errorf("record window: %w", err)
 	}
-	p := s.openedWindowPath(taskName, w.Name)
-	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-		return fmt.Errorf("record window: %w", err)
-	}
 	// A typed command can hold a secret; the record is private for the same reason.
-	if err := os.WriteFile(p, b, 0o600); err != nil {
+	if err := WriteFileAtomic(s.openedWindowPath(taskName, w.Name), b, 0o600); err != nil {
 		return fmt.Errorf("record window: %w", err)
 	}
 	return nil
@@ -150,10 +146,9 @@ func (s *Store) MarkRunning(taskName string, r Running) error {
 	if err != nil {
 		return fmt.Errorf("record start: %w", err)
 	}
-	if err := os.MkdirAll(s.RunDir(taskName), 0o755); err != nil {
-		return fmt.Errorf("record start: %w", err)
-	}
-	if err := os.WriteFile(s.runningPath(taskName), b, 0o644); err != nil {
+	// Atomic and synced: this is read after a machine goes down, and a torn
+	// file would read as the whole task.
+	if err := WriteFileAtomic(s.runningPath(taskName), b, 0o644); err != nil {
 		return fmt.Errorf("record start: %w", err)
 	}
 	return nil

@@ -203,42 +203,15 @@ func (s *Store) Save(t *Task) error {
 	if err := s.upgrade(t); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(s.TasksDir(), 0o755); err != nil {
-		return fmt.Errorf("create %s: %w", s.TasksDir(), err)
-	}
-
 	data, err := json.MarshalIndent(t, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode task %q: %w", t.Name, err)
 	}
 	data = append(data, '\n')
 
-	final := s.path(t.Name)
-	tmp, err := os.CreateTemp(s.TasksDir(), "."+t.Name+".*.tmp")
-	if err != nil {
-		return fmt.Errorf("create temp file for task %q: %w", t.Name, err)
-	}
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName) // no-op once the rename succeeds
-
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return fmt.Errorf("write task %q: %w", t.Name, err)
-	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		return fmt.Errorf("sync task %q: %w", t.Name, err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close temp file for task %q: %w", t.Name, err)
-	}
-	// 0600, not 0644: a task record now carries the brief and handoff the user
-	// wrote, and CreatePrepared already publishes at 0600. Matching it here
-	// stops a record's mode from widening on its first update.
-	if err := os.Chmod(tmpName, 0o600); err != nil {
-		return fmt.Errorf("chmod task %q: %w", t.Name, err)
-	}
-	if err := os.Rename(tmpName, final); err != nil {
+	// 0600: the record can hold commands, and CreatePrepared publishes at 0600
+	// too, so a record's mode never widens on its first update.
+	if err := WriteFileAtomic(s.path(t.Name), data, 0o600); err != nil {
 		return fmt.Errorf("commit task %q: %w", t.Name, err)
 	}
 	return nil

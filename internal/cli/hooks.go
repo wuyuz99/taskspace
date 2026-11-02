@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/wuyuz99/taskspace/internal/task"
 )
 
 // signalHook is one of an agent's hook events tspace listens to, and the
@@ -485,31 +486,12 @@ func (o *object) marshal() []byte {
 	return b.Bytes()
 }
 
-// writeFileAtomic replaces path through a temporary file beside it, keeping
-// the old file's permissions, so a crash never leaves half a settings file.
+// writeFileAtomic replaces path, keeping the old file's permissions, so a
+// crash never leaves half a settings file.
 func writeFileAtomic(path string, data []byte) error {
 	mode := fs.FileMode(0o644)
 	if info, err := os.Stat(path); err == nil {
 		mode = info.Mode().Perm()
 	}
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".*.tmp")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	if err := os.Chmod(tmp.Name(), mode); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), path)
+	return task.WriteFileAtomic(path, data, mode)
 }

@@ -98,24 +98,10 @@ func (s *Store) WriteOwnedSignal(taskName, window string, state SignalState, mes
 	if err != nil {
 		return err
 	}
-	dir := s.SignalsDir(taskName)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("create %s: %w", dir, err)
-	}
-	// Through a temp file, so a reader never sees half a signal.
-	tmp, err := os.CreateTemp(dir, "."+window+".*.tmp")
-	if err != nil {
-		return fmt.Errorf("write signal: %w", err)
-	}
-	defer os.Remove(tmp.Name())
-	if _, err := tmp.Write(append(b, '\n')); err != nil {
-		tmp.Close()
-		return fmt.Errorf("write signal: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("write signal: %w", err)
-	}
-	if err := os.Rename(tmp.Name(), s.SignalPath(taskName, window)); err != nil {
+	// Through a temp file, so a reader never sees half a signal. Not synced: a
+	// hook runs on every tool, and a signal lost to a crash described an agent
+	// the crash ended.
+	if err := writeFile(s.SignalPath(taskName, window), append(b, '\n'), 0o600, false); err != nil {
 		return fmt.Errorf("write signal: %w", err)
 	}
 	return nil

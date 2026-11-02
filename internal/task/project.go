@@ -176,31 +176,19 @@ func publishJSON(path string, value any, replace bool) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return err
-	}
-	f, err := os.CreateTemp(filepath.Dir(path), ".publish-*.tmp")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(f.Name())
-	if _, err := f.Write(append(b, '\n')); err != nil {
-		f.Close()
-		return err
-	}
-	if err := f.Sync(); err != nil {
-		f.Close()
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
+	b = append(b, '\n')
 	if replace {
-		err = os.Rename(f.Name(), path)
-	} else {
-		err = os.Link(f.Name(), path)
+		if err := WriteFileAtomic(path, b, 0o600); err != nil {
+			return fmt.Errorf("save %s: %w", path, err)
+		}
+		return nil
 	}
+	tmp, err := writeTemp(path, b, 0o600, true)
 	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp)
+	if err := os.Link(tmp, path); err != nil {
 		return fmt.Errorf("save %s: %w", path, err)
 	}
 	return nil
