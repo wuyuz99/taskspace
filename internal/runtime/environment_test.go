@@ -10,7 +10,6 @@ import (
 	"time"
 
 	tsexec "github.com/wuyuz99/taskspace/internal/exec"
-	"github.com/wuyuz99/taskspace/internal/git"
 )
 
 // Run a real child using the context passed to each backend's runner.
@@ -21,7 +20,7 @@ func (p environmentProbe) Run(ctx context.Context, _ string, _ ...string) (tsexe
 	if err != nil {
 		p.t.Fatal(err)
 	}
-	for _, key := range git.RepositoryEnvVars() {
+	for _, key := range tsexec.RepositoryEnvVars() {
 		if strings.Contains("\n"+res.Stdout, "\n"+key+"=") {
 			p.t.Errorf("runtime child inherited %s", key)
 		}
@@ -33,7 +32,7 @@ func (p environmentProbe) Run(ctx context.Context, _ string, _ ...string) (tsexe
 }
 
 func TestRuntimeProcessesClearRepositoryEnvironment(t *testing.T) {
-	for _, key := range git.RepositoryEnvVars() {
+	for _, key := range tsexec.RepositoryEnvVars() {
 		t.Setenv(key, "poison")
 	}
 	t.Setenv("GIT_SSH_COMMAND", "ssh custom")
@@ -52,14 +51,14 @@ func TestRuntimeProcessesClearRepositoryEnvironment(t *testing.T) {
 
 func cleanLaunchPrefix() string {
 	argv := []string{"env"}
-	for _, key := range git.RepositoryEnvVars() {
+	for _, key := range tsexec.RepositoryEnvVars() {
 		argv = append(argv, "-u", key)
 	}
 	return strings.Join(argv, " ")
 }
 
 func TestLaunchClearsServerRepositoryEnvironment(t *testing.T) {
-	for _, key := range git.RepositoryEnvVars() {
+	for _, key := range tsexec.RepositoryEnvVars() {
 		t.Setenv(key, "poison")
 	}
 	t.Setenv("GIT_SSH_COMMAND", "ssh custom")
@@ -73,7 +72,7 @@ func TestLaunchClearsServerRepositoryEnvironment(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, key := range git.RepositoryEnvVars() {
+		for _, key := range tsexec.RepositoryEnvVars() {
 			if strings.Contains("\n"+string(out), "\n"+key+"=") {
 				t.Fatalf("inherited %s: %s", key, out)
 			}

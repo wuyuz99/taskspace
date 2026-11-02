@@ -6,6 +6,7 @@ import (
 
 	"github.com/wuyuz99/taskspace/internal/status"
 	"github.com/wuyuz99/taskspace/internal/task"
+	"github.com/wuyuz99/taskspace/internal/workspace"
 )
 
 // reportUrgency and runtimeUrgency rank states by how much they need a
@@ -51,7 +52,7 @@ func rollupText(r status.Rollup) string {
 	if r.Repos == 0 {
 		return "-"
 	}
-	parts := []string{fmt.Sprintf("%d repo%s", r.Repos, plural(r.Repos))}
+	parts := []string{fmt.Sprintf("%d repo%s", r.Repos, workspace.Plural(r.Repos))}
 	for _, c := range []struct {
 		n    int
 		word string

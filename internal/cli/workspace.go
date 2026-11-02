@@ -20,17 +20,13 @@ func (a *App) workspaceFor(cmd *cobra.Command) *workspace.Service {
 // workspace is the lifecycle service over this App's store, git and runtime,
 // reporting to its output.
 func (a *App) workspace() *workspace.Service {
-	stdout, stderr := a.Out, a.Err
-	if a.hookOut != nil {
-		stdout, stderr = a.hookOut, a.hookOut
-	}
 	return &workspace.Service{
 		Store:    a.Store,
 		Git:      a.Git,
 		Runtime:  a.Runtime,
 		Settle:   a.settle,
-		Stdout:   stdout,
-		Stderr:   stderr,
+		Stdout:   a.Out,
+		Stderr:   a.Err,
 		Progress: a.render,
 		NoWait:   a.noWait,
 		Carriers: conversationCarriers,

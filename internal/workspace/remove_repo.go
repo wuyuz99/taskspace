@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/wuyuz99/taskspace/internal/task"
 )
@@ -24,7 +23,7 @@ func (s *Service) RemoveRepo(ctx context.Context, name, repo string, keepWorktre
 	defer unlock()
 	r, ok := t.Repo(repo)
 	if !ok {
-		return "", fmt.Errorf("task %q has no repo named %q (has: %s)", t.Name, repo, strings.Join(t.RepoNames(), ", "))
+		return "", t.NoRepo(repo)
 	}
 	if keepWorktree && repo == t.AgentRepo {
 		// The agent moves to the root window, so it must not be running in

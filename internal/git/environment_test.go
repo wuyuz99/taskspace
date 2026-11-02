@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	tsexec "github.com/wuyuz99/taskspace/internal/exec"
 )
 
 func TestRepositoryEnv(t *testing.T) {
@@ -24,7 +26,7 @@ func TestRepositoryEnv(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		keep = append(keep, "git_dir=user-variable")
 	}
-	if got := RepositoryEnv(env); !reflect.DeepEqual(got, keep) {
+	if got := tsexec.RepositoryEnv(env); !reflect.DeepEqual(got, keep) {
 		t.Fatalf("environment = %v, want %v", got, keep)
 	}
 }

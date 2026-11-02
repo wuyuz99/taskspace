@@ -7,8 +7,9 @@ import (
 	osexec "os/exec"
 
 	"github.com/spf13/cobra"
-	"github.com/wuyuz99/taskspace/internal/git"
+	tsexec "github.com/wuyuz99/taskspace/internal/exec"
 	"github.com/wuyuz99/taskspace/internal/task"
+	"github.com/wuyuz99/taskspace/internal/workspace"
 )
 
 func (a *App) newShellCmd() *cobra.Command {
@@ -67,15 +68,7 @@ func (a *App) newShellCmd() *cobra.Command {
 			shell.Stdin, shell.Stdout, shell.Stderr = os.Stdin, os.Stdout, os.Stderr
 			// Not a window of the session: an empty TSPACE_WINDOW stops signal
 			// trusting the window this was run from, and it goes by directory.
-			shell.Env = append(git.RepositoryEnv(shell.Environ()),
-				"TSPACE_TASK="+t.Name,
-				envWindow+"=",
-				task.EnvRoot+"="+a.Store.Root(),
-				"TSPACE_REPO="+name,
-				"TSPACE_WORKTREE="+r.Worktree,
-				"TSPACE_TASK_DIR="+a.Store.TaskDir(t.Name),
-				"TSPACE_CONTEXT_DIR="+a.Store.ContextDir(t.Name),
-			)
+			shell.Env = append(tsexec.RepositoryEnv(shell.Environ()), workspace.RepoEnv(a.Store, t, name, r)...)
 			if err := shell.Run(); err != nil {
 				// A shell exiting non-zero is how shells exit; it is not an tspace error.
 				var exit *osexec.ExitError
@@ -125,7 +118,7 @@ func (a *App) newPathCmd() *cobra.Command {
 			}
 			r, ok := t.Repo(repoArg)
 			if !ok {
-				return fmt.Errorf("task %q has no repo named %q (has: %s)", t.Name, repoArg, joinNames(names))
+				return t.NoRepo(repoArg)
 			}
 			a.printf("%s\n", r.Worktree)
 			return nil
@@ -181,7 +174,7 @@ func (a *App) newExecCmd() *cobra.Command {
 				a.printf("=== %s\n", name)
 				sub := osexec.CommandContext(cmd.Context(), argv[0], argv[1:]...)
 				sub.Dir = r.Worktree
-				sub.Env = git.RepositoryEnv(sub.Environ())
+				sub.Env = tsexec.RepositoryEnv(sub.Environ())
 				sub.Stdin, sub.Stdout, sub.Stderr = os.Stdin, a.Out, a.Err
 				if err := sub.Run(); err != nil {
 					a.warnf("=== %s: %v\n", name, err)

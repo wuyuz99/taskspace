@@ -391,7 +391,7 @@ func (f *Fake) RenameWindow(_ context.Context, session, from, to string) error {
 	return nil
 }
 
-// CloseWindow implements runtime.WindowCloser. A window that is not there is
+// CloseWindow implements runtime.Runtime. A window that is not there is
 // closed.
 func (f *Fake) CloseWindow(_ context.Context, session, window string) error {
 	f.mu.Lock()
@@ -437,7 +437,6 @@ func (f *Fake) States(context.Context) (map[string]runtime.SessionRead, error) {
 }
 
 var (
-	_ runtime.Runtime      = (*Fake)(nil)
-	_ runtime.StateLister  = (*Fake)(nil)
-	_ runtime.WindowCloser = (*Fake)(nil)
+	_ runtime.Runtime     = (*Fake)(nil)
+	_ runtime.StateLister = (*Fake)(nil)
 )

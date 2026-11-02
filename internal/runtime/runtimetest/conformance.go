@@ -181,7 +181,7 @@ func Conformance(t *testing.T, target func(t *testing.T) Target) {
 		{name: "closing a window leaves the rest", run: func(t *testing.T, tg Target, s, dir string) {
 			start(t, tg, s, runtime.Window{Name: "_root", Dir: dir, Command: alive},
 				runtime.Window{Name: "api", Dir: dir, Command: alive})
-			c := closer(t, tg)
+			c := tg.Runtime
 			if err := c.CloseWindow(ctx, s, "api"); err != nil {
 				t.Fatal(err)
 			}
@@ -197,7 +197,7 @@ func Conformance(t *testing.T, target func(t *testing.T) Target) {
 		{name: "a session ends with its last window", skip: func(tg Target) bool { return tg.KeepsEmptySession },
 			run: func(t *testing.T, tg Target, s, dir string) {
 				start(t, tg, s, runtime.Window{Name: "_root", Dir: dir, Command: alive})
-				if err := closer(t, tg).CloseWindow(ctx, s, "_root"); err != nil {
+				if err := tg.Runtime.CloseWindow(ctx, s, "_root"); err != nil {
 					t.Fatal(err)
 				}
 				waitFor(t, tg, s, "session ended", func(st runtime.SessionState) bool { return !st.Exists })
@@ -244,15 +244,6 @@ func state(t *testing.T, tg Target, session string) runtime.SessionState {
 		t.Fatal(err)
 	}
 	return st
-}
-
-func closer(t *testing.T, tg Target) runtime.WindowCloser {
-	t.Helper()
-	c, ok := tg.Runtime.(runtime.WindowCloser)
-	if !ok {
-		t.Fatalf("%T cannot close a window", tg.Runtime)
-	}
-	return c
 }
 
 // waitFor polls, because a real multiplexer sees a command exit a moment later.

@@ -7,12 +7,6 @@ import (
 	"time"
 )
 
-// WindowCloser is an optional capability, keeping protocol-1 adapters and
-// runtimes usable for whole-session operations without per-window support.
-type WindowCloser interface {
-	CloseWindow(context.Context, string, string) error
-}
-
 // CloseWindow interrupts window's live panes, gives them StopGrace to exit,
 // then kills the window. A window that is not there is already closed; tmux
 // ends the session with its last window.

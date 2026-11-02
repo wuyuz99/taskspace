@@ -269,6 +269,11 @@ func (t *Task) Repo(name string) (Repo, bool) {
 	return r, ok
 }
 
+// NoRepo is the error for a repository name the task doesn't have.
+func (t *Task) NoRepo(name string) error {
+	return fmt.Errorf("task %q has no repo named %q (has: %s)", t.Name, name, strings.Join(t.RepoNames(), ", "))
+}
+
 // SetRepo adds or replaces a repo entry.
 func (t *Task) SetRepo(name string, r Repo) {
 	if t.Repos == nil {

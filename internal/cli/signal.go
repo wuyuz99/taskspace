@@ -256,7 +256,7 @@ func (a *App) signalTarget(taskName, repo string, root bool) (*task.Task, string
 		return t, task.RootWindowName, nil
 	case repo != "":
 		if _, ok := t.Repo(repo); !ok {
-			return nil, "", fmt.Errorf("task %q has no repo named %q (has: %s)", t.Name, repo, joinNames(t.RepoNames()))
+			return nil, "", t.NoRepo(repo)
 		}
 		return t, repo, nil
 	}

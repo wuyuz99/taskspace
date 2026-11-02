@@ -67,7 +67,7 @@ func (s *Service) UpdateTask(ctx context.Context, name string, o UpdateTaskOptio
 			return nil, fmt.Errorf("%s is the root window; use --agent-at-root", o.AgentIn)
 		}
 		if _, ok := t.Repo(o.AgentIn); !ok {
-			return nil, fmt.Errorf("task %q has no repo named %q (has: %s)", t.Name, o.AgentIn, strings.Join(t.RepoNames(), ", "))
+			return nil, t.NoRepo(o.AgentIn)
 		}
 		if !t.CanRunAgentIn(o.AgentIn) {
 			return nil, fmt.Errorf("%s has an agent of its own, which its window runs; clear it first with tspace repo update %s %s --shell", o.AgentIn, t.Name, o.AgentIn)

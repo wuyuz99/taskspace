@@ -758,10 +758,11 @@ func (m dashModel) clean(name string, opts workspace.CleanOptions, prompt, done 
 // nameForce puts the command in a refusal's advice: dash has no --force to
 // re-run with.
 func nameForce(err error, command string) error {
-	if err == nil || !strings.Contains(err.Error(), workspace.ForceAdvice) {
+	var refused *workspace.RefusedError
+	if !errors.As(err, &refused) {
 		return err
 	}
-	return errors.New(strings.ReplaceAll(err.Error(), workspace.ForceAdvice, "run "+command))
+	return errors.New(refused.Instead(command))
 }
 
 // focus shows a window: by switching the client when dash is inside the
@@ -779,20 +780,25 @@ func (m dashModel) focus(row dashRow) tea.Cmd {
 	}
 }
 
+// quiet is the app and service for an action dash runs: the app writes to out
+// and errw, hooks' output goes nowhere, and nothing waits for a task another
+// command is changing, since nobody would see the wait or be able to stop it.
+func (m dashModel) quiet(out, errw io.Writer) (*App, *workspace.Service) {
+	sub := *m.app
+	sub.Out, sub.Err, sub.noWait = out, errw, true
+	ws := sub.workspace()
+	ws.Stdout, ws.Stderr = io.Discard, io.Discard
+	return &sub, ws
+}
+
 // act performs a lifecycle action through the same service the CLI's
 // commands use, and says what it did in the CLI's words, so the two cannot
 // drift apart. Nothing is written over the screen: the warnings, as the CLI
-// would show them, go after the text instead, and hooks' output nowhere.
-// It does not wait for a task another command is changing: nobody would see
-// the wait, or be able to stop it.
+// would show them, go after the text instead.
 func (m dashModel) act(do func(*workspace.Service) (string, error)) tea.Cmd {
 	return func() tea.Msg {
 		var warning bytes.Buffer
-		sub := *m.app
-		sub.Out, sub.Err = io.Discard, &warning
-		sub.noWait = true
-		ws := sub.workspace()
-		ws.Stdout, ws.Stderr = io.Discard, io.Discard
+		sub, ws := m.quiet(io.Discard, &warning)
 		var notes []string
 		ws.Progress = func(e workspace.Event) {
 			// Said on the CLI's standard output, which dash drops, but worth
@@ -942,7 +948,7 @@ func (m dashModel) View() string {
 			}
 		}
 	}
-	head := []string{fmt.Sprintf("%d task%s", len(tasks), plural(len(tasks)))}
+	head := []string{fmt.Sprintf("%d task%s", len(tasks), workspace.Plural(len(tasks)))}
 	if blocked > 0 {
 		head = append(head, dashYellow.Bold(true).Render(fmt.Sprintf("%d blocked", blocked)))
 	}

@@ -4,12 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
-	osexec "os/exec"
 	"strings"
 	"time"
 
 	tsexec "github.com/wuyuz99/taskspace/internal/exec"
-	"github.com/wuyuz99/taskspace/internal/git"
 )
 
 // Tmux implements Runtime on top of tmux.
@@ -31,7 +29,7 @@ func NewTmux(r tsexec.Runner) *Tmux {
 }
 
 func (t *Tmux) tmux(ctx context.Context, args ...string) (tsexec.Result, error) {
-	return t.run.Run(tsexec.WithEnv(ctx, git.RepositoryEnv(os.Environ())), "", append([]string{"tmux"}, args...)...)
+	return t.run.Run(tsexec.WithoutRepositoryEnv(ctx), "", append([]string{"tmux"}, args...)...)
 }
 
 // Available implements Runtime.
@@ -127,12 +125,12 @@ func (t *Tmux) Start(ctx context.Context, session string, windows []Window) erro
 // target would kill whatever the *first* window is running — an agent, most
 // likely. Refuse instead, and let restart be the way to relaunch a window.
 func (t *Tmux) OpenWindow(ctx context.Context, session string, w Window) error {
-	present, err := t.hasWindow(ctx, session, w.Name)
+	st, err := t.State(ctx, session)
 	if err != nil {
 		return err
 	}
-	if present {
-		return fmt.Errorf("window %s already exists in %s; use restart to relaunch it", w.Name, session)
+	if err := checkOpen(st, session, w); err != nil {
+		return err
 	}
 	return t.openWindow(ctx, session, w)
 }
@@ -291,11 +289,9 @@ func (t *Tmux) Stop(ctx context.Context, session string) error {
 		}
 	}
 
-	if interrupted && t.StopGrace > 0 {
-		select {
-		case <-time.After(t.StopGrace):
-		case <-ctx.Done():
-			return ctx.Err()
+	if interrupted {
+		if err := waitForExit(ctx, t.StopGrace); err != nil {
+			return err
 		}
 	}
 
@@ -312,27 +308,20 @@ func (t *Tmux) Stop(ctx context.Context, session string) error {
 
 // Attach implements Runtime.
 //
-// This is the one place that bypasses the Runner: attaching means handing the
-// terminal to tmux, and the Runner captures output instead of inheriting it.
-// Inside an existing tmux client, attaching would nest, so we switch instead.
+// Inside an existing tmux client, attaching would nest, so it switches instead.
 func (t *Tmux) Attach(ctx context.Context, session string) error {
 	exists, err := t.HasSession(ctx, session)
 	if err != nil {
 		return err
 	}
 	if !exists {
-		return fmt.Errorf("no tmux session %q; run tspace start first", session)
+		return missingSession("tmux", session)
 	}
-
-	args := []string{"attach-session", "-t", target(session)}
+	argv := []string{"tmux", "attach-session", "-t", target(session)}
 	if os.Getenv("TMUX") != "" {
-		args = []string{"switch-client", "-t", target(session)}
+		argv = []string{"tmux", "switch-client", "-t", target(session)}
 	}
-
-	cmd := osexec.CommandContext(ctx, "tmux", args...)
-	cmd.Env = git.RepositoryEnv(cmd.Environ())
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	if err := cmd.Run(); err != nil {
+	if err := attachTerminal(ctx, argv); err != nil {
 		return fmt.Errorf("attach to %s: %w", session, err)
 	}
 	return nil

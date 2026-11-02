@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/wuyuz99/taskspace/internal/task"
 )
@@ -51,7 +50,7 @@ func (s *Service) UpdateRepo(ctx context.Context, name, repo string, opts Update
 	defer unlock()
 	r, ok := t.Repo(repo)
 	if !ok {
-		return nil, fmt.Errorf("task %q has no repo named %q (has: %s)", t.Name, repo, strings.Join(t.RepoNames(), ", "))
+		return nil, t.NoRepo(repo)
 	}
 	// The agent repository's window runs the task's agent, unless it has one
 	// of its own, so that is what its agent flags change.

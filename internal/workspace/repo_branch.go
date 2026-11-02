@@ -98,7 +98,7 @@ func (s *Service) MoveRepoBranch(ctx context.Context, t *task.Task, name string,
 			if n, err := s.Git.StashCount(ctx, r.Path, r.Branch); err != nil {
 				return r, nil, err
 			} else if n > 0 {
-				return r, nil, fmt.Errorf("%s has %d stash%s made on %s, which would no longer be counted as its work once renamed; apply or drop them first", name, n, stashPlural(n), r.Branch)
+				return r, nil, fmt.Errorf("%s has %d stash%s made on %s, which would no longer be counted as its work once renamed; apply or drop them first", name, n, StashPlural(n), r.Branch)
 			}
 			if upstream, err = s.Git.Upstream(ctx, r.Path, r.Branch); err != nil {
 				return r, nil, err
@@ -112,7 +112,7 @@ func (s *Service) MoveRepoBranch(ctx context.Context, t *task.Task, name string,
 		case !present:
 			return r, nil, fmt.Errorf("%s has no worktree yet, so there is nothing to rebase: start creates the branch from the base; drop --rebase", name)
 		case st.DirtyCount() > 0:
-			return r, nil, fmt.Errorf("%s has %d uncommitted change%s in %s; commit or stash them before --rebase", name, st.DirtyCount(), plural(st.DirtyCount()), r.Worktree)
+			return r, nil, fmt.Errorf("%s has %d uncommitted change%s in %s; commit or stash them before --rebase", name, st.DirtyCount(), Plural(st.DirtyCount()), r.Worktree)
 		}
 		if op, err := s.Git.InProgress(ctx, r.Worktree); err != nil {
 			return r, nil, err

@@ -292,7 +292,7 @@ func (s *Service) inspectImport(ctx context.Context, arg string, tasks []*task.T
 		return nil, err
 	}
 	if n := st.Conflicted; n > 0 {
-		return nil, fmt.Errorf("%s has %d conflicted file%s; resolve them first", top, n, plural(n))
+		return nil, fmt.Errorf("%s has %d conflicted file%s; resolve them first", top, n, Plural(n))
 	}
 	// Its own remote copy, as after git push -u, is where the work is
 	// published, not where it started.
