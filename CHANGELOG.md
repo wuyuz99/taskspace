@@ -12,12 +12,13 @@ upgrade.
   `start --interrupted` bring back the whole task (#169).
 - A session snapshot that fails while dash refreshes shows as a warning in dash
   instead of being written over its screen (#167).
-- dash's key legend wraps instead of being cut at the terminal's width, so every
-  key is on screen (#168).
+- dash's key legend wraps instead of being cut at the terminal's width (#168).
 - `tspace config` commands run at once no longer lose one another's changes (#170).
 
 ### Changed
 
+- dash's key legend shows only the common keys, and `?` shows every key, grouped
+  by what it acts on: task, window, repository or view (#190).
 - A collapsed task in dash says where its repositories stand, such as `3 repos,
   1 dirty, 2 unpushed`, and the detail pane names the repositories that clean
   would refuse and those with commits only on this machine (#175).
