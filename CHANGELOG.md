@@ -3,7 +3,7 @@
 What changed in each release of tspace; see [Installation](docs/INSTALL.md) to
 upgrade.
 
-## Unreleased
+## v0.3.0 — 2026-11-01
 
 ### Changed
 
@@ -16,6 +16,9 @@ upgrade.
   back: start it with `tspace start TASK REPO`. Saved windows now come back as
   they ran, including at the task root, and everything comes back in one
   launch, so zellij needs no attached client for it (#85).
+- While a task is interrupted, `status` marks only the windows that would come
+  back as `interrupted`; the rest show `no-session`. The task's `interrupted`
+  field in `--json` is unchanged.
 
 ### Fixed
 
