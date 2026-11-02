@@ -238,7 +238,7 @@ func (s *Service) launch(ctx context.Context, t *task.Task, opts StartOptions) (
 	// Only a window not already there is launched, resumed or not. Without
 	// the session's state that is unknown, so nothing is taken as resumed.
 	for name := range fresh {
-		if _, open := before.Pane(s.Runtime.WindowName(name)); stateErr != nil || (open && before.Exists) {
+		if _, open := before.Pane(name); stateErr != nil || (open && before.Exists) {
 			delete(fresh, name)
 		}
 	}
@@ -376,7 +376,7 @@ func (s *Service) Interrupted(ctx context.Context) ([]string, error) {
 func (s *Service) checkLaunched(ctx context.Context, t *task.Task, session string, before runtime.SessionState, windows []runtime.Window, names []string, fresh map[string]runtime.Window, since time.Time) (relaunched []string, err error) {
 	launched := !before.Exists
 	for _, w := range windows {
-		if _, ok := before.Pane(s.Runtime.WindowName(w.Name)); !ok {
+		if _, ok := before.Pane(w.Name); !ok {
 			launched = true
 		}
 	}
@@ -397,7 +397,7 @@ func (s *Service) checkLaunched(ctx context.Context, t *task.Task, session strin
 	}
 	var again []runtime.Window
 	for _, name := range names {
-		pane, ok := st.Pane(s.Runtime.WindowName(name))
+		pane, ok := st.Pane(name)
 		w, resumed := fresh[name]
 		switch {
 		case !ok && resumed:

@@ -43,7 +43,7 @@ func interruption(t *testing.T, rt runtime.Runtime, name string, kill func(sessi
 	if _, err := f.svc.Start(ctx, name, StartOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.svc.StopWindow(ctx, name, "c", false); err != nil {
+	if err := f.svc.StopWindow(ctx, name, "c"); err != nil {
 		t.Fatal(err)
 	}
 	if r, _ := f.svc.Store.Running(name); !r.Root || !slices.Equal(r.Repos, []string{"a"}) || !slices.Equal(r.Windows, []string{"logs"}) {
@@ -75,12 +75,12 @@ func interruption(t *testing.T, rt runtime.Runtime, name string, kill func(sessi
 		t.Fatal(err)
 	}
 	for _, w := range []string{task.RootWindowName, "a", "_logs"} {
-		if p, ok := st.Pane(rt.WindowName(w)); !ok || p.Dead {
+		if p, ok := st.Pane(runtime.WindowName(w)); !ok || p.Dead {
 			t.Errorf("%s did not come back: %+v", w, st)
 		}
 	}
 	for _, w := range []string{"b", "c"} {
-		if _, ok := st.Pane(rt.WindowName(w)); ok {
+		if _, ok := st.Pane(runtime.WindowName(w)); ok {
 			t.Errorf("%s came back: %+v", w, st)
 		}
 	}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/wuyuz99/taskspace/internal/runtime"
@@ -73,9 +72,8 @@ func (s *Service) markStopped(name string) {
 
 // RestartOptions choose the window Restart relaunches, and how.
 type RestartOptions struct {
-	// Root is the task-root window; otherwise Repo's.
-	Root bool
-	Repo string
+	// Window is the window's name; see task.KindOf.
+	Window string
 	// Resume runs the window's resume command, which brings the agent back
 	// with its conversation, instead of its command, and refuses a window
 	// without one. Fresh runs its command. With neither, a window with a
@@ -94,7 +92,8 @@ func (s *Service) Restart(ctx context.Context, name string, opts RestartOptions)
 	defer unlock()
 	var w runtime.Window
 	label = t.Name
-	if opts.Root {
+	switch task.KindOf(opts.Window) {
+	case task.RootWindow:
 		if !t.HasRootWindow() {
 			return "", false, fmt.Errorf("task %s has no root window; its agent runs in %s: tspace restart %s %s", t.Name, t.AgentRepo, t.Name, t.AgentRepo)
 		}
@@ -103,26 +102,24 @@ func (s *Service) Restart(ctx context.Context, name string, opts RestartOptions)
 			return "", false, fmt.Errorf("task directory %s is missing; run: tspace start %s", w.Dir, t.Name)
 		}
 		label += " root window"
-	} else if opts.Repo == task.RootWindowName {
-		return "", false, fmt.Errorf("%s is the root window; restart it with: tspace restart %s --root", opts.Repo, t.Name)
-	} else if strings.HasPrefix(opts.Repo, task.ExtraWindowPrefix) {
-		known, ok := KnownWindow(s.Store, t, opts.Repo)
+	case task.ExtraWindow:
+		known, ok := KnownWindow(s.Store, t, opts.Window)
 		if !ok {
-			return "", false, fmt.Errorf("tspace does not know what %s ran; it remembers only unsaved windows it opened. Close it with: tspace stop %s %s", opts.Repo, t.Name, opts.Repo)
+			return "", false, fmt.Errorf("tspace does not know what %s ran; it remembers only unsaved windows it opened. Close it with: tspace stop %s %s", opts.Window, t.Name, opts.Window)
 		}
 		if opts.Resume {
-			return "", false, fmt.Errorf("%s is an extra window; there is no agent to resume", opts.Repo)
+			return "", false, fmt.Errorf("%s is an extra window; there is no agent to resume", opts.Window)
 		}
 		w = ExtraWindow(s.Store, t, known)
 		if info, err := os.Stat(w.Dir); err != nil || !info.IsDir() {
 			return "", false, fmt.Errorf("%s is missing; run: tspace start %s", w.Dir, t.Name)
 		}
 		label += "/" + w.Name
-	} else {
-		if opts.Repo == "" {
+	default:
+		if opts.Window == "" {
 			return "", false, fmt.Errorf("name a repository of %s to restart, or its root window", t.Name)
 		}
-		_, repo, err := WorktreeDir(t, opts.Repo)
+		_, repo, err := WorktreeDir(t, opts.Window)
 		if err != nil {
 			return "", false, err
 		}
@@ -172,7 +169,7 @@ func (s *Service) Restart(ctx context.Context, name string, opts RestartOptions)
 		}
 		// Resumed only if it is still running as resumed.
 		st, err := s.Runtime.State(ctx, session)
-		pane, ok := st.Pane(s.Runtime.WindowName(w.Name))
+		pane, ok := st.Pane(w.Name)
 		resumed = len(relaunched) == 0 && err == nil && ok && !pane.Dead
 	}
 	return label, resumed, nil

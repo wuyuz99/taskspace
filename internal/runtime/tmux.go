@@ -45,7 +45,6 @@ func (t *Tmux) Available(ctx context.Context) error {
 
 // SessionName implements Runtime.
 func (t *Tmux) SessionName(task string) string { return sessionName(task) }
-func (t *Tmux) WindowName(repo string) string  { return WindowName(repo) }
 
 // target builds an exact-match tmux target. The '=' prefix disables tmux's
 // prefix matching, without which "tspace-pay" would match session "tspace-payments".
@@ -306,7 +305,7 @@ func (t *Tmux) hasWindow(ctx context.Context, session, window string) (bool, err
 	if err != nil {
 		return false, err
 	}
-	_, ok := st.Panes[WindowName(window)]
+	_, ok := st.Pane(window)
 	return ok, nil
 }
 

@@ -103,7 +103,7 @@ func TestInterruptedBringsBackWhatRan(t *testing.T) {
 	if _, err := f.svc.Start(ctx, "T", StartOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.svc.StopWindow(ctx, "T", "b", false); err != nil {
+	if err := f.svc.StopWindow(ctx, "T", "b"); err != nil {
 		t.Fatal(err)
 	}
 	f.crash()
@@ -194,7 +194,7 @@ func TestClosedWindowsAreNotInterrupted(t *testing.T) {
 	if _, err := f.svc.Start(ctx, "T", StartOptions{Repos: []string{"a"}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.svc.StopWindow(ctx, "T", "a", false); err != nil {
+	if err := f.svc.StopWindow(ctx, "T", "a"); err != nil {
 		t.Fatal(err)
 	}
 	if f.svc.Store.Interrupted("T") {
@@ -204,13 +204,13 @@ func TestClosedWindowsAreNotInterrupted(t *testing.T) {
 	if _, err := f.svc.Start(ctx, "T", StartOptions{Repos: []string{"a", "b"}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.svc.StopWindow(ctx, "T", "b", false); err != nil {
+	if err := f.svc.StopWindow(ctx, "T", "b"); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.rt.OpenWindow(ctx, f.rt.SessionName("T"), runtime.Window{Name: "b", Command: []string{"false"}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := f.svc.Restart(ctx, "T", RestartOptions{Repo: "b", Fresh: true}); err != nil {
+	if _, _, err := f.svc.Restart(ctx, "T", RestartOptions{Window: "b", Fresh: true}); err != nil {
 		t.Fatal(err)
 	}
 	if r, _ := f.svc.Store.Running("T"); !slices.Equal(r.Repos, []string{"a", "b"}) {
@@ -304,10 +304,10 @@ func TestInterruptedBringsBackSavedWindows(t *testing.T) {
 	if _, err := f.svc.Start(ctx, "T", StartOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.svc.StopWindow(ctx, "T", "_notes", false); err != nil {
+	if err := f.svc.StopWindow(ctx, "T", "_notes"); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.svc.StopWindow(ctx, "T", "b", false); err != nil {
+	if err := f.svc.StopWindow(ctx, "T", "b"); err != nil {
 		t.Fatal(err)
 	}
 	f.crash()

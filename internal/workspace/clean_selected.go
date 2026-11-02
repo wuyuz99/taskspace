@@ -34,7 +34,7 @@ func (s *Service) stopSelectedForClean(ctx context.Context, t, selected *task.Ta
 		return false, fmt.Errorf("window %s has no saved repository; stop the task before cleaning individual repositories, or save that window with its repository", name)
 	}
 	for _, window := range windows {
-		if _, exists := st.Panes[s.Runtime.WindowName(window)]; !exists {
+		if _, exists := st.Pane(window); !exists {
 			continue
 		}
 		if err := s.closeWindow(ctx, t.Name, window); err != nil {
@@ -50,10 +50,10 @@ func (s *Service) stopSelectedForClean(ctx context.Context, t, selected *task.Ta
 func (s *Service) unsavedWindow(t *task.Task, st runtime.SessionState) string {
 	known := map[string]bool{task.RootWindowName: true}
 	for _, name := range t.RepoNames() {
-		known[s.Runtime.WindowName(name)] = true
+		known[runtime.WindowName(name)] = true
 	}
 	for _, w := range t.Windows {
-		known[s.Runtime.WindowName(w.SessionName())] = true
+		known[runtime.WindowName(w.SessionName())] = true
 	}
 	for name := range st.Panes {
 		if !known[name] {

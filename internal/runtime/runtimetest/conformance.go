@@ -60,7 +60,7 @@ func Conformance(t *testing.T, target func(t *testing.T) Target) {
 				runtime.Window{Name: "api.v1", Dir: dir, Command: alive})
 			st := state(t, tg, s)
 			for _, name := range []string{"_root", "api.v1"} {
-				if _, ok := st.Pane(runtime.WindowName(name)); !ok {
+				if _, ok := st.Pane(name); !ok {
 					t.Fatalf("%s missing right after Start: %+v", name, st)
 				}
 			}

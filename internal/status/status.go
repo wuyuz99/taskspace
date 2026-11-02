@@ -316,14 +316,14 @@ func (a *Aggregator) extraWindows(t *task.Task, sess runtime.SessionState, runti
 	if a.Runtime == nil {
 		return out
 	}
-	known := map[string]bool{a.Runtime.WindowName(task.RootWindowName): true}
+	known := map[string]bool{runtime.WindowName(task.RootWindowName): true}
 	for _, w := range t.Windows {
-		known[a.Runtime.WindowName(w.SessionName())] = true
+		known[runtime.WindowName(w.SessionName())] = true
 	}
 	var open []ExtraStatus
 	for id, pane := range sess.Panes {
 		name := runtime.DisplayName(id)
-		if known[id] || !task.IsExtraWindow(name) || a.Runtime.WindowName(name) != id {
+		if known[id] || !task.IsExtraWindow(name) || runtime.WindowName(name) != id {
 			continue
 		}
 		state := RuntimeRunning
@@ -382,7 +382,7 @@ func (a *Aggregator) windowState(sess runtime.SessionState, window string, runti
 	case !sess.Exists:
 		return RuntimeNoSession
 	}
-	pane, ok := sess.Pane(a.Runtime.WindowName(window))
+	pane, ok := sess.Pane(window)
 	switch {
 	case !ok:
 		return RuntimeNoWindow
@@ -399,7 +399,7 @@ func (a *Aggregator) livePane(sess runtime.SessionState, window string, runtimeU
 	if runtimeUnknown || !sess.Exists {
 		return runtime.PaneState{}
 	}
-	pane, ok := sess.Pane(a.Runtime.WindowName(window))
+	pane, ok := sess.Pane(window)
 	if !ok || pane.Dead {
 		return runtime.PaneState{}
 	}

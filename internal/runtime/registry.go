@@ -72,7 +72,6 @@ type Unavailable struct{ Err error }
 
 func (u Unavailable) Available(context.Context) error                  { return u.Err }
 func (u Unavailable) SessionName(task string) string                   { return sessionName(task) }
-func (u Unavailable) WindowName(repo string) string                    { return WindowName(repo) }
 func (u Unavailable) HasSession(context.Context, string) (bool, error) { return false, u.Err }
 func (u Unavailable) Start(context.Context, string, []Window) error    { return u.Err }
 func (u Unavailable) OpenWindow(context.Context, string, Window) error { return u.Err }

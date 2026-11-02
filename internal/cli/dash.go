@@ -528,11 +528,7 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.confirm = &dashConfirm{
 			prompt: fmt.Sprintf("stop only %s? (y/N)", row.label()),
 			run: m.act(func(ws *workspace.Service) (string, error) {
-				repo := row.Window
-				if row.root() {
-					repo = ""
-				}
-				err := ws.StopWindow(m.ctx, row.Task, repo, row.root())
+				err := ws.StopWindow(m.ctx, row.Task, row.Window)
 				return "stopped " + row.label(), err
 			}),
 		}
@@ -542,10 +538,7 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.note = fmt.Sprintf("%s is %s; only a dead window can be restarted", row.label(), row.Runtime)
 			return m, nil
 		}
-		opts := workspace.RestartOptions{Root: row.root(), Repo: row.Window}
-		if row.root() {
-			opts.Repo = ""
-		}
+		opts := workspace.RestartOptions{Window: row.Window}
 		return m, m.act(func(ws *workspace.Service) (string, error) {
 			label, resumed, err := ws.Restart(m.ctx, row.Task, opts)
 			if err != nil {

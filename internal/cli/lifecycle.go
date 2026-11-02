@@ -116,11 +116,15 @@ func (a *App) newStopCmd() *cobra.Command {
 				return err
 			}
 			if root || len(args) == 2 {
-				repo, label := "", "the root window"
-				if len(args) == 2 {
-					repo, label = args[1], args[1]
+				window, err := windowArg(args, root, "stop")
+				if err != nil {
+					return err
 				}
-				if err := a.workspaceFor(cmd).StopWindow(cmd.Context(), args[0], repo, root); err != nil {
+				label := "the root window"
+				if !root {
+					label = window
+				}
+				if err := a.workspaceFor(cmd).StopWindow(cmd.Context(), args[0], window); err != nil {
 					return err
 				}
 				a.printf("stopped %s of %s; the rest of the task keeps running\n", label, args[0])
@@ -183,16 +187,14 @@ func (a *App) newRestartCmd() *cobra.Command {
 			"Without --resume, a window with a resume command is resumed too, and\n" +
 			"started fresh if that exits at once; --fresh never resumes.",
 		Args: cobra.RangeArgs(1, 2), RunE: func(cmd *cobra.Command, args []string) error {
-			switch {
-			case root && len(args) == 2:
-				return fmt.Errorf("--root cannot be combined with a repository")
-			case !root && len(args) == 1:
+			if !root && len(args) == 1 {
 				return fmt.Errorf("name a repository, or use --root for the task-root window")
 			}
-			opts := workspace.RestartOptions{Root: root, Resume: resume, Fresh: fresh}
-			if !root {
-				opts.Repo = args[1]
+			window, err := windowArg(args, root, "restart")
+			if err != nil {
+				return err
 			}
+			opts := workspace.RestartOptions{Window: window, Resume: resume, Fresh: fresh}
 			name, err := a.resolveTask(args[0])
 			if err != nil {
 				return err
@@ -234,6 +236,20 @@ func (a *App) newAttachCmd() *cobra.Command {
 			return attachFailed(a.Runtime.Attach(cmd.Context(), a.Runtime.SessionName(t.Name)), t.Name)
 		},
 	}
+}
+
+// windowArg is the window TASK [WINDOW | --root] names, for verb. The root
+// window is spelled --root, which keeps a typed name from reaching it.
+func windowArg(args []string, root bool, verb string) (string, error) {
+	switch {
+	case root && len(args) == 2:
+		return "", fmt.Errorf("--root cannot be combined with a repository")
+	case root:
+		return task.RootWindowName, nil
+	case args[1] == task.RootWindowName:
+		return "", fmt.Errorf("%s is the root window; %s it with: tspace %s %s --root", args[1], verb, verb, args[0])
+	}
+	return args[1], nil
 }
 
 // worktreeDir resolves TASK [REPO] to a single worktree path.

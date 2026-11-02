@@ -18,7 +18,7 @@ const snapshotWait = 100 * time.Millisecond
 // windows come back with a primary one, so with none there is nothing.
 func running(s *Service, t *task.Task, st runtime.SessionState) (task.Running, bool) {
 	alive := func(window string) bool {
-		p, ok := st.Pane(s.Runtime.WindowName(window))
+		p, ok := st.Pane(window)
 		return ok && !p.Dead
 	}
 	r := task.Running{Root: t.HasRootWindow() && alive(task.RootWindowName)}
