@@ -15,6 +15,23 @@ import (
 // RenameOptions controls the optional renaming of conventional local branches.
 type RenameOptions struct{ Branches bool }
 
+// renamePlan is what Rename will do, decided before anything moves.
+type renamePlan struct {
+	t         *task.Task
+	old, name string
+	// from and to are the task directories.
+	from, to string
+	cfg      *task.Config
+	repos    []renameRepo
+}
+
+// renameRepo is one repository's part of a rename: its worktree, if present,
+// moves, and its branch is renamed if rename is set.
+type renameRepo struct {
+	repo, from, to, branch        string
+	present, rename, branchExists bool
+}
+
 // Rename changes a stopped task's identity, preserving its files and settings.
 // Both names stay locked until the operation (or its rollback) is complete.
 func (s *Service) Rename(ctx context.Context, old, name string, opts RenameOptions) error {
@@ -31,14 +48,57 @@ func (s *Service) Rename(ctx context.Context, old, name string, opts RenameOptio
 		return err
 	}
 	defer unlock()
-	t, err := s.Store.Load(old)
+	// The plan is made under the lock it is carried out under, so nothing
+	// changes in between.
+	p, err := s.planRename(ctx, old, name, opts)
 	if err != nil {
 		return err
 	}
-	if s.Store.Exists(name) {
-		return fmt.Errorf("%q: %w", name, task.ErrExists)
+	return s.renameTask(ctx, p)
+}
+
+// planRename checks that old can become name and decides what moves.
+func (s *Service) planRename(ctx context.Context, old, name string, opts RenameOptions) (*renamePlan, error) {
+	t, err := s.Store.Load(old)
+	if err != nil {
+		return nil, err
 	}
-	for _, n := range []string{old, name} {
+	p := &renamePlan{t: t, old: old, name: name, from: s.Store.TaskDir(old), to: s.Store.TaskDir(name)}
+	if err := s.checkRenameable(ctx, p); err != nil {
+		return nil, err
+	}
+	if opts.Branches {
+		if p.cfg, err = s.Store.LoadConfig(); err != nil {
+			return nil, err
+		}
+	} else {
+		p.cfg = s.conversationConfig()
+	}
+	for _, repo := range t.RepoNames() {
+		r, err := s.planRenameRepo(ctx, p, repo, opts)
+		if err != nil {
+			return nil, err
+		}
+		p.repos = append(p.repos, r)
+	}
+	if opts.Branches {
+		if err := s.checkBranchesUnclaimed(p); err != nil {
+			return nil, err
+		}
+	}
+	if err := checkNothingUnclaimed(p); err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+// checkRenameable refuses a rename onto a task or path that exists, of a
+// running task, or from inside the task.
+func (s *Service) checkRenameable(ctx context.Context, p *renamePlan) error {
+	if s.Store.Exists(p.name) {
+		return fmt.Errorf("%q: %w", p.name, task.ErrExists)
+	}
+	for _, n := range []string{p.old, p.name} {
 		running, err := s.SessionUp(ctx, n)
 		if err != nil {
 			return err
@@ -47,144 +107,146 @@ func (s *Service) Rename(ctx context.Context, old, name string, opts RenameOptio
 			return fmt.Errorf("%s is running; run tspace stop %s before renaming", n, n)
 		}
 	}
-	from, to := s.Store.TaskDir(old), s.Store.TaskDir(name)
-	for _, p := range []string{to, s.Store.RunDir(name)} {
-		if _, err := os.Lstat(p); err == nil {
-			return fmt.Errorf("%s already exists", p)
+	for _, path := range []string{p.to, s.Store.RunDir(p.name)} {
+		if _, err := os.Lstat(path); err == nil {
+			return fmt.Errorf("%s already exists", path)
 		} else if !os.IsNotExist(err) {
 			return err
 		}
 	}
-	if cwd, err := os.Getwd(); err == nil && fspath.Within(cwd, from) {
-		return fmt.Errorf("run task rename from outside %s", from)
+	if cwd, err := os.Getwd(); err == nil && fspath.Within(cwd, p.from) {
+		return fmt.Errorf("run task rename from outside %s", p.from)
 	}
-	var cfg *task.Config
-	if opts.Branches {
-		cfg, err = s.Store.LoadConfig()
-		if err != nil {
-			return err
-		}
-	} else {
-		cfg = s.conversationConfig()
+	return nil
+}
+
+// planRenameRepo decides what happens to one repository: its worktree moves
+// with the task, and with --branches a conventional, unpublished branch is
+// renamed too.
+func (s *Service) planRenameRepo(ctx context.Context, p *renamePlan, repo string, opts RenameOptions) (renameRepo, error) {
+	r := p.t.Repos[repo]
+	if fspath.Within(r.Path, p.from) {
+		return renameRepo{}, fmt.Errorf("%s's source repository is inside %s; move it outside before renaming", repo, p.from)
 	}
-	type plan struct {
-		repo, from, to, branch        string
-		present, rename, branchExists bool
+	expected := s.Store.WorktreePath(p.old, repo)
+	if filepath.Clean(r.Worktree) != filepath.Clean(expected) {
+		return renameRepo{}, fmt.Errorf("%s's worktree is outside its expected path %s", repo, expected)
 	}
-	var plans []plan
-	for _, repo := range t.RepoNames() {
-		r := t.Repos[repo]
-		if fspath.Within(r.Path, from) {
-			return fmt.Errorf("%s's source repository is inside %s; move it outside before renaming", repo, from)
-		}
-		expected := s.Store.WorktreePath(old, repo)
-		if filepath.Clean(r.Worktree) != filepath.Clean(expected) {
-			return fmt.Errorf("%s's worktree is outside its expected path %s", repo, expected)
-		}
-		p := plan{repo: repo, from: r.Worktree, to: s.Store.WorktreePath(name, repo), branch: r.Branch}
-		if p.present, err = s.movableWorktree(ctx, r.Path, p.from); err != nil {
-			return err
-		}
-		if opts.Branches && r.Branch == cfg.Branch(old) {
-			p.branch = cfg.Branch(name)
-			if err := s.Git.CheckBranchName(ctx, p.branch); err != nil {
-				return err
-			}
-			p.branchExists, err = s.Git.BranchExists(ctx, r.Path, r.Branch)
-			if err != nil {
-				return err
-			}
-			remote, err := s.Git.RemoteBranch(ctx, r.Path, r.Branch)
-			if err != nil {
-				return err
-			}
-			upstream, err := s.Git.Upstream(ctx, r.Path, r.Branch)
-			if err != nil {
-				return err
-			}
-			if remote != "" || (upstream != "" && upstream != r.Base) {
-				s.warnf("%s: keeping published branch %s; rename it explicitly with git branch -m if wanted", repo, r.Branch)
-				p.branch = r.Branch
-			} else {
-				exists, err := s.Git.BranchExists(ctx, r.Path, p.branch)
-				if err != nil {
-					return err
-				}
-				if exists {
-					return fmt.Errorf("%s: branch %s already exists", repo, p.branch)
-				}
-				p.rename = true
-				wt, err := s.Git.FindWorktreeForBranch(ctx, r.Path, r.Branch)
-				if err != nil {
-					return err
-				}
-				if wt != nil && !fspath.Same(wt.Path, p.from) {
-					return fmt.Errorf("%s is checked out at %s; rename without --branches", r.Branch, wt.Path)
-				}
-			}
-		} else if opts.Branches {
-			s.warnf("%s: keeping custom branch %s", repo, r.Branch)
-		}
-		plans = append(plans, p)
+	rr := renameRepo{repo: repo, from: r.Worktree, to: s.Store.WorktreePath(p.name, repo), branch: r.Branch}
+	var err error
+	if rr.present, err = s.movableWorktree(ctx, r.Path, rr.from); err != nil {
+		return renameRepo{}, err
 	}
-	// A branch may also be recorded by a cleaned or not-yet-started task.
-	// Renaming it must not silently invalidate that task's configuration.
-	if opts.Branches {
-		tasks, err := s.Store.List()
-		if err != nil {
-			return fmt.Errorf("check branch ownership: %w", err)
+	if !opts.Branches {
+		return rr, nil
+	}
+	if r.Branch != p.cfg.Branch(p.old) {
+		s.warnf("%s: keeping custom branch %s", repo, r.Branch)
+		return rr, nil
+	}
+	rr.branch = p.cfg.Branch(p.name)
+	if err := s.Git.CheckBranchName(ctx, rr.branch); err != nil {
+		return renameRepo{}, err
+	}
+	if rr.branchExists, err = s.Git.BranchExists(ctx, r.Path, r.Branch); err != nil {
+		return renameRepo{}, err
+	}
+	remote, err := s.Git.RemoteBranch(ctx, r.Path, r.Branch)
+	if err != nil {
+		return renameRepo{}, err
+	}
+	upstream, err := s.Git.Upstream(ctx, r.Path, r.Branch)
+	if err != nil {
+		return renameRepo{}, err
+	}
+	if remote != "" || (upstream != "" && upstream != r.Base) {
+		s.warnf("%s: keeping published branch %s; rename it explicitly with git branch -m if wanted", repo, r.Branch)
+		rr.branch = r.Branch
+		return rr, nil
+	}
+	exists, err := s.Git.BranchExists(ctx, r.Path, rr.branch)
+	if err != nil {
+		return renameRepo{}, err
+	}
+	if exists {
+		return renameRepo{}, fmt.Errorf("%s: branch %s already exists", repo, rr.branch)
+	}
+	rr.rename = true
+	wt, err := s.Git.FindWorktreeForBranch(ctx, r.Path, r.Branch)
+	if err != nil {
+		return renameRepo{}, err
+	}
+	if wt != nil && !fspath.Same(wt.Path, rr.from) {
+		return renameRepo{}, fmt.Errorf("%s is checked out at %s; rename without --branches", r.Branch, wt.Path)
+	}
+	return rr, nil
+}
+
+// checkBranchesUnclaimed refuses to rename a branch another task's record
+// names, a cleaned or not-yet-started one included: that task's configuration
+// must not silently stop matching.
+func (s *Service) checkBranchesUnclaimed(p *renamePlan) error {
+	tasks, err := s.Store.List()
+	if err != nil {
+		return fmt.Errorf("check branch ownership: %w", err)
+	}
+	for _, rr := range p.repos {
+		if !rr.rename {
+			continue
 		}
-		for _, p := range plans {
-			if !p.rename {
-				continue
-			}
-			r := t.Repos[p.repo]
-			for _, other := range tasks {
-				for repo, claim := range other.Repos {
-					if other.Name == old && repo == p.repo {
-						continue
-					}
-					if fspath.Same(claim.Path, r.Path) && (claim.Branch == r.Branch || claim.Base == r.Branch) {
-						return fmt.Errorf("branch %s is also recorded by %s's %s; rename without --branches", r.Branch, other.Name, repo)
-					}
+		r := p.t.Repos[rr.repo]
+		for _, other := range tasks {
+			for repo, claim := range other.Repos {
+				if other.Name == p.old && repo == rr.repo {
+					continue
+				}
+				if fspath.Same(claim.Path, r.Path) && (claim.Branch == r.Branch || claim.Base == r.Branch) {
+					return fmt.Errorf("branch %s is also recorded by %s's %s; rename without --branches", r.Branch, other.Name, repo)
 				}
 			}
 		}
 	}
-	// An unclaimed linked worktree must not be moved by a plain directory rename.
-	err = filepath.WalkDir(from, func(path string, entry os.DirEntry, err error) error {
-		if os.IsNotExist(err) && path == from {
+	return nil
+}
+
+// checkNothingUnclaimed refuses a task directory holding a repository the
+// task doesn't know: a plain directory rename would move it without git.
+func checkNothingUnclaimed(p *renamePlan) error {
+	return filepath.WalkDir(p.from, func(path string, entry os.DirEntry, err error) error {
+		if os.IsNotExist(err) && path == p.from {
 			return nil
 		}
 		if err != nil {
 			return err
 		}
-		for _, p := range plans {
-			if path == p.from && p.present {
+		for _, rr := range p.repos {
+			if path == rr.from && rr.present {
 				return filepath.SkipDir
 			}
 		}
 		if entry.Name() == ".git" {
 			return fmt.Errorf("unclaimed repository at %s; import or move it first", filepath.Dir(path))
 		}
-		if path == from && entry.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("task directory %s is a symlink", from)
+		if path == p.from && entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("task directory %s is a symlink", p.from)
 		}
 		return nil
 	})
-	if err != nil {
-		return err
-	}
+}
+
+// renameTask carries out p, undoing what it did if a step fails.
+func (s *Service) renameTask(ctx context.Context, p *renamePlan) error {
+	t, old, name, from, to := p.t, p.old, p.name, p.from, p.to
 	// Without a carrier, say before anything moves what stays behind.
-	carriers := s.carriers(cfg)
+	carriers := s.carriers(p.cfg)
 	resumed := s.resumedByDirectory(t, from)
 	if len(carriers) == 0 {
 		s.warnConversationsLeft(old, resumed, nil)
 	}
 	moved := []movedDir{newMovedDir(task.RootWindowName, from, to)}
-	for _, p := range plans {
-		if p.present {
-			moved = append(moved, newMovedDir(p.repo, p.from, p.to))
+	for _, rr := range p.repos {
+		if rr.present {
+			moved = append(moved, newMovedDir(rr.repo, rr.from, rr.to))
 		}
 	}
 	var undo undoLog
@@ -201,47 +263,25 @@ func (s *Service) Rename(ctx context.Context, old, name string, opts RenameOptio
 	undo = append(undo, func() error { return os.Remove(to) })
 	// Rollback ignores cancellation so an interrupted command can restore paths.
 	backCtx := context.WithoutCancel(ctx)
-	for _, p := range plans {
-		r := t.Repos[p.repo]
+	for _, rr := range p.repos {
+		r := t.Repos[rr.repo]
 		oldBranch := r.Branch
-		if p.present {
-			if err := s.Git.MoveWorktree(ctx, r.Path, p.from, p.to); err != nil {
+		if rr.present {
+			if err := s.Git.MoveWorktree(ctx, r.Path, rr.from, rr.to); err != nil {
 				return undo.rollback(err)
 			}
-			undo = append(undo, func() error { return s.Git.MoveWorktree(backCtx, r.Path, p.to, p.from) })
+			undo = append(undo, func() error { return s.Git.MoveWorktree(backCtx, r.Path, rr.to, rr.from) })
 		}
-		if p.rename && p.branchExists {
-			if err := s.Git.RenameBranch(ctx, r.Path, r.Branch, p.branch); err != nil {
+		if rr.rename && rr.branchExists {
+			if err := s.Git.RenameBranch(ctx, r.Path, r.Branch, rr.branch); err != nil {
 				return undo.rollback(err)
 			}
-			undo = append(undo, func() error { return s.Git.RenameBranch(backCtx, r.Path, p.branch, oldBranch) })
+			undo = append(undo, func() error { return s.Git.RenameBranch(backCtx, r.Path, rr.branch, oldBranch) })
 		}
-		r.Worktree, r.Branch = p.to, p.branch
-		t.Repos[p.repo] = r
+		r.Worktree, r.Branch = rr.to, rr.branch
+		t.Repos[rr.repo] = r
 	}
-	entries, err := os.ReadDir(from)
-	if err != nil && !os.IsNotExist(err) {
-		return undo.rollback(err)
-	}
-	for _, entry := range entries {
-		src, dst := filepath.Join(from, entry.Name()), filepath.Join(to, entry.Name())
-		if _, err := os.Lstat(dst); err == nil {
-			return undo.rollback(fmt.Errorf("%s already exists", dst))
-		} else if !os.IsNotExist(err) {
-			return undo.rollback(err)
-		}
-		if err := os.Rename(src, dst); err != nil {
-			return undo.rollback(err)
-		}
-		undo = append(undo, func() error { return os.Rename(dst, src) })
-	}
-	oldRun, newRun := s.Store.RunDir(old), s.Store.RunDir(name)
-	if _, err := os.Lstat(oldRun); err == nil {
-		if err := os.Rename(oldRun, newRun); err != nil {
-			return undo.rollback(err)
-		}
-		undo = append(undo, func() error { return os.Rename(newRun, oldRun) })
-	} else if !os.IsNotExist(err) {
+	if err := s.moveTaskFiles(&undo, old, name, from, to); err != nil {
 		return undo.rollback(err)
 	}
 	t.Name = name
@@ -257,6 +297,37 @@ func (s *Service) Rename(ctx context.Context, old, name string, opts RenameOptio
 	// History follows only a rename that happened, and never undoes it.
 	if len(carriers) > 0 {
 		s.warnConversationsLeft(name, resumed, s.carryConversations(name, carriers, moved))
+	}
+	return nil
+}
+
+// moveTaskFiles moves what else the task directory holds, and the task's
+// session memory, logging how to undo each move.
+func (s *Service) moveTaskFiles(undo *undoLog, old, name, from, to string) error {
+	entries, err := os.ReadDir(from)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	for _, entry := range entries {
+		src, dst := filepath.Join(from, entry.Name()), filepath.Join(to, entry.Name())
+		if _, err := os.Lstat(dst); err == nil {
+			return fmt.Errorf("%s already exists", dst)
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+		if err := os.Rename(src, dst); err != nil {
+			return err
+		}
+		*undo = append(*undo, func() error { return os.Rename(dst, src) })
+	}
+	oldRun, newRun := s.Store.RunDir(old), s.Store.RunDir(name)
+	if _, err := os.Lstat(oldRun); err == nil {
+		if err := os.Rename(oldRun, newRun); err != nil {
+			return err
+		}
+		*undo = append(*undo, func() error { return os.Rename(newRun, oldRun) })
+	} else if !os.IsNotExist(err) {
+		return err
 	}
 	return nil
 }
