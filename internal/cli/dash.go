@@ -35,29 +35,7 @@ func (a *App) newDashCmd() *cobra.Command {
 			"also a command. Extra windows, opened with `tspace window`, are _NAME\n" +
 			"rows under their task: enter, X and r work on them as on any window, r\n" +
 			"only on a saved one.\n\n" +
-			"  up/down, j/k  select a row (mouse wheel moves one row)\n" +
-			"  space         expand/collapse a task; one that needs you stays expanded\n" +
-			"  enter         attach to that window; detaching returns here\n" +
-			"  s             start the task (tspace start)\n" +
-			"  r             restart a dead window (tspace restart)\n" +
-			"  x             stop the task, after confirming (tspace stop)\n" +
-			"  S / X         start / stop only the selected window (tspace start/stop TASK REPO)\n" +
-			"  D             clean the task, after confirming (tspace clean)\n" +
-			"  R             delete the task, after confirming (tspace clean --rm)\n" +
-			"  -             remove the selected repository from the task, after\n" +
-			"                confirming (tspace repo rm)\n" +
-			"  m             move the selected repository to another task, in a form\n" +
-			"                (tspace repo move)\n" +
-			"  t             open the task in a new terminal tab (tspace config terminal)\n" +
-			"  c             clear the row's signal\n" +
-			"  N             rename the selected task (tspace task rename)\n" +
-			"  n             create a task, in a form below the table (tspace task create)\n" +
-			"  I             start every interrupted task (tspace start --interrupted);\n" +
-			"                dash offers it on launch when there are any\n" +
-			"  w             open another window at the row's place, in a form: a shell,\n" +
-			"                the task's agent or a command (tspace window -d)\n" +
-			"  W             save the selected open extra window (tspace window --save)\n" +
-			"  q             quit\n\n" +
+			dashKeyHelp() + "\n\n" +
 			"Inside the multiplexer, enter switches the client to the window and\n" +
 			"dash keeps running in its own.\n\n" +
 			"dash needs a terminal. In a script, use `tspace status --json`.",
@@ -871,7 +849,7 @@ func (m dashModel) noteLines() []string {
 			out, last = append(out, wrapped...), len(wrapped)
 		}
 	}
-	room := max(m.height-dashTableLines-len(m.data.Warn), 4)
+	room := max(m.height-dashTableLines-len(m.data.Warn)-(len(dashLegend(m.width))-1), 4)
 	if len(out) > room {
 		tail := min(last, room-2)
 		cut := fmt.Sprintf("... %d more lines", len(out)-room+1)
@@ -896,6 +874,12 @@ func (m dashModel) View() string {
 	var b, detail, foot strings.Builder
 	now := time.Now()
 	note := m.noteLines()
+	legend := dashLegend(m.width)
+	// The form replaces the legend, and takes the detail pane's room.
+	extra := 0
+	if m.form == nil {
+		extra = len(legend) - 1
+	}
 
 	// Header: what needs attention, counted, so the answer to "is anyone
 	// waiting on me" does not require reading the table.
@@ -935,7 +919,7 @@ func (m dashModel) View() string {
 	if len(m.data.Rows) == 0 {
 		b.WriteString("no tasks yet; press n to create one (tspace task create NAME)\n")
 	} else {
-		m.table(&b, now, max(len(note)-1, 0))
+		m.table(&b, now, max(len(note)-1, 0)+extra)
 		// The form takes the detail pane's room.
 		if m.form == nil {
 			m.detail(&detail, now)
@@ -961,7 +945,7 @@ func (m dashModel) View() string {
 		}
 	}
 	if m.form == nil {
-		foot.WriteString(dashFaint.Render("enter attach · space expand · s/x task · S/X window · r restart · D clean · R delete · - remove repo · m move repo · t tab · c clear · n new · N rename · w window · W save window · I interrupted · q quit"))
+		foot.WriteString(dashFaint.Render(strings.Join(legend, "\n")))
 	}
 
 	// A long note takes the detail pane's room too, if the screen can't hold both.
@@ -978,7 +962,8 @@ func (m dashModel) View() string {
 	return strings.Join(lines, "\n")
 }
 
-// table draws the rows, shrink fewer than usual to leave room for a long note.
+// table draws the rows, shrink fewer than usual to leave room for a long note
+// and a wrapped legend.
 func (m dashModel) table(b *strings.Builder, now time.Time, shrink int) {
 	cells := make([][]string, 0, len(m.data.Rows)+1)
 	cells = append(cells, []string{"TASK", "REPO", "AGENT", "RUNTIME", "STATE", "GIT"})
