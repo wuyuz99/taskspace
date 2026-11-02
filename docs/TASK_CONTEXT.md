@@ -85,10 +85,6 @@ to reconcile, and no copy to lose if the editor or the machine dies mid-edit.
 Saving an empty file means the same as `--clear`. Two editors open on one note
 is the editors' business to warn about, as with any other file.
 
-Records written before notes were files carried the Markdown inline. Reading
-one shows it from the record; the first command that changes the task moves it
-into `.context/`, keeping the recorded handoff time. Nothing to run, and no flag.
-
 Optional `--ticket PAY-142` and `--ticket-url https://example.com/browse/PAY-142`
 flags on `task create` and `task update` record ticket metadata locally.
 Multiple differently named workspaces can reference the same ticket. Empty

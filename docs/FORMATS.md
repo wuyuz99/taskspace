@@ -32,9 +32,10 @@ nothing to act on. Times are RFC 3339.
 ## Task records
 
 `$TSPACE_ROOT/tasks/TASK.json` is one JSON file per task, with a format
-`version`. A tspace reads every version up to its own and refuses a newer one,
-leaving it untouched, so downgrading loses access to a newer record and never
-damages it.
+`version`. A tspace reads every version from 1 up to its own and refuses a
+newer one, leaving it untouched, so downgrading loses access to a newer record
+and never damages it. A record with no version is from before v0.1.1 and is
+refused too; change it once with tspace v0.3 to bring it up to date.
 
 A record is written in the oldest format that holds everything in it. A field
 an older tspace would drop on saving gets a new version, which that older

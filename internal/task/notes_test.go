@@ -151,9 +151,6 @@ func TestNoteFailuresAreReported(t *testing.T) {
 	if err := s.WriteNote("t", BriefFile, "x"); err == nil {
 		t.Error("WriteNote wrote under a file")
 	}
-	if err := s.Save(&Task{Name: "t", LegacyBrief: "old"}); err == nil {
-		t.Error("upgrading a legacy record hid a note failure")
-	}
 
 	// A non-empty directory where the note should be can be neither replaced
 	// nor cleared.

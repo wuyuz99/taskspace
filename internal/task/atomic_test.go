@@ -69,7 +69,7 @@ func TestRunDataIsReplacedNotRewritten(t *testing.T) {
 			t.Errorf("%s was rewritten in place: %q", f.path, b)
 		}
 	}
-	if r, ok := s.Running("t"); !ok || r.Whole || len(r.Repos) != 1 {
+	if r, ok := s.Running("t"); !ok || len(r.Repos) != 1 {
 		t.Fatalf("running = %+v, %v", r, ok)
 	}
 }

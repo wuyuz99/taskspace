@@ -397,9 +397,8 @@ func (z *Zellij) Restart(ctx context.Context, session string, w Window) error {
 		older := w
 		older.Env = w.Env[:n]
 		want := strings.Join(z.launchArgv(older), " ")
-		legacy := strings.Join(z.legacyLaunchArgv(older), " ")
 		for _, p := range tab {
-			if p.Held && (p.TerminalCommand == want || p.TerminalCommand == legacy) {
+			if p.Held && p.TerminalCommand == want {
 				_, err := z.action(ctx, session, "send-keys", "--pane-id", p.target(), "Enter")
 				return err
 			}
@@ -726,17 +725,6 @@ const launchDelay = "0.25"
 // fingerprint is what lets Restart tell a held pane would rerun what w asks for.
 func (z *Zellij) launchArgv(w Window) []string {
 	return zellijLaunch(w.Dir, launchArgv(w, z.Shell))
-}
-
-// legacyLaunchArgv recognizes held panes created before repository filtering.
-// Rerunning preserves their original command and output, rather than replacing
-// the tab. It cannot retrofit the new filter into that stored command.
-func (z *Zellij) legacyLaunchArgv(w Window) []string {
-	argv := commandArgv(w, z.Shell)
-	if len(w.Env) > 0 {
-		argv = append(append([]string{"env"}, w.Env...), argv...)
-	}
-	return zellijLaunch(w.Dir, argv)
 }
 
 func zellijLaunch(dir string, argv []string) []string {

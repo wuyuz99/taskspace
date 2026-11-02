@@ -320,19 +320,6 @@ func TestInterruptedBringsBackSavedWindows(t *testing.T) {
 	}
 }
 
-// A record from before snapshots brings back the whole task.
-func TestInterruptedOlderRecord(t *testing.T) {
-	f := newFixture(t)
-	resumeTask(t, f)
-	if err := f.svc.Store.MarkRunning("T", task.Running{Whole: true}); err != nil {
-		t.Fatal(err)
-	}
-	f.recover(t)
-	if got := names(f.started()); !slices.Equal(got, []string{task.RootWindowName, "a", "b"}) {
-		t.Fatalf("launched %v", got)
-	}
-}
-
 // A state read before a stop, written after it, must not make the stop look
 // like an interruption.
 func TestObserveAfterStopWritesNothing(t *testing.T) {

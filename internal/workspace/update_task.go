@@ -190,18 +190,6 @@ func (s *Service) RemoveTask(ctx context.Context, name string, force bool) error
 	return s.Delete(t)
 }
 
-// NotesReady brings the task's record up to date under its lock, for a caller
-// about to change a note itself. Moving an inline note afterwards would undo
-// the change; see task.CurrentVersion.
-func (s *Service) NotesReady(ctx context.Context, name string) (*task.Task, error) {
-	t, _, unlock, err := s.Lock(ctx, name, s.command("tspace task note"), false)
-	if err != nil {
-		return nil, err
-	}
-	defer unlock()
-	return t, s.upgradeForNotes(t)
-}
-
 // WriteNote replaces one of the task's notes, or with empty text clears it.
 func (s *Service) WriteNote(ctx context.Context, name, file, text string) (*task.Task, error) {
 	t, _, unlock, err := s.Lock(ctx, name, s.command("tspace task note"), false)
@@ -209,15 +197,5 @@ func (s *Service) WriteNote(ctx context.Context, name, file, text string) (*task
 		return nil, err
 	}
 	defer unlock()
-	if err := s.upgradeForNotes(t); err != nil {
-		return nil, err
-	}
 	return t, s.Store.WriteNote(t.Name, file, text)
-}
-
-func (s *Service) upgradeForNotes(t *task.Task) error {
-	if t.Outdated() {
-		return s.Store.Save(t)
-	}
-	return nil
 }

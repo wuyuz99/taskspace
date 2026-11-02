@@ -28,7 +28,6 @@ func TestRecordFieldsAreDecided(t *testing.T) {
 	want := []string{
 		"Task.version", "Task.name", "Task.repos", "Task.title", "Task.ticket", "Task.ticket_url",
 		"Task.agent", "Task.resume", "Task.agent_repo", "Task.root_window", "Task.windows",
-		"Task.brief", "Task.handoff", "Task.handoff_updated_at",
 		"Repo.path", "Repo.branch", "Repo.base", "Repo.base_assumed", "Repo.worktree",
 		"Repo.post_create", "Repo.agent", "Repo.resume",
 		"Window.name", "Window.repo", "Window.command",

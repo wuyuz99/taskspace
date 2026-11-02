@@ -1,7 +1,6 @@
 package task
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -131,8 +130,6 @@ func (s *Store) runningPath(taskName string) string {
 // Running is the last snapshot of what ran in a task's session, for bringing
 // back just that once something else ends it.
 type Running struct {
-	// Whole is the whole task. Only a record from before snapshots says so.
-	Whole bool `json:"whole,omitempty"`
 	// Root is the root window, Repos these repositories' windows, and
 	// Windows these saved windows, by the names they are saved under.
 	Root    bool     `json:"root,omitempty"`
@@ -156,15 +153,14 @@ func (s *Store) MarkRunning(taskName string, r Running) error {
 
 // Running reports what MarkRunning last recorded the task's session runs,
 // and whether it recorded anything since the session last ended on purpose.
-// A record from a tspace that kept none is the whole task.
 func (s *Store) Running(taskName string) (Running, bool) {
 	b, err := os.ReadFile(s.runningPath(taskName))
 	if err != nil {
 		return Running{}, false
 	}
 	var r Running
-	if len(bytes.TrimSpace(b)) == 0 || json.Unmarshal(b, &r) != nil {
-		return Running{Whole: true}, true
+	if json.Unmarshal(b, &r) != nil {
+		return Running{}, false
 	}
 	return r, true
 }
@@ -181,8 +177,8 @@ func (s *Store) ClearRunning(taskName string) error {
 // Interrupted reports whether a task without a session lost it to something
 // other than tspace ending it, such as a computer restart: its last snapshot
 // held something and nothing since recorded an end. The caller knows there is no
-// session. A task last run by an older tspace never counts.
+// session.
 func (s *Store) Interrupted(taskName string) bool {
-	_, err := os.Stat(s.runningPath(taskName))
-	return err == nil
+	_, ok := s.Running(taskName)
+	return ok
 }

@@ -175,13 +175,6 @@ func (s *Service) Rename(ctx context.Context, old, name string, opts RenameOptio
 	if err != nil {
 		return err
 	}
-	// Migrate legacy notes at the old path before beginning the transaction.
-	// Publishing the renamed record must not create files outside the undo log.
-	if t.Outdated() {
-		if err := s.Store.Save(t); err != nil {
-			return err
-		}
-	}
 	// Without a carrier, say before anything moves what stays behind.
 	carriers := s.carriers(cfg)
 	resumed := s.resumedByDirectory(t, from)

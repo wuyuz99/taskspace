@@ -329,16 +329,16 @@ func (a *Aggregator) task(ctx context.Context, t *task.Task, published map[strin
 		out.Interrupted = true
 		// Only what comes back says so; the rest simply is not running.
 		r, _ := a.Run.Running(t.Name)
-		if out.Root != nil && (r.Whole || r.Root) {
+		if out.Root != nil && r.Root {
 			out.Root.Runtime = RuntimeInterrupted
 		}
 		for i := range out.Repos {
-			if r.Whole || slices.Contains(r.Repos, out.Repos[i].Repo) {
+			if slices.Contains(r.Repos, out.Repos[i].Repo) {
 				out.Repos[i].Runtime = RuntimeInterrupted
 			}
 		}
 		for i := range out.Extra {
-			if r.Whole || slices.Contains(r.Windows, strings.TrimPrefix(out.Extra[i].Name, task.ExtraWindowPrefix)) {
+			if slices.Contains(r.Windows, strings.TrimPrefix(out.Extra[i].Name, task.ExtraWindowPrefix)) {
 				out.Extra[i].Runtime = RuntimeInterrupted
 			}
 		}

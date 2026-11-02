@@ -14,7 +14,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"time"
 )
 
 // Task is a logical unit of work spanning one or more repositories.
@@ -51,17 +50,6 @@ type Task struct {
 	// Windows are the extra windows its session gets on every start, besides
 	// the root and repository windows.
 	Windows []Window `json:"windows,omitempty"`
-
-	// Legacy fields of a version 0 record, which carried the Markdown inline
-	// before notes became files; the upgrade to version 1 moves them out.
-	// Only that migration, and a read of an outdated record, look at them.
-	//
-	// The timestamp is a pointer because `omitempty` does nothing for a struct:
-	// as a plain time.Time it wrote "0001-01-01T00:00:00Z" into every record
-	// that never had a handoff.
-	LegacyBrief            string     `json:"brief,omitempty"`
-	LegacyHandoff          string     `json:"handoff,omitempty"`
-	LegacyHandoffUpdatedAt *time.Time `json:"handoff_updated_at,omitempty"`
 }
 
 // Repo is one repository enrolled in a task.

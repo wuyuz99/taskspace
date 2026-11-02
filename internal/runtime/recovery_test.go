@@ -55,24 +55,6 @@ func TestRestartDeadWindowDoesNotForce(t *testing.T) {
 	}
 }
 
-func TestLegacySessionBlocksStart(t *testing.T) {
-	f := tsexec.NewFake() // has-session succeeds for the legacy name
-	tm := NewTmux(f)
-	if err := tm.Start(ctx(), tm.SessionName("a.b"), []Window{{Name: "repo"}}); err == nil || !strings.Contains(err.Error(), "legacy") {
-		t.Fatalf("error: %v", err)
-	}
-	if f.Ran("new-session") || f.Ran("kill-session") {
-		t.Fatal("legacy session mutated")
-	}
-}
-
-func TestLegacySessionNames(t *testing.T) {
-	got := legacySessions(NewTmux(tsexec.NewFake()).SessionName("a.b"))
-	if want := []string{"aw@a~2eb", "aw-a-b"}; strings.Join(got, " ") != strings.Join(want, " ") {
-		t.Fatalf("legacy names = %v, want %v", got, want)
-	}
-}
-
 // isolatedRunner supplies a private tmux socket without touching the user's server.
 type isolatedRunner struct{ socket string }
 
