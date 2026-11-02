@@ -156,7 +156,10 @@ func commandArgv(w Window, shell string) []string {
 // sessionName is the session a task runs in. Every runtime uses it: tspace
 // finds a task's existing session by this name, so the scheme must not differ
 // between multiplexers.
-func sessionName(task string) string { return "tspace@" + sanitize(task) }
+func sessionName(task string) string { return sessionPrefix + sanitize(task) }
+
+// sessionPrefix starts every session tspace makes.
+const sessionPrefix = "tspace@"
 
 // missingWindows returns the windows st has no pane for.
 func missingWindows(st SessionState, windows []Window) []Window {

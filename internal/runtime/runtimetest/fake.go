@@ -422,7 +422,22 @@ func (f *Fake) State(_ context.Context, session string) (runtime.SessionState, e
 	return st, nil
 }
 
+// States implements runtime.StateLister.
+func (f *Fake) States(context.Context) (map[string]runtime.SessionRead, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.errs[OpState]; err != nil {
+		return nil, err
+	}
+	out := make(map[string]runtime.SessionRead, len(f.sessions))
+	for session, panes := range f.sessions {
+		out[session] = runtime.SessionRead{State: runtime.SessionState{Name: session, Exists: true, Panes: maps.Clone(panes)}}
+	}
+	return out, nil
+}
+
 var (
 	_ runtime.Runtime      = (*Fake)(nil)
+	_ runtime.StateLister  = (*Fake)(nil)
 	_ runtime.WindowCloser = (*Fake)(nil)
 )

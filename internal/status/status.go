@@ -165,11 +165,28 @@ type Aggregator struct {
 	// TaskDir is the directory a task's root window runs in, for matching
 	// published status to it; without it, only repository windows match.
 	TaskDir func(taskName string) string
+
+	gitSlots chan struct{}
 }
+
+// gitLimit bounds the worktrees inspected at once. Each is a few processes, and
+// a dashboard with many tasks refreshes them all, every couple of seconds.
+const gitLimit = 8
 
 // New returns an Aggregator.
 func New(g *tsgit.Git, rt runtime.Runtime) *Aggregator {
-	return &Aggregator{Git: g, Runtime: rt}
+	return &Aggregator{Git: g, Runtime: rt, gitSlots: make(chan struct{}, gitLimit)}
+}
+
+// gitSlot waits for a turn to run git, and returns what gives it back. A
+// cancelled ctx goes ahead, for git to fail as it would have.
+func (a *Aggregator) gitSlot(ctx context.Context) func() {
+	select {
+	case a.gitSlots <- struct{}{}:
+		return func() { <-a.gitSlots }
+	case <-ctx.Done():
+		return func() {}
+	}
 }
 
 // Task reports the status of one task.
@@ -177,7 +194,7 @@ func New(g *tsgit.Git, rt runtime.Runtime) *Aggregator {
 // Repositories are queried concurrently: `git status` across several large
 // repositories is the dominant cost of this command, and they are independent.
 func (a *Aggregator) Task(ctx context.Context, t *task.Task) TaskStatus {
-	return a.task(ctx, t, a.published(ctx))
+	return a.task(ctx, t, a.published(ctx), nil)
 }
 
 // published asks every integration once, for all tasks together: an agent's
@@ -199,7 +216,32 @@ func (a *Aggregator) published(ctx context.Context) map[string]Published {
 	return out
 }
 
-func (a *Aggregator) task(ctx context.Context, t *task.Task, published map[string]Published) TaskStatus {
+// sessions asks the multiplexer about every session at once, if it can. nil
+// says to ask per task: a failure here says nothing about any one session.
+func (a *Aggregator) sessions(ctx context.Context) map[string]runtime.SessionRead {
+	lister, ok := a.Runtime.(runtime.StateLister)
+	if !ok {
+		return nil
+	}
+	all, err := lister.States(ctx)
+	if err != nil {
+		return nil
+	}
+	return all
+}
+
+// session is one session's state, from sessions' answer if there is one.
+func (a *Aggregator) session(ctx context.Context, name string, known map[string]runtime.SessionRead) (runtime.SessionState, error) {
+	if known == nil {
+		return a.Runtime.State(ctx, name)
+	}
+	if r, ok := known[name]; ok {
+		return r.State, r.Err
+	}
+	return runtime.SessionState{Name: name, Panes: map[string]runtime.PaneState{}}, nil
+}
+
+func (a *Aggregator) task(ctx context.Context, t *task.Task, published map[string]Published, known map[string]runtime.SessionRead) TaskStatus {
 	out := TaskStatus{Task: t.Name}
 	pub := func(dir string) *Published {
 		if p, ok := published[fspath.Key(dir)]; ok && dir != "" {
@@ -215,7 +257,7 @@ func (a *Aggregator) task(ctx context.Context, t *task.Task, published map[strin
 	runtimeUnknown := a.Runtime == nil
 	if a.Runtime != nil {
 		out.Session = a.Runtime.SessionName(t.Name)
-		st, err := a.Runtime.State(ctx, out.Session)
+		st, err := a.session(ctx, out.Session, known)
 		if err != nil {
 			runtimeUnknown = true
 			out.RuntimeErr = err
@@ -346,6 +388,7 @@ func (a *Aggregator) repoStatus(ctx context.Context, taskName, repoName string, 
 		Git:     GitClean,
 	}
 
+	defer a.gitSlot(ctx)()
 	st, err := a.Git.WorktreeStatus(ctx, r.Worktree)
 	switch {
 	case err != nil:
@@ -410,13 +453,14 @@ func (a *Aggregator) livePane(sess runtime.SessionState, window string, runtimeU
 func (a *Aggregator) All(ctx context.Context, tasks []*task.Task) []TaskStatus {
 	out := make([]TaskStatus, len(tasks))
 	published := a.published(ctx)
+	known := a.sessions(ctx)
 
 	var wg sync.WaitGroup
 	for i, t := range tasks {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			out[i] = a.task(ctx, t, published)
+			out[i] = a.task(ctx, t, published, known)
 		}()
 	}
 	wg.Wait()

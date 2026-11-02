@@ -35,6 +35,28 @@ func Conformance(t *testing.T, target func(t *testing.T) Target) {
 		skip func(Target) bool
 		run  func(t *testing.T, tg Target, session, dir string)
 	}{
+		{name: "states match state", skip: cannotList, run: func(t *testing.T, tg Target, s, dir string) {
+			lister := tg.Runtime.(runtime.StateLister)
+			all, err := lister.States(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := all[s]; ok {
+				t.Fatalf("%s is listed before it starts", s)
+			}
+			start(t, tg, s, runtime.Window{Name: "_root", Dir: dir, Command: alive})
+			all, err = lister.States(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, ok := all[s]
+			if !ok || got.Err != nil || !got.State.Exists {
+				t.Fatalf("States[%s] = %+v, listed %v", s, got, ok)
+			}
+			if _, ok := got.State.Pane("_root"); !ok {
+				t.Fatalf("panes: %+v", got.State.Panes)
+			}
+		}},
 		{name: "start refuses no windows", run: func(t *testing.T, tg Target, s, _ string) {
 			if err := tg.Runtime.Start(ctx, s, nil); err == nil {
 				t.Fatal("started a session with no windows")
@@ -202,6 +224,11 @@ func Conformance(t *testing.T, target func(t *testing.T) Target) {
 }
 
 func needsClient(tg Target) bool { return tg.NeedsClient }
+
+func cannotList(tg Target) bool {
+	_, ok := tg.Runtime.(runtime.StateLister)
+	return !ok
+}
 
 func start(t *testing.T, tg Target, session string, windows ...runtime.Window) {
 	t.Helper()
