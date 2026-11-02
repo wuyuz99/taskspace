@@ -26,8 +26,6 @@
   `$TSPACE_ROOT/config.json` holds the default task-root agent and its resume
   command, the registered repositories, the branch prefix, the ticket pattern,
   the multiplexer, the terminal and the editor. Nothing else is configurable.
-- Existing sessions from the old `aw@...` or `aw-...` naming schemes require manual inspection
-  and stopping or renaming before starting their replacement.
 
 ## Roadmap
 

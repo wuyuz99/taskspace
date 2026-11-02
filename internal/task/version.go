@@ -6,33 +6,23 @@ import (
 )
 
 // Task records carry the version of their format, so a tspace can tell what it
-// is reading and bring old records up to date.
+// is reading.
 //
 // The policy:
 //
-//   - A record without a version is version 0, the format before versions:
-//     its brief and handoff may still be inline.
-//   - Load reads any version up to CurrentVersion as it is, and rewrites
+//   - Load reads any version from 1 to CurrentVersion as it is, and rewrites
 //     nothing: listing, status and showing a task never change a record. A
-//     newer version is refused with ErrUnsupportedVersion and left alone.
-//   - Save brings the record up to date first, running each migration in
-//     order, and then writes it in the oldest format that holds everything in
-//     it (see formatVersion): a change that only some records use, such as
-//     saved windows, locks an older tspace out of those records alone. Every write goes through Save under the task's lock (see
-//     Lock), so a migration is a write like any other: it starts from the
-//     latest record and cannot race an update. Update upgrades before it
-//     applies its change, and so must anything that writes a note of an
-//     outdated record: a note cleared before the move would be refilled by it.
-//   - A migration finishes everything it does outside the record, such as
-//     writing note files, before the record is replaced, and Save replaces it
-//     only after every migration succeeded. A failure leaves the record as it
-//     was, and the next write simply tries again; a migration must therefore
-//     be safe to repeat after partial work.
-//   - An older tspace ignores the version, as it ignores any field it does not
-//     know, and may write the record back without it. That is harmless while
-//     every migration is safe to repeat. A newer one refuses to touch what it
-//     cannot read, so downgrading past a format change means losing access to
-//     records written since, never silently damaging them.
+//     newer version is refused with ErrUnsupportedVersion and left alone, as
+//     is a record with no version, whose notes are inline: this tspace would
+//     drop them, and v0.3 moves them into files.
+//   - Save writes a record in the oldest format that holds everything in it
+//     (see formatVersion): a change that only some records use, such as saved
+//     windows, locks an older tspace out of those records alone. Every write
+//     goes through Save under the task's lock; see Lock.
+//   - An older tspace may not know a field and would drop it on saving, so a
+//     new field that matters gets a new version here, which it refuses. Going
+//     back past a format change means losing access to records written since,
+//     never silently damaging them.
 //
 // docs/FORMATS.md says what is promised to readers outside tspace, and
 // TestRecordFieldsAreDecided stops a new field from skipping this policy.
@@ -45,29 +35,8 @@ const CurrentVersion = 3
 // ErrUnsupportedVersion is returned for a record from a newer tspace.
 var ErrUnsupportedVersion = errors.New("record written by a newer tspace")
 
-// migrations[v] brings a record from version v to v+1.
-var migrations = []func(s *Store, t *Task) error{
-	// 0 -> 1: move the inline brief and handoff into note files.
-	(*Store).moveLegacyNotes,
-	// 1 -> 2: nothing to move. Version 2 records may hold saved windows,
-	// which a tspace that knows only version 1 would drop when it saved the
-	// record; it refuses a version 2 record instead.
-	func(*Store, *Task) error { return nil },
-	// 2 -> 3: nothing to move. Version 3 records may mark a repository's
-	// base as assumed, which a tspace that knows only version 2 would drop,
-	// and with it the refusal to rebase from a guessed base.
-	func(*Store, *Task) error { return nil },
-}
-
-func init() {
-	if len(migrations) != CurrentVersion {
-		panic("task: one migration per version is required")
-	}
-}
-
-// Outdated reports whether t's record is in an older format than it needs,
-// which its next save brings up to date.
-func (t *Task) Outdated() bool { return t.Version < t.formatVersion() }
+// ErrObsoleteRecord is returned for a record from before versions.
+var ErrObsoleteRecord = errors.New("record too old for this tspace")
 
 // formatVersion is the oldest format that holds everything in t. Version 2
 // adds only saved windows and version 3 only assumed bases, so a task
@@ -84,6 +53,7 @@ func (t *Task) formatVersion() int {
 	return 1
 }
 
+// checkVersion refuses a record that cannot be read as it stands.
 func checkVersion(t *Task) error {
 	if t.Version < 0 {
 		return fmt.Errorf("task %q: format version %d is not one tspace ever wrote; the record is damaged", t.Name, t.Version)
@@ -95,17 +65,18 @@ func checkVersion(t *Task) error {
 	return nil
 }
 
-// upgrade runs the migrations from t's version to CurrentVersion, advancing
-// the version only past each one that succeeded.
-func (s *Store) upgrade(t *Task) error {
+// checkStored is checkVersion for a record read from disk.
+func checkStored(t *Task) error {
+	if t.Version == 0 {
+		return fmt.Errorf("task %q: %w; to keep its notes, change it once with tspace v0.3, such as with tspace task update %s --title TITLE, then use this tspace", t.Name, ErrObsoleteRecord, t.Name)
+	}
+	return checkVersion(t)
+}
+
+// stamp sets the version t is saved with.
+func stamp(t *Task) error {
 	if err := checkVersion(t); err != nil {
 		return err
-	}
-	for t.Version < CurrentVersion {
-		if err := migrations[t.Version](s, t); err != nil {
-			return fmt.Errorf("upgrade task %q from format version %d: %w", t.Name, t.Version, err)
-		}
-		t.Version++
 	}
 	t.Version = t.formatVersion()
 	return nil

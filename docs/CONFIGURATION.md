@@ -119,13 +119,10 @@ yourself are not covered.
 
 ### Record formats and upgrades
 
-Each task record says which format it is in (`"version"`); one without is from
-before versions. Reading a record never rewrites it: `status`, `task list` and
-`task show` work on old records as they are. The first command that changes a
-task brings its record up to date, under the task's lock, and every step of
-that finishes its other files (such as moving inline notes out) before the
-record is replaced. If one fails, the record is left as it was and the next
-change tries again.
+Each task record says which format it is in (`"version"`). Reading a record
+never rewrites it. A record with no version holds its notes inline and is
+refused, untouched: change it once with tspace v0.3, which moves them into files,
+then use this version.
 
 A record written by a newer tspace than yours is refused with a message saying
 so, and left untouched; `task list` reports it and shows the rest. So going

@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"os"
 	osexec "os/exec"
@@ -85,10 +84,6 @@ func (t *Tmux) Start(ctx context.Context, session string, windows []Window) erro
 	if len(windows) == 0 {
 		return fmt.Errorf("no windows to start for session %s", session)
 	}
-	if err := t.checkLegacySession(ctx, session); err != nil {
-		return err
-	}
-
 	// One State call, not one per window: each hasWindow probe costs two tmux
 	// invocations, and the answer for every window is in the same list-panes.
 	st, err := t.State(ctx, session)
@@ -182,9 +177,6 @@ func (t *Tmux) launchFresh(ctx context.Context, session string, w Window) error 
 // replaced. It is respawn-pane for the same reason as in launchFresh: an
 // attached client must not be switched to the restarted window.
 func (t *Tmux) Restart(ctx context.Context, session string, w Window) error {
-	if err := t.checkLegacySession(ctx, session); err != nil {
-		return err
-	}
 	st, err := t.State(ctx, session)
 	if err != nil {
 		return err
@@ -202,43 +194,6 @@ func (t *Tmux) Restart(ctx context.Context, session string, w Window) error {
 	args = append(args, t.launchArgv(w)...)
 	_, err = t.tmux(ctx, args...)
 	return err
-}
-
-// legacySessions are the names this task's session had before: "aw@" from
-// before the rename to tspace, and the older, ambiguous "aw-" scheme. Never
-// adopt or kill one automatically, and refuse launching duplicate agents while
-// one exists.
-func legacySessions(session string) []string {
-	if !strings.HasPrefix(session, "tspace@") {
-		return nil
-	}
-	s := strings.TrimPrefix(session, "tspace@")
-	var old strings.Builder
-	old.WriteString("aw-")
-	for i := 0; i < len(s); i++ {
-		if s[i] == '~' && i+2 < len(s) {
-			if _, err := hex.DecodeString(s[i+1 : i+3]); err == nil {
-				old.WriteByte('-')
-				i += 2
-				continue
-			}
-		}
-		old.WriteByte(s[i])
-	}
-	return []string{"aw@" + s, old.String()}
-}
-
-func (t *Tmux) checkLegacySession(ctx context.Context, session string) error {
-	for _, old := range legacySessions(session) {
-		exists, err := t.HasSession(ctx, old)
-		if err != nil {
-			return err
-		}
-		if exists {
-			return fmt.Errorf("legacy session %q exists; inspect it with tmux and stop or rename it manually before starting %q (old names may belong to another task)", old, session)
-		}
-	}
-	return nil
 }
 
 // setRemainOnExit keeps a pane visible after its command exits.

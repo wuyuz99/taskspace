@@ -6,7 +6,6 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/wuyuz99/taskspace/internal/task"
 )
@@ -222,67 +221,6 @@ func TestTaskNotesSurviveCleanAndAppearOnAttach(t *testing.T) {
 	}
 }
 
-// A record written before notes were files is migrated the first time anything
-// reads a note, with no flag and no separate command.
-// A legacy record's notes are shown from the record by reads, which change
-// nothing, and moved into files by the first command that changes the task.
-func TestLegacyRecordsMigrateOnFirstChange(t *testing.T) {
-	h := newHarness(t)
-	stamp := time.Date(2026, 9, 1, 10, 30, 0, 0, time.UTC)
-	legacy := `{
-  "name": "PAY-142",
-  "title": "Expired cards",
-  "brief": "Reject expired cards.\n",
-  "handoff": "Frontend next.\n",
-  "handoff_updated_at": "2026-09-01T10:30:00Z"
-}`
-	if err := os.MkdirAll(h.app.Store.TasksDir(), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(h.app.Store.TasksDir(), "PAY-142.json"), []byte(legacy), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	h.out.Reset()
-	if err := h.exec(t, h.app.newTaskCmd(), "brief", "PAY-142"); err != nil {
-		t.Fatal(err)
-	}
-	if h.out.String() != "Reject expired cards.\n" {
-		t.Fatalf("brief of a legacy record = %q", h.out.String())
-	}
-	if err := h.exec(t, h.app.newTaskCmd(), "show", "PAY-142"); err != nil {
-		t.Fatal(err)
-	}
-	if raw, err := os.ReadFile(filepath.Join(h.app.Store.TasksDir(), "PAY-142.json")); err != nil || string(raw) != legacy {
-		t.Fatalf("reading rewrote the record: %s (%v)", raw, err)
-	}
-
-	if err := h.exec(t, h.app.newTaskCmd(), "update", "PAY-142", "--ticket", "PAY-142"); err != nil {
-		t.Fatal(err)
-	}
-	brief, err := h.app.Store.ReadNote("PAY-142", task.BriefFile)
-	if err != nil || brief.Text != "Reject expired cards.\n" {
-		t.Fatalf("brief file = %q (%v)", brief.Text, err)
-	}
-	handoff, err := h.app.Store.ReadNote("PAY-142", task.HandoffFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !handoff.UpdatedAt.Equal(stamp) {
-		t.Errorf("handoff time = %v, want the recorded %v", handoff.UpdatedAt, stamp)
-	}
-	raw, err := os.ReadFile(filepath.Join(h.app.Store.TasksDir(), "PAY-142.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(raw), "Reject expired cards") {
-		t.Errorf("record still holds the brief: %s", raw)
-	}
-	if !strings.Contains(string(raw), "Expired cards") {
-		t.Errorf("migration dropped the title: %s", raw)
-	}
-}
-
 // Notes are deleted with the task record, as documented — but --force leaves
 // the worktrees on disk, so it leaves the brief describing them too.
 func TestTaskRmDeletesNotesUnlessWorktreesRemain(t *testing.T) {
@@ -371,43 +309,6 @@ func TestMultipleWorkspacesCanReferenceSameTicket(t *testing.T) {
 	}
 	if tk.Title != "" || tk.Ticket != "PAY-142" {
 		t.Fatal("workspace identity was coupled to ticket")
-	}
-}
-
-func TestLegacyRecordsAndCommandsThatDoNotSave(t *testing.T) {
-	h := newHarness(t)
-	if err := os.MkdirAll(h.app.Store.TasksDir(), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	legacy := `{"name": "PAY-1", "brief": "old brief", "handoff": "old handoff"}`
-	path := filepath.Join(h.app.Store.TasksDir(), "PAY-1.json")
-	if err := os.WriteFile(path, []byte(legacy), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	// A file where the notes go: no upgrade can move them.
-	if err := os.MkdirAll(h.app.Store.TaskDir("PAY-1"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(h.app.Store.ContextDir("PAY-1"), nil, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := h.exec(t, h.app.newStopCmd(), "PAY-1"); err != nil {
-		t.Fatalf("stop of a record that cannot be upgraded: %v", err)
-	}
-	_ = os.Remove(h.app.Store.ContextDir("PAY-1")) // stop may have tidied it away
-	if raw, _ := os.ReadFile(path); string(raw) != legacy {
-		t.Fatalf("stop rewrote the record: %s", raw)
-	}
-
-	// Clearing a note of a legacy record is not undone by moving the other.
-	if err := h.exec(t, h.app.newTaskCmd(), "handoff", "PAY-1", "--clear"); err != nil {
-		t.Fatal(err)
-	}
-	if err := h.exec(t, h.app.newTaskCmd(), "handoff", "PAY-1"); err != nil || h.out.String() != "" {
-		t.Fatalf("handoff after --clear = %q, %v", h.out.String(), err)
-	}
-	if err := h.exec(t, h.app.newTaskCmd(), "brief", "PAY-1"); err != nil || !strings.Contains(h.out.String(), "old brief") {
-		t.Fatalf("brief = %q, %v", h.out.String(), err)
 	}
 }
 

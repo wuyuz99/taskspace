@@ -288,10 +288,4 @@ func TestInterruptedMarksOnlyWhatComesBack(t *testing.T) {
 			t.Errorf("%s = %q", e.Name, e.Runtime)
 		}
 	}
-
-	// A record from before snapshots says only that all of it ran.
-	a.Run = interruptedRun{task.Running{Whole: true}}
-	if got := a.Task(context.Background(), tk); got.Root.Runtime != RuntimeInterrupted || got.Repos[1].Runtime != RuntimeInterrupted {
-		t.Errorf("older record: %+v", got)
-	}
 }

@@ -15,6 +15,14 @@ upgrade.
 - dash's key legend wraps instead of being cut at the terminal's width (#168).
 - `tspace config` commands run at once no longer lose one another's changes (#170).
 
+### Removed
+
+- Task records with no format version are refused, with their notes left
+  untouched. Change such a task once with tspace v0.3 before upgrading.
+- The check for tmux sessions named `aw@...` or `aw-...`, recognizing zellij panes
+  started before v0.2.1, and bringing back a whole task from a snapshot written
+  before v0.3.
+
 ### Added
 
 - [Formats](docs/FORMATS.md) says what `status --json`, task records and the

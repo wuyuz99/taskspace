@@ -277,7 +277,7 @@ func TestTaskAgentIsOptionalInRecords(t *testing.T) {
 	if err := os.MkdirAll(s.TasksDir(), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	old := `{"name":"old","repos":{"backend":{"path":"/src/backend","branch":"agent/old","worktree":"/w","agent":["codex"]}}}`
+	old := `{"version":1,"name":"old","repos":{"backend":{"path":"/src/backend","branch":"agent/old","worktree":"/w","agent":["codex"]}}}`
 	if err := os.WriteFile(filepath.Join(s.TasksDir(), "old.json"), []byte(old), 0o600); err != nil {
 		t.Fatal(err)
 	}

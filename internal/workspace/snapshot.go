@@ -39,7 +39,7 @@ func running(s *Service, t *task.Task, st runtime.SessionState) (task.Running, b
 }
 
 func sameRunning(a, b task.Running) bool {
-	return a.Whole == b.Whole && a.Root == b.Root && slices.Equal(a.Repos, b.Repos) && slices.Equal(a.Windows, b.Windows)
+	return a.Root == b.Root && slices.Equal(a.Repos, b.Repos) && slices.Equal(a.Windows, b.Windows)
 }
 
 // snapshot writes down what the task's session runs, under its lock. A

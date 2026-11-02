@@ -262,7 +262,7 @@ func (a *App) newTaskNoteCmd(handoff bool) *cobra.Command {
 			}
 			if edit {
 				// The editor writes the file itself, for as long as it is open.
-				t, err := ws.NotesReady(cmd.Context(), taskName)
+				t, err := a.Store.Load(taskName)
 				if err != nil {
 					return err
 				}

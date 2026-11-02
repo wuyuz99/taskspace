@@ -159,7 +159,7 @@ func (s *Store) CreatePrepared(t *Task) error {
 	if err := ValidateName("task", t.Name); err != nil {
 		return err
 	}
-	if err := s.upgrade(t); err != nil {
+	if err := stamp(t); err != nil {
 		return err
 	}
 	if err := publishJSON(s.path(t.Name), t, false); err != nil {

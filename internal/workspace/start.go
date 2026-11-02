@@ -331,9 +331,6 @@ func (s *Service) StartInterrupted(ctx context.Context, opts StartOptions) (star
 // restart is the start that brings back what r says ran in t, and whether
 // anything of it is left. What t no longer has is left out.
 func restart(t *task.Task, r task.Running, fresh bool) (StartOptions, bool) {
-	if r.Whole {
-		return StartOptions{Fresh: fresh}, len(t.Repos) > 0 || t.HasRootWindow()
-	}
 	restore := task.Running{Root: r.Root && t.HasRootWindow(), Windows: r.Windows}
 	for _, name := range r.Repos {
 		if _, ok := t.Repo(name); ok {

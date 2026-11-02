@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/wuyuz99/taskspace/internal/task"
 )
 
 // start and clean of one task serialize: clean waits while start's
@@ -104,16 +106,13 @@ while [ ! -f "$RELEASE" ]; do sleep 0.05; done`
 	}
 }
 
-// Reading a task never waits for a command changing it, and shows a legacy
-// record's inline notes as they are.
+// Reading a task never waits for a command changing it.
 func TestReadsDoNotWaitForTheLock(t *testing.T) {
 	h := newHarness(t)
-	// A record from before versions, its handoff inline.
-	if err := os.MkdirAll(h.app.Store.TasksDir(), 0o755); err != nil {
+	if _, err := h.app.Store.Create("PAY-1"); err != nil {
 		t.Fatal(err)
 	}
-	legacy := `{"name": "PAY-1", "handoff": "inline handoff"}`
-	if err := os.WriteFile(filepath.Join(h.app.Store.TasksDir(), "PAY-1.json"), []byte(legacy), 0o600); err != nil {
+	if err := h.app.Store.WriteNote("PAY-1", task.HandoffFile, "the handoff"); err != nil {
 		t.Fatal(err)
 	}
 	l, err := h.app.Store.Lock(context.Background(), "PAY-1", "busy", nil)
@@ -133,7 +132,7 @@ func TestReadsDoNotWaitForTheLock(t *testing.T) {
 			done <- err
 			return
 		}
-		if !strings.Contains(out, "inline handoff") {
+		if !strings.Contains(out, "the handoff") {
 			done <- fmt.Errorf("handoff printed %q", out)
 			return
 		}
@@ -146,9 +145,6 @@ func TestReadsDoNotWaitForTheLock(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("a read waited for the lock")
-	}
-	if got, err := h.app.Store.Load("PAY-1"); err != nil || got.LegacyHandoff == "" {
-		t.Fatalf("a read migrated the record: %+v, %v", got, err)
 	}
 }
 

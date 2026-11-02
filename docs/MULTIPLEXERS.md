@@ -115,13 +115,6 @@ Session names now use the `tspace@` namespace; dots are encoded as `~2e`, with t
 escape marker itself escaped. `a.b` and `a-b` have distinct sessions and windows.
 Window targets are exact matches, and automatic renaming is disabled.
 
-**Upgrading from old sessions:** sessions named `aw@...` (from before the rename
-to `tspace`) or `aw-...` are not adopted or stopped
-by this version. Start/restart refuse if a possible legacy session exists. Inspect
-that session using tmux, then stop or rename it manually before starting a new
-session. Old names were ambiguous, so automatic migration could affect another
-task. Worktree paths, branches, and task records do not change.
-
 ## Git hook environments and existing sessions
 
 New tspace launches clear inherited Git repository and hook context, including
@@ -139,8 +132,3 @@ environment. On a server started with an older tspace from a hook, panes you
 create directly with tmux (splits or prefix-c) can still inherit that context.
 New tspace-managed windows and tmux restarts clear it inside the pane. Finish
 or stop the old sessions and start a clean server before using manual panes.
-
-A held zellij pane created before this fix restarts its original command in
-place, preserving its output and working without an attached client. That
-stored command does not gain the new environment filter; recreate the session
-from a clean environment to apply the fix to those legacy panes.

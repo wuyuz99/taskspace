@@ -94,15 +94,6 @@ func (s *Service) MoveRepo(ctx context.Context, old, repo, to, name string) erro
 	if cwd, err := os.Getwd(); err == nil && present && fspath.Within(cwd, from) {
 		return fmt.Errorf("run repo move from outside %s, which it moves", from)
 	}
-	// Migrate legacy notes before beginning the transaction, so that putting
-	// a record back cannot create files outside the undo log.
-	for _, t := range []*task.Task{src, dst} {
-		if t.Outdated() {
-			if err := s.Store.Save(t); err != nil {
-				return err
-			}
-		}
-	}
 	previous, err := s.Store.Load(to)
 	if err != nil {
 		return err
