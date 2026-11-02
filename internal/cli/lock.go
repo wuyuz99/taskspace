@@ -20,14 +20,3 @@ func (a *App) lockTask(cmd *cobra.Command, name string, lifecycle bool) (*task.T
 	cmd.SetContext(ctx)
 	return t, unlock, nil
 }
-
-// acquire takes name's lock, for a task that need not exist yet, and puts it
-// in cmd's context.
-func (a *App) acquire(cmd *cobra.Command, name string) (*task.Lock, error) {
-	ctx, l, err := a.workspace().Acquire(cmd.Context(), name, cmd.CommandPath())
-	if err != nil {
-		return nil, err
-	}
-	cmd.SetContext(ctx)
-	return l, nil
-}

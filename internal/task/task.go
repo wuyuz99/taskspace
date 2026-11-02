@@ -1,10 +1,11 @@
 // Package task holds the declarative model for a logical task and its
 // persistence.
 //
-// Only declarative metadata lives here. Runtime state — whether a session is
-// up, whether a worktree is dirty — is deliberately absent: it is queried live
-// from tmux and git on every command, so there is nothing to go stale and
-// nothing to reconcile.
+// The record holds only declarative metadata. Runtime state — whether a session
+// is up, whether a worktree is dirty — is deliberately absent: it is queried
+// live from the multiplexer and git on every command. What must outlive a
+// session, such as what it was running, is session memory beside the record;
+// see run.go.
 package task
 
 import (
