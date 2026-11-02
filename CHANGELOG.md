@@ -17,6 +17,13 @@ upgrade.
   they ran, including at the task root, and everything comes back in one
   launch, so zellij needs no attached client for it (#85).
 
+### Fixed
+
+- Starting a task on zellij can no longer hang. zellij can crash a new session
+  if another zellij command runs at that moment, which left `tspace start`
+  waiting forever or blaming the layout. tspace now retries once, then says
+  what happened.
+
 ## v0.2.1 — 2026-10-31
 
 ### Fixed

@@ -381,3 +381,45 @@ func TestMain(m *testing.M) {
 	os.Unsetenv("ZELLIJ_SESSION_NAME")
 	os.Exit(m.Run())
 }
+
+// losesSession answers list-panes as a session that has gone for the first
+// lost attempts' worth of calls, then as a session with every window.
+type losesSession struct {
+	*tsexec.Fake
+	attaches, lost int
+}
+
+func (r *losesSession) Run(c context.Context, dir string, argv ...string) (tsexec.Result, error) {
+	joined := strings.Join(argv, " ")
+	if strings.Contains(joined, "--create-background") {
+		r.attaches++
+	}
+	if strings.Contains(joined, "list-panes") {
+		if r.attaches <= r.lost {
+			return tsexec.Result{Stderr: "There is no active session!"}, &tsexec.ExitError{ExitCode: 1}
+		}
+		return tsexec.Result{Stdout: terminalPanes("_root")}, nil
+	}
+	return r.Fake.Run(c, dir, argv...)
+}
+
+func TestZellijStartRetriesASessionLostWhileStarting(t *testing.T) {
+	for _, tc := range []struct {
+		lost, attaches int
+		fails          bool
+	}{{lost: 0, attaches: 1}, {lost: 1, attaches: 2}, {lost: 2, attaches: 2, fails: true}} {
+		r := &losesSession{Fake: tsexec.NewFake().Fail("list-sessions", "No active zellij sessions found.", 1), lost: tc.lost}
+		z := NewZellij(r)
+		z.goneWait = 0
+		err := z.Start(ctx(), "tspace@t", []Window{{Name: "_root"}})
+		if tc.fails && (err == nil || !strings.Contains(err.Error(), "went away while starting")) {
+			t.Errorf("lost %d: Start = %v; want it to say the session went away", tc.lost, err)
+		}
+		if !tc.fails && err != nil {
+			t.Errorf("lost %d: %v", tc.lost, err)
+		}
+		if r.attaches != tc.attaches {
+			t.Errorf("lost %d: %d attaches, want %d", tc.lost, r.attaches, tc.attaches)
+		}
+	}
+}
