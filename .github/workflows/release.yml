@@ -15,8 +15,19 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: '1.26'
+      # The same checks as CI, so a tag pushed past a red main still stops here.
+      - name: Install tmux and zellij
+        env:
+          ZELLIJ_VERSION: v0.45.1
+        run: scripts/ci-multiplexers.sh
+      - name: gofmt
+        run: test -z "$(gofmt -l .)"
       - run: go vet ./...
       - run: go test ./...
+      - name: End-to-end
+        run: |
+          go build -o tspace ./cmd/tspace
+          scripts/e2e.sh ./tspace
       - name: Build
         run: |
           mkdir -p out
