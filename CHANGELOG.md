@@ -18,6 +18,9 @@ upgrade.
 
 ### Changed
 
+- A collapsed task in dash says where its repositories stand, such as `3 repos,
+  1 dirty, 2 unpushed`, and the detail pane names the repositories that clean
+  would refuse and those with commits only on this machine (#175).
 - dash and `status` ask the multiplexer once per refresh on tmux and zellij
   instead of once or twice per task, inspect at most 8 worktrees at once, and
   dash gives up on a refresh after 10 seconds and says so, where a hung command
