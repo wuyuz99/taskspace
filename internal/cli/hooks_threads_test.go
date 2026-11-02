@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wuyuz99/taskspace/internal/agents"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
@@ -28,18 +29,18 @@ type hookStep struct {
 
 // replay runs the commands an agent's installed hooks would, with the input
 // each hook is given.
-func replay(t *testing.T, agent hookAgent, h *harness, name string, steps []hookStep) {
+func replay(t *testing.T, agent agents.HookAgent, h *harness, name string, steps []hookStep) {
 	t.Helper()
 	for i, s := range steps {
 		ran := false
-		for _, hook := range agent.hooks {
-			if hook.event != s.event {
+		for _, hook := range agent.Hooks {
+			if hook.Event != s.event {
 				continue
 			}
 			ran = true
 			cmd := h.app.newSignalCmd()
 			cmd.SetIn(strings.NewReader(s.input))
-			if err := h.exec(t, cmd, strings.Fields(hook.command)[2:]...); err != nil {
+			if err := h.exec(t, cmd, strings.Fields(hook.Command)[2:]...); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -136,14 +137,14 @@ func TestClaudeHooksFollowEachThread(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			h, task := hookTask(t)
-			replay(t, claudeAgent, h, task, steps)
+			replay(t, agents.Claude, h, task, steps)
 		})
 	}
 }
 
 func TestGeminiHooksClearOnlyTheirOwnPrompt(t *testing.T) {
 	h, name := hookTask(t)
-	replay(t, geminiAgent, h, name, []hookStep{
+	replay(t, agents.Gemini, h, name, []hookStep{
 		{"BeforeAgent", "{}", task.SignalWorking},
 		{"Notification", "{}", task.SignalBlocked},
 		{"AfterTool", "{}", task.SignalWorking},
@@ -168,14 +169,14 @@ func TestToolHooksKeepWhatTheAgentSaid(t *testing.T) {
 		if err := h.exec(t, h.app.newSignalCmd(), string(tc.state), tc.message); err != nil {
 			t.Fatal(err)
 		}
-		replay(t, claudeAgent, h, name, []hookStep{{"PostToolUse", mainThread, tc.state}})
+		replay(t, agents.Claude, h, name, []hookStep{{"PostToolUse", mainThread, tc.state}})
 		if got := h.signals(t, name)[task.RootWindowName].Message; got != tc.message {
 			t.Fatalf("message = %q, want %q", got, tc.message)
 		}
 		// Notification comes for a prompt the agent's own blocked may already
 		// describe better.
 		if tc.state == task.SignalBlocked {
-			replay(t, claudeAgent, h, name, []hookStep{{"Notification", noThread, task.SignalBlocked}})
+			replay(t, agents.Claude, h, name, []hookStep{{"Notification", noThread, task.SignalBlocked}})
 			if got := h.signals(t, name)[task.RootWindowName].Message; got != tc.message {
 				t.Fatalf("after Notification, message = %q, want %q", got, tc.message)
 			}
@@ -186,11 +187,11 @@ func TestToolHooksKeepWhatTheAgentSaid(t *testing.T) {
 // The end of a turn is when an agent's own question has to stay on show.
 func TestTurnEndKeepsWhatTheAgentSaid(t *testing.T) {
 	for _, agent := range []struct {
-		agent       hookAgent
+		agent       agents.HookAgent
 		start, stop string
 	}{
-		{claudeAgent, "UserPromptSubmit", "Stop"},
-		{geminiAgent, "BeforeAgent", "AfterAgent"},
+		{agents.Claude, "UserPromptSubmit", "Stop"},
+		{agents.Gemini, "BeforeAgent", "AfterAgent"},
 	} {
 		for _, state := range []task.SignalState{task.SignalBlocked, task.SignalFailed} {
 			h, name := hookTask(t)
@@ -213,13 +214,13 @@ func TestTurnEndKeepsWhatTheAgentSaid(t *testing.T) {
 // A signal's age is its file's, and working's means since the turn began.
 func TestToolHooksKeepWorkingsAge(t *testing.T) {
 	h, name := hookTask(t)
-	replay(t, claudeAgent, h, name, []hookStep{{"UserPromptSubmit", mainThread, task.SignalWorking}})
+	replay(t, agents.Claude, h, name, []hookStep{{"UserPromptSubmit", mainThread, task.SignalWorking}})
 	old := time.Now().Add(-time.Hour).Truncate(time.Second)
 	path := h.app.Store.SignalPath(name, task.RootWindowName)
 	if err := os.Chtimes(path, old, old); err != nil {
 		t.Fatal(err)
 	}
-	replay(t, claudeAgent, h, name, []hookStep{{"PostToolUse", mainThread, task.SignalWorking}})
+	replay(t, agents.Claude, h, name, []hookStep{{"PostToolUse", mainThread, task.SignalWorking}})
 	if at := h.signals(t, name)[task.RootWindowName].At; !at.Equal(old) {
 		t.Fatalf("At = %v, want %v", at, old)
 	}

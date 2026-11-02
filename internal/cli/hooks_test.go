@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/wuyuz99/taskspace/internal/agents"
 )
 
 func readSettings(t *testing.T, path string) map[string]any {
@@ -188,7 +190,7 @@ func TestConfigHooksClaudeReviewCases(t *testing.T) {
 	}
 	// Notification asks only for the notifications that need a person.
 	var s struct {
-		Hooks map[string][]hookGroup `json:"hooks"`
+		Hooks map[string][]agents.HookGroup `json:"hooks"`
 	}
 	if err := json.Unmarshal(b, &s); err != nil {
 		t.Fatal(err)

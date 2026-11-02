@@ -14,6 +14,16 @@ func WriteFileAtomic(path string, data []byte, mode fs.FileMode) error {
 	return writeFile(path, data, mode, true)
 }
 
+// ReplaceFile is WriteFileAtomic keeping the old file's permissions, for a
+// file of the user's tspace edits, such as an agent's settings.
+func ReplaceFile(path string, data []byte) error {
+	mode := fs.FileMode(0o644)
+	if info, err := os.Stat(path); err == nil {
+		mode = info.Mode().Perm()
+	}
+	return WriteFileAtomic(path, data, mode)
+}
+
 // writeFile is WriteFileAtomic, with sync saying whether the data must reach
 // the disk before the file is replaced.
 func writeFile(path string, data []byte, mode fs.FileMode, sync bool) error {
