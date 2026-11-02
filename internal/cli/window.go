@@ -5,12 +5,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/wuyuz99/taskspace/internal/task"
 	"github.com/wuyuz99/taskspace/internal/workspace"
 )
-
-// extraWindowPrefix starts the name of every window `tspace window` opens.
-const extraWindowPrefix = task.ExtraWindowPrefix
 
 func (a *App) newWindowCmd() *cobra.Command {
 	var root, useAgent, detach, save bool
