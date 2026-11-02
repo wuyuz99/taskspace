@@ -33,23 +33,6 @@ func (o *agentOptions) validate(cmd *cobra.Command) error {
 	return nil
 }
 
-// explicit reports whether the command line chose the root agent itself.
-func (o *agentOptions) explicit(cmd *cobra.Command) bool {
-	return cmd.Flags().Changed("agent") || o.shell
-}
-
-// apply records the requested root agent and reports whether one was requested.
-func (o *agentOptions) apply(cmd *cobra.Command, t *task.Task) bool {
-	if !o.explicit(cmd) {
-		return false
-	}
-	t.Agent = nil
-	if cmd.Flags().Changed("agent") {
-		t.Agent = o.argv
-	}
-	return true
-}
-
 // resumeOptions are the --resume and --no-resume flags, for the command that
 // brings an agent back with its conversation. tspace knows no agent's way of
 // doing that, so it is given like the agent itself, one flag per word:
@@ -81,21 +64,6 @@ func (o *resumeOptions) validate(cmd *cobra.Command) error {
 
 func (o *resumeOptions) changed(cmd *cobra.Command) bool {
 	return cmd.Flags().Changed("resume") || o.none
-}
-
-// apply returns the resume command to record. A changed agent drops the old
-// one, which resumed a different program, unless a new one is given; cleared
-// reports that, so the caller can say so.
-func (o *resumeOptions) apply(cmd *cobra.Command, current []string, agentChanged bool) (resume []string, cleared bool) {
-	switch {
-	case cmd.Flags().Changed("resume"):
-		return o.argv, false
-	case o.none:
-		return nil, false
-	case agentChanged:
-		return nil, len(current) > 0
-	}
-	return current, false
 }
 
 // defaultsToRoot reports whether an omitted repository means the task root.

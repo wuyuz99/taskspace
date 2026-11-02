@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"fmt"
-	"os"
 	"text/tabwriter"
 	"time"
 
@@ -334,51 +333,13 @@ func (a *App) newTaskRmCmd() *cobra.Command {
 			if err := explicitTask(args[0]); err != nil {
 				return err
 			}
-			t, unlock, err := a.lockTask(cmd, args[0], true)
-			if err != nil {
-				return err
-			}
-			defer unlock()
-
-			if !force {
-				var present []string
-				for _, name := range t.RepoNames() {
-					if info, err := os.Stat(t.Repos[name].Worktree); err == nil && info.IsDir() {
-						present = append(present, name)
-					}
-				}
-				if len(present) > 0 {
-					return fmt.Errorf(
-						"task %q still has worktrees for %s\nrun `tspace clean %s` first, or `tspace task rm %s --force` to drop the record and leave them on disk",
-						t.Name, joinNames(present), t.Name, t.Name)
-				}
-			}
-
-			// Notes go with the record, as they always have. With --force the
-			// worktrees are still on disk, so the brief describing them stays
-			// too — the same reasoning as `repo rm` leaving a worktree behind.
-			if force {
-				if err := a.deleteRecord(t); err != nil {
-					return err
-				}
-				if note, err := a.Store.ReadNote(t.Name, task.BriefFile); err == nil && note.Text != "" {
-					a.warnf("note: the task's notes were left at %s\n", a.Store.ContextDir(t.Name))
-				}
-				return nil
-			}
-			return a.deleteTask(t)
+			return a.workspaceFor(cmd).RemoveTask(cmd.Context(), args[0], force)
 		},
 	}
 	cmd.Flags().BoolVar(&force, "force", false,
 		"delete the record even if worktrees still exist on disk")
 	return cmd
 }
-
-// deleteTask removes a task whose worktrees are gone: its record and its notes.
-func (a *App) deleteTask(t *task.Task) error { return a.workspace().Delete(t) }
-
-// deleteRecord removes the task's record alone.
-func (a *App) deleteRecord(t *task.Task) error { return a.workspace().DeleteRecord(t) }
 
 func agentDisplay(r task.Repo) string {
 	if len(r.Agent) == 0 {
