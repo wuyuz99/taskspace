@@ -70,7 +70,7 @@ func (m dashModel) windowForm(row dashRow) *dashForm {
 // otherwise the root.
 func windowPlace(row dashRow) string {
 	switch {
-	case row.Summary > 1 || row.root():
+	case row.collapsed() || row.root():
 		return ""
 	case row.extra():
 		return row.Repo
@@ -80,7 +80,7 @@ func windowPlace(row dashRow) string {
 
 // sessionUp says the task's session exists, as its rows show it.
 func (m dashModel) sessionUp(name string) bool {
-	for _, r := range m.rawRows {
+	for _, r := range m.windows {
 		if r.Task == name && r.Runtime != status.RuntimeNoSession && r.Runtime != status.RuntimeInterrupted && r.Runtime != status.RuntimeUnknown {
 			return true
 		}
