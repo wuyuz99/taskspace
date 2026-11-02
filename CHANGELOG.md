@@ -12,6 +12,8 @@ upgrade.
   `start --interrupted` bring back the whole task (#169).
 - A session snapshot that fails while dash refreshes shows as a warning in dash
   instead of being written over its screen (#167).
+- dash's key legend wraps instead of being cut at the terminal's width, so every
+  key is on screen (#168).
 
 ## v0.3.0 — 2026-11-01
 
