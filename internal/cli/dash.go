@@ -25,9 +25,10 @@ func (a *App) newDashCmd() *cobra.Command {
 	var interval time.Duration
 	cmd := &cobra.Command{
 		Use:   "dash",
-		Short: "Watch every task and step into the one that needs you",
-		Long: "dash is a live, full-screen view of every task: one row per window, with\n" +
-			"its runtime state, what its agent is doing, and its git state. STATE is\n" +
+		Short: "See every task, its repositories and their state, and act on them",
+		Long: "dash is a live, full-screen view of every task. A task takes one row,\n" +
+			"saying where its repositories stand, until it is expanded into its windows,\n" +
+			"each with its runtime state, what its agent is doing, and its git state. STATE is\n" +
 			"the agent's own signal, else the window's bell, else a long silence, as\n" +
 			"in `tspace status --help`. Below the table it shows the selected row's\n" +
 			"directory, where its state came from, and its handoff. It is `tspace\n" +
@@ -123,6 +124,7 @@ type dashTask struct {
 	Title   string
 	Ticket  string
 	Handoff task.Note
+	Rollup  status.Rollup
 }
 
 // dashData is one refresh of everything on screen.
@@ -175,6 +177,9 @@ func (a *App) dashLoad(ctx context.Context) dashData {
 	agg.Observer = observer
 	before := len(d.Warn)
 	for _, ts := range agg.All(ctx, tasks) {
+		info := d.Tasks[ts.Task]
+		info.Rollup = ts.Rollup()
+		d.Tasks[ts.Task] = info
 		if ts.RuntimeErr != nil {
 			d.Warn = append(d.Warn, fmt.Sprintf("%s: runtime could not be queried: %v", ts.Task, ts.RuntimeErr))
 		}
@@ -986,7 +991,11 @@ func (m dashModel) table(b *strings.Builder, now time.Time, shrink int) {
 		if r.Summary > 1 {
 			repo = fmt.Sprintf("(%d windows)", r.Summary)
 		}
-		cells = append(cells, []string{name, repo, r.Agent, string(r.Runtime), reportSummary(r.Report, now), r.Git})
+		git := r.Git
+		if r.Summary > 1 {
+			git = rollupText(m.data.Tasks[r.Task].Rollup)
+		}
+		cells = append(cells, []string{name, repo, r.Agent, string(r.Runtime), reportSummary(r.Report, now), git})
 	}
 	widths := make([]int, len(cells[0]))
 	for _, row := range cells {
@@ -1103,6 +1112,12 @@ func (m dashModel) detail(b *strings.Builder, now time.Time) {
 	}
 	for _, l := range reportLines(row, now) {
 		b.WriteString(l + "\n")
+	}
+	if held := info.Rollup.Holding; len(held) > 0 {
+		b.WriteString(dashYellow.Render("  cleanup  clean would refuse: uncommitted work or stashes in "+joinNames(held)) + "\n")
+	}
+	if local := info.Rollup.Unpushed; len(local) > 0 {
+		b.WriteString(dashFaint.Render("  commits  only on this machine: "+joinNames(local)) + "\n")
 	}
 	if h := info.Handoff; h.Text != "" {
 		shown := 0

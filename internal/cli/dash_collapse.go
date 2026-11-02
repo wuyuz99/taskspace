@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"sort"
+	"fmt"
 	"strings"
 
 	"github.com/wuyuz99/taskspace/internal/status"
@@ -46,6 +46,26 @@ func runtimeUrgency(s status.RuntimeState) int {
 	}
 }
 
+// rollupText is a collapsed task's GIT column: where its repositories stand.
+func rollupText(r status.Rollup) string {
+	if r.Repos == 0 {
+		return "-"
+	}
+	parts := []string{fmt.Sprintf("%d repo%s", r.Repos, plural(r.Repos))}
+	for _, c := range []struct {
+		n    int
+		word string
+	}{{len(r.Holding), "dirty"}, {len(r.Unpushed), "unpushed"}, {r.Missing, "missing"}, {r.Errors, "error"}} {
+		if c.n > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", c.n, c.word))
+		}
+	}
+	if len(parts) == 1 {
+		parts = append(parts, "clean")
+	}
+	return strings.Join(parts, ", ")
+}
+
 // Tasks needing nothing take one row until explicitly expanded. Tasks needing attention
 // stay expanded so an individual failure cannot be hidden by a summary.
 // Extra windows count as rows but not toward the task's state: a closed
@@ -75,7 +95,6 @@ func collapseDashRows(rows []dashRow, expanded map[string]bool) []dashRow {
 			}
 		}
 		summary.Summary = len(group)
-		git := map[string]bool{}
 		for _, r := range group {
 			if !r.extra() && runtimeUrgency(r.Runtime) > runtimeUrgency(summary.Runtime) {
 				summary.Runtime = r.Runtime
@@ -83,16 +102,7 @@ func collapseDashRows(rows []dashRow, expanded map[string]bool) []dashRow {
 			if reportUrgency(r.Report) > reportUrgency(summary.Report) {
 				summary.Report = r.Report
 			}
-			if r.Git != "" && r.Git != "-" {
-				git[r.Git] = true
-			}
 		}
-		var states []string
-		for s := range git {
-			states = append(states, s)
-		}
-		sort.Strings(states)
-		summary.Git = strings.Join(states, "; ")
 		result = append(result, summary)
 		first = end
 	}
