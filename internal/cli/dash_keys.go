@@ -39,6 +39,7 @@ var dashKeys = []dashKey{
 	{keys: "c", press: "c", group: "Window", label: "c clear", help: "clear the row's signal"},
 	{keys: "n", press: "n", group: "Task", label: "n new", common: true, help: "create a task, in a form below the table (tspace task create)"},
 	{keys: "N", press: "N", group: "Task", label: "N rename", help: "rename the selected task (tspace task rename)"},
+	{keys: "a", press: "a", group: "Repo", label: "a register", help: "register a repository on this machine, in a form (tspace config repo)"},
 	{keys: "w", press: "w", group: "Window", label: "w new", help: "open another window at the row's place, in a form: a shell,\nthe task's agent or a command (tspace window -d)"},
 	{keys: "W", press: "W", group: "Window", label: "W save", help: "save the selected open extra window (tspace window --save)"},
 	{keys: "I", press: "I", group: "Task", label: "I interrupted", help: "start every interrupted task (tspace start --interrupted);\ndash offers it on launch when there are any"},

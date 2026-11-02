@@ -42,47 +42,54 @@ func (a *App) newDashCmd() *cobra.Command {
 			"dash needs a terminal. In a script, use `tspace status --json`.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if !isTerminal(a.Out) {
-				return fmt.Errorf("tspace dash needs a terminal; use `tspace status --watch` or `tspace status --json` instead")
-			}
-			if interval < 200*time.Millisecond {
-				return fmt.Errorf("--interval must be at least 200ms")
-			}
-			ctx := cmd.Context()
-			m := newDashModel(ctx, a, interval)
-			for {
-				setTitle(a.Out, "tspace dash", a.noTitle)
-				final, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithContext(ctx)).Run()
-				if ctx.Err() != nil {
-					return nil
-				}
-				if err != nil {
-					return err
-				}
-				m = final.(dashModel)
-				if m.attach == nil {
-					return nil
-				}
-
-				// Outside the multiplexer, attaching needs the whole terminal, so the
-				// dashboard steps aside and comes back when the user detaches.
-				target := *m.attach
-				m.attach = nil
-				session := a.Runtime.SessionName(target.Task)
-				err = a.Runtime.Select(ctx, session, target.Window)
-				if err == nil {
-					setTitle(a.Out, "tspace: "+target.Task, a.noTitle)
-					err = a.Runtime.Attach(ctx, session)
-				}
-				m.note, m.noteErr = "detached from "+target.label(), false
-				if err != nil {
-					m.note, m.noteErr = err.Error(), true
-				}
-			}
+			return a.runDash(cmd.Context(), interval)
 		},
 	}
-	cmd.Flags().DurationVar(&interval, "interval", 2*time.Second, "time between refreshes")
+	cmd.Flags().DurationVar(&interval, "interval", defaultDashInterval, "time between refreshes")
 	return cmd
+}
+
+// defaultDashInterval is the time between refreshes.
+const defaultDashInterval = 2 * time.Second
+
+// runDash runs the dashboard until it quits, stepping aside for each attach.
+func (a *App) runDash(ctx context.Context, interval time.Duration) error {
+	if !isTerminal(a.Out) {
+		return fmt.Errorf("tspace dash needs a terminal; use `tspace status --watch` or `tspace status --json` instead")
+	}
+	if interval < 200*time.Millisecond {
+		return fmt.Errorf("--interval must be at least 200ms")
+	}
+	m := newDashModel(ctx, a, interval)
+	for {
+		setTitle(a.Out, "tspace dash", a.noTitle)
+		final, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithContext(ctx)).Run()
+		if ctx.Err() != nil {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		m = final.(dashModel)
+		if m.attach == nil {
+			return nil
+		}
+
+		// Outside the multiplexer, attaching needs the whole terminal, so the
+		// dashboard steps aside and comes back when the user detaches.
+		target := *m.attach
+		m.attach = nil
+		session := a.Runtime.SessionName(target.Task)
+		err = a.Runtime.Select(ctx, session, target.Window)
+		if err == nil {
+			setTitle(a.Out, "tspace: "+target.Task, a.noTitle)
+			err = a.Runtime.Attach(ctx, session)
+		}
+		m.note, m.noteErr = "detached from "+target.label(), false
+		if err != nil {
+			m.note, m.noteErr = err.Error(), true
+		}
+	}
 }
 
 // dashRow is one window: a task's root, or one of its repositories.
@@ -133,6 +140,8 @@ type dashData struct {
 	Tasks map[string]dashTask
 	Warn  []string
 	At    time.Time
+	// Repos counts the registered repositories, for the first run.
+	Repos int
 }
 
 // dashLoad gathers a refresh. It prints nothing: the screen belongs to the
@@ -141,6 +150,9 @@ func (a *App) dashLoad(ctx context.Context) dashData {
 	ctx, cancel := context.WithTimeout(ctx, dashRefreshLimit)
 	defer cancel()
 	d := dashData{Tasks: map[string]dashTask{}, At: time.Now()}
+	if c, err := a.Store.LoadConfig(); err == nil {
+		d.Repos = len(c.Repos)
+	}
 	tasks, err := a.Store.List()
 	var skipped *task.SkippedError
 	switch {
@@ -475,6 +487,9 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "n":
 		m.form = m.createForm()
+		return m, nil
+	case "a":
+		m.form = m.registerRepoForm()
 		return m, nil
 	case "I":
 		if n := m.interrupted(); n > 0 {
@@ -944,7 +959,7 @@ func (m dashModel) View() string {
 		dashFaint.Render(m.data.At.Format("15:04:05")))
 
 	if len(m.data.Rows) == 0 {
-		b.WriteString("no tasks yet; press n to create one (tspace task create NAME)\n")
+		b.WriteString(dashWelcome(m.data.Repos))
 	} else {
 		m.table(&b, now, max(len(note)-1, 0)+extra)
 		// The form and the ? panel take the detail pane's room.

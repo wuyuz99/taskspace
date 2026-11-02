@@ -25,6 +25,11 @@ upgrade.
 
 ### Added
 
+- `tspace` with no command opens dash. Run by a script, it prints the help.
+- An empty dash walks through a first task, and `a` registers a repository in a
+  form, as `tspace config repo` does.
+- [Working in a task](docs/WORKFLOWS.md) covers running tspace on a remote machine
+  over SSH.
 - [Formats](docs/FORMATS.md) says what `status --json`, task records and the
   adapter protocol promise: they only change in ways older readers can still
   read (#176).
