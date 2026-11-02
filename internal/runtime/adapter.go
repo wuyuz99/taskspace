@@ -104,9 +104,6 @@ func (a *Adapter) Available(ctx context.Context) error {
 // SessionName implements Runtime.
 func (a *Adapter) SessionName(task string) string { return sessionName(task) }
 
-// WindowName implements Runtime.
-func (a *Adapter) WindowName(repo string) string { return WindowName(repo) }
-
 // HasSession implements Runtime.
 func (a *Adapter) HasSession(ctx context.Context, session string) (bool, error) {
 	st, err := a.State(ctx, session)

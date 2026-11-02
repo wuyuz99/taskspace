@@ -66,7 +66,7 @@ func TestRealZellijLifecycle(t *testing.T) {
 		}
 	}
 	waitFor("exited command not held", func(st SessionState) bool {
-		p, ok := st.Panes[WindowName("api.v1")]
+		p, ok := st.Pane("api.v1")
 		return ok && p.Dead && !st.Panes["_root"].Dead
 	})
 	if err := z.Start(ctx(), s, windows); err != nil {
@@ -92,7 +92,7 @@ func TestRealZellijLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitFor("window not closed", func(st SessionState) bool {
-		_, open := st.Panes[WindowName("api.v1")]
+		_, open := st.Pane("api.v1")
 		_, root := st.Panes["_root"]
 		return st.Exists && !open && root
 	})

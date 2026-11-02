@@ -31,17 +31,13 @@ func unqueryable(err error) *runtimetest.Fake {
 	return f
 }
 
-type alternateNamingRuntime struct{ *runtimetest.Fake }
-
-func (f *alternateNamingRuntime) WindowName(repo string) string { return "custom/" + repo }
-
-func TestStatusUsesBackendWindowIdentity(t *testing.T) {
+func TestStatusFindsAWindowWhoseNameIsEscaped(t *testing.T) {
 	tk := task.New("t")
 	tk.SetRepo("api.v1", task.Repo{Worktree: filepath.Join(t.TempDir(), "missing")})
-	rt := &alternateNamingRuntime{session(map[string]runtime.PaneState{"custom/api.v1": {Dead: false}})}
+	rt := session(map[string]runtime.PaneState{runtime.WindowName("api.v1"): {}})
 	got := New(tsgit.New(tsexec.Real()), rt).Task(context.Background(), tk)
 	if got.Repos[0].Runtime != RuntimeRunning {
-		t.Fatalf("backend naming ignored: %+v", got)
+		t.Fatalf("window not found: %+v", got)
 	}
 }
 

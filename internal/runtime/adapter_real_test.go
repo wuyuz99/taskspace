@@ -64,7 +64,7 @@ func TestReferenceAdapterAgainstRealTmux(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if p, ok := st.Panes[WindowName("api.v1")]; ok && p.Dead {
+		if p, ok := st.Pane("api.v1"); ok && p.Dead {
 			if root := st.Panes["_root"]; root.Dead || root.Command != "sleep" {
 				t.Fatalf("_root = %+v", root)
 			}

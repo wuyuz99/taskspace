@@ -61,9 +61,10 @@ type SessionState struct {
 	Panes  map[string]PaneState
 }
 
-// Pane returns the state of a named window.
+// Pane returns the state of a window, by the name tspace knows it by. Panes
+// itself is keyed by WindowName, so reading it by hand has to escape the name.
 func (s SessionState) Pane(window string) (PaneState, bool) {
-	p, ok := s.Panes[window]
+	p, ok := s.Panes[WindowName(window)]
 	return p, ok
 }
 
@@ -73,8 +74,6 @@ type Runtime interface {
 	Available(ctx context.Context) error
 	// SessionName maps a task name to this runtime's session identifier.
 	SessionName(task string) string
-	// WindowName maps a repository name to the backend's window identifier.
-	WindowName(repo string) string
 	// HasSession reports whether a session exists.
 	HasSession(ctx context.Context, session string) (bool, error)
 	// Start creates the session if absent and ensures every window exists.
@@ -163,7 +162,7 @@ func sessionName(task string) string { return "tspace@" + sanitize(task) }
 func missingWindows(st SessionState, windows []Window) []Window {
 	var missing []Window
 	for _, w := range windows {
-		if _, present := st.Panes[WindowName(w.Name)]; !present {
+		if _, present := st.Pane(w.Name); !present {
 			missing = append(missing, w)
 		}
 	}
@@ -177,7 +176,7 @@ func checkOpen(st SessionState, session string, w Window) error {
 	if !st.Exists {
 		return fmt.Errorf("session is missing; run tspace start for this task first")
 	}
-	if _, present := st.Panes[WindowName(w.Name)]; present {
+	if _, present := st.Pane(w.Name); present {
 		return fmt.Errorf("window %s already exists in %s; use restart to relaunch it", w.Name, session)
 	}
 	return nil
@@ -189,7 +188,7 @@ func checkRestart(st SessionState, w Window) error {
 	if !st.Exists {
 		return fmt.Errorf("session is missing; run tspace start for this task first")
 	}
-	p, ok := st.Panes[WindowName(w.Name)]
+	p, ok := st.Pane(w.Name)
 	if !ok {
 		return fmt.Errorf("window %s is missing; run tspace start for this repository first", w.Name)
 	}

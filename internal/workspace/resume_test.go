@@ -117,18 +117,18 @@ func TestRestartResumesUnlessFresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.dead("T", "a")
-	_, resumed, err := f.svc.Restart(ctx, "T", RestartOptions{Repo: "a"})
+	_, resumed, err := f.svc.Restart(ctx, "T", RestartOptions{Window: "a"})
 	if err != nil || !resumed || !slices.Equal(f.restarted()[0].Command, []string{"a-agent", "--continue"}) {
 		t.Fatalf("restart: resumed=%v err=%v %+v", resumed, err, f.restarted())
 	}
 	f.dead("T", "a")
-	_, resumed, err = f.svc.Restart(ctx, "T", RestartOptions{Repo: "a", Fresh: true})
+	_, resumed, err = f.svc.Restart(ctx, "T", RestartOptions{Window: "a", Fresh: true})
 	if err != nil || resumed || !slices.Equal(f.restarted()[1].Command, []string{"a-agent"}) {
 		t.Fatalf("--fresh: resumed=%v err=%v %+v", resumed, err, f.restarted())
 	}
 	f.dead("T", "b")
 	// Without a resume command, b is relaunched as it is.
-	if _, resumed, err = f.svc.Restart(ctx, "T", RestartOptions{Repo: "b"}); err != nil || resumed {
+	if _, resumed, err = f.svc.Restart(ctx, "T", RestartOptions{Window: "b"}); err != nil || resumed {
 		t.Fatalf("b: resumed=%v err=%v", resumed, err)
 	}
 }

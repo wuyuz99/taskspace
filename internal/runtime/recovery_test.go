@@ -111,7 +111,7 @@ func TestRealTmuxIsolationAndRecovery(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if p, ok := st.Panes[WindowName("api.v1")]; ok && p.Dead {
+		if p, ok := st.Pane("api.v1"); ok && p.Dead {
 			break
 		}
 		if time.Now().After(deadline) {

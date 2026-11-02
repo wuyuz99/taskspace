@@ -228,9 +228,6 @@ func (f *Fake) Available(context.Context) error {
 // SessionName implements runtime.Runtime, naming a session as the real ones do.
 func (f *Fake) SessionName(task string) string { return "tspace@" + runtime.WindowName(task) }
 
-// WindowName implements runtime.Runtime.
-func (f *Fake) WindowName(repo string) string { return runtime.WindowName(repo) }
-
 // HasSession implements runtime.Runtime.
 func (f *Fake) HasSession(_ context.Context, session string) (bool, error) {
 	f.mu.Lock()

@@ -131,6 +131,31 @@ func (t *Task) SavedWindow(name string) (int, bool) {
 	return -1, false
 }
 
+// WindowKind is what sort of window a name is.
+type WindowKind int
+
+const (
+	// RepoWindow is a repository's window.
+	RepoWindow WindowKind = iota
+	// RootWindow is the window at the task root.
+	RootWindow
+	// ExtraWindow is one opened with `tspace window`.
+	ExtraWindow
+)
+
+// KindOf says what sort of window name is. Names alone tell them apart, so a
+// window is identified everywhere by its name: RootWindowName, a repository's,
+// or an extra window's with its prefix.
+func KindOf(name string) WindowKind {
+	switch {
+	case name == RootWindowName:
+		return RootWindow
+	case strings.HasPrefix(name, ExtraWindowPrefix):
+		return ExtraWindow
+	}
+	return RepoWindow
+}
+
 // RootWindowName names the task's root window. Repository names must start with
 // a letter or digit, so no repository window can ever be called this.
 const RootWindowName = "_root"

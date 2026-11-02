@@ -332,7 +332,7 @@ func TestRestartAndResume(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.dead("T", "a")
-	label, _, err := f.svc.Restart(context.Background(), "T", RestartOptions{Repo: "a", Resume: true})
+	label, _, err := f.svc.Restart(context.Background(), "T", RestartOptions{Window: "a", Resume: true})
 	if err != nil || label != "T/a" {
 		t.Fatalf("restart = %q, %v", label, err)
 	}
@@ -340,7 +340,7 @@ func TestRestartAndResume(t *testing.T) {
 		t.Fatalf("resumed with %v", got)
 	}
 	// The root window's agent has no resume command.
-	_, _, err = f.svc.Restart(context.Background(), "T", RestartOptions{Root: true, Resume: true})
+	_, _, err = f.svc.Restart(context.Background(), "T", RestartOptions{Window: task.RootWindowName, Resume: true})
 	if err == nil || !strings.Contains(err.Error(), "tspace task update "+tk.Name+" --resume") {
 		t.Fatalf("restart --resume without one = %v", err)
 	}
@@ -374,21 +374,6 @@ func TestPostCreateFailureIsReported(t *testing.T) {
 	var exit *osexec.ExitError
 	if !errors.As(err, &exit) || exit.ExitCode() != 7 {
 		t.Fatalf("RunPostCreate = %v, want exit 7", err)
-	}
-}
-
-// A repository named like the root window is no way to the root window.
-func TestRestartNeedsRootSaidOutright(t *testing.T) {
-	f := newFixture(t)
-	f.task(t, "T", map[string]task.Repo{"a": {Path: gitRepo(t)}})
-	if _, err := f.svc.Start(context.Background(), "T", StartOptions{}); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := f.svc.Restart(context.Background(), "T", RestartOptions{Repo: task.RootWindowName}); err == nil {
-		t.Fatal("restart of a repository named _root restarted something")
-	}
-	if len(f.restarted()) != 0 {
-		t.Fatalf("restarted %+v", f.restarted())
 	}
 }
 

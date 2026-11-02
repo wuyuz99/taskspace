@@ -228,7 +228,7 @@ func (s *Service) openWindow(st runtime.SessionState, repo string, windows []tas
 		names = append(names, w.SessionName())
 	}
 	for _, n := range names {
-		if _, ok := st.Pane(s.Runtime.WindowName(n)); ok {
+		if _, ok := st.Pane(n); ok {
 			return n
 		}
 	}

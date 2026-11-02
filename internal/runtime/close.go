@@ -92,7 +92,7 @@ func (z *Zellij) CloseWindow(ctx context.Context, session, window string) error 
 	}
 	if _, err := z.action(ctx, session, "close-tab-by-id", fmt.Sprint(tab)); err != nil {
 		if st, check := z.State(ctx, session); check == nil {
-			if _, found := st.Panes[WindowName(window)]; !found {
+			if _, found := st.Pane(window); !found {
 				return nil
 			}
 		}

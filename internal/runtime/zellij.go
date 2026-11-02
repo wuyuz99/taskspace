@@ -81,9 +81,6 @@ func (z *Zellij) Available(ctx context.Context) error {
 // SessionName implements Runtime.
 func (z *Zellij) SessionName(task string) string { return sessionName(task) }
 
-// WindowName implements Runtime.
-func (z *Zellij) WindowName(repo string) string { return WindowName(repo) }
-
 // sessionEntry is one line of `zellij list-sessions`.
 type sessionEntry struct {
 	exited bool
@@ -561,7 +558,7 @@ func (z *Zellij) RenameWindow(ctx context.Context, session, from, to string) err
 	if err != nil {
 		return err
 	}
-	if _, ok := st.Pane(WindowName(from)); !ok {
+	if _, ok := st.Pane(from); !ok {
 		return fmt.Errorf("rename %s in %s: no such tab", from, session)
 	}
 	if _, err := z.action(ctx, session, "go-to-tab-name", WindowName(from)); err != nil {

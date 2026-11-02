@@ -125,7 +125,7 @@ func (s *Service) OpenWindow(ctx context.Context, name string, o OpenWindowOptio
 		return &OpenWindowResult{Task: t}, nil
 	}
 	taken := func(n string) bool {
-		_, ok := st.Pane(s.Runtime.WindowName(n))
+		_, ok := st.Pane(n)
 		return ok
 	}
 
@@ -247,7 +247,7 @@ func (s *Service) saveOpenWindow(ctx context.Context, t *task.Task, name string)
 	if err != nil {
 		return err
 	}
-	if _, open := st.Pane(s.Runtime.WindowName(window)); !open {
+	if _, open := st.Pane(window); !open {
 		return fmt.Errorf("%s has no open window %s; to open a window and save it: tspace window %s [REPO] --name %s --save -- COMMAND", t.Name, window, t.Name, name)
 	}
 	w, ok := KnownWindow(s.Store, t, name)
@@ -305,8 +305,8 @@ func (s *Service) renameWindow(ctx context.Context, t *task.Task, from, to strin
 	}
 	open := false
 	if st.Exists {
-		_, open = st.Pane(s.Runtime.WindowName(oldName))
-		if _, taken := st.Pane(s.Runtime.WindowName(newName)); taken {
+		_, open = st.Pane(oldName)
+		if _, taken := st.Pane(newName); taken {
 			return fmt.Errorf("%s's session already has a window %s", t.Name, newName)
 		}
 	}
