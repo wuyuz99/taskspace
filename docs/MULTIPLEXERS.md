@@ -127,6 +127,11 @@ tspace can't tell who set these, so values you exported are cleared too. Set
 `core.editor`, `VISUAL`, or `EDITOR` for the editor, and `user.name` and
 `user.email` for identity.
 
+Git also runs a hook with `GIT_EXEC_PATH` set and the same directory first in
+`PATH`. Found together like that, both are dropped, so a server started from a
+hook doesn't keep a git helper directory that an upgrade may remove.
+`GIT_EXEC_PATH` set any other way is kept.
+
 This does not repair already-running processes or an existing server's saved
 environment. On a server started with an older tspace from a hook, panes you
 create directly with tmux (splits or prefix-c) can still inherit that context.

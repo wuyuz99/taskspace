@@ -18,6 +18,10 @@ upgrade.
   command alone, so a change to the Git variables tspace clears no longer makes
   `restart` replace its tab (#136). Panes held from before this release count
   as changed once.
+- A multiplexer server started by tspace from a git hook no longer keeps git's
+  `GIT_EXEC_PATH`, and its directory at the front of `PATH`, for every window
+  (#137). Where that directory is versioned, as with Homebrew, git in those
+  windows broke once git was upgraded.
 
 ### Removed
 
