@@ -137,7 +137,8 @@ type RunReader interface {
 }
 
 // SessionObserver is told every session state status reads, so what a session
-// runs is kept up to date between commands.
+// runs is kept up to date between commands. This is the one thing a status
+// query can write: session memory, under the task's lock, and only on a change.
 type SessionObserver interface {
 	Observe(ctx context.Context, t *task.Task, st runtime.SessionState)
 }

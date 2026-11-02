@@ -13,7 +13,7 @@ import (
 //   - A record without a version is version 0, the format before versions:
 //     its brief and handoff may still be inline.
 //   - Load reads any version up to CurrentVersion as it is, and rewrites
-//     nothing: listing, status and showing a task never change state. A
+//     nothing: listing, status and showing a task never change a record. A
 //     newer version is refused with ErrUnsupportedVersion and left alone.
 //   - Save brings the record up to date first, running each migration in
 //     order, and then writes it in the oldest format that holds everything in
