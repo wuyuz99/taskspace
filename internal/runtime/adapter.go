@@ -91,7 +91,7 @@ func (a *Adapter) windowCall(ctx context.Context, op, session string, w Window) 
 func (a *Adapter) Available(ctx context.Context) error {
 	if _, err := a.call(ctx, "check", AdapterProtocol); err != nil {
 		if !tsexec.IsExit(err) {
-			return fmt.Errorf("multiplexer %q has no usable adapter (%w); put %s%s on PATH, or set its command with: tspace config multiplexer %s COMMAND...", a.name, err, AdapterPrefix, a.name, a.name)
+			return fmt.Errorf("multiplexer %q has no usable adapter (%w); put %s%s on PATH, or set its command with: tspace config multiplexer %s COMMAND [ARG]", a.name, err, AdapterPrefix, a.name, a.name)
 		}
 		return fmt.Errorf("multiplexer %q is not usable: %w", a.name, err)
 	}

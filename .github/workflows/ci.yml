@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+env:
+  ZELLIJ_VERSION: v0.45.1
+  STATICCHECK_VERSION: 2026.2.2
+
 jobs:
   test:
     strategy:
@@ -21,14 +25,7 @@ jobs:
         with:
           go-version: '1.26'
       - name: Install tmux and zellij
-        run: |
-          if [ "$RUNNER_OS" = "Linux" ]; then
-            sudo apt-get update && sudo apt-get install -y tmux
-            curl -fsSL https://github.com/zellij-org/zellij/releases/download/v0.45.1/zellij-x86_64-unknown-linux-musl.tar.gz \
-              | sudo tar -xz -C /usr/local/bin zellij
-          else
-            brew install tmux zellij
-          fi
+        run: scripts/ci-multiplexers.sh
       - name: gofmt
         run: test -z "$(gofmt -l .)"
       - run: go vet ./...
@@ -36,12 +33,45 @@ jobs:
         env:
           COVERAGE_FLOOR: '80'
         run: |
-          go test -coverpkg=./... -coverprofile=cover.out ./...
+          # On macOS, one package at a time: cli, runtime and workspace each run
+          # real sessions, and together they may run out of pseudo-terminals
+          # (#186).
+          parallel=
+          if [ "$RUNNER_OS" = "macOS" ]; then parallel='-p 1'; fi
+          go test $parallel -coverpkg=./... -coverprofile=cover.out ./...
           total=$(go tool cover -func=cover.out | awk '/^total:/ { sub(/%/, "", $3); print $3 }')
           echo "Total coverage: ${total}% (floor ${COVERAGE_FLOOR}%)"
           awk -v t="$total" -v f="$COVERAGE_FLOOR" 'BEGIN { exit !(t >= f) }' \
             || { echo "Coverage ${total}% is below the ${COVERAGE_FLOOR}% floor"; exit 1; }
+      - name: Pseudo-terminals, after a failure
+        if: failure() && runner.os == 'macOS'
+        run: |
+          sysctl kern.tty.ptmx_max || true
+          echo "open: $(ls /dev/ttys* 2>/dev/null | wc -l)"
+          tmux -V; zellij --version
       - name: End-to-end
         run: |
           go build -o tspace ./cmd/tspace
           scripts/e2e.sh ./tspace
+
+  # The race detector slows everything several times over, so it runs once, on
+  # Linux, without coverage.
+  race:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+      - name: Install tmux and zellij
+        run: scripts/ci-multiplexers.sh
+      - run: go test -race ./...
+
+  staticcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+      - run: go run "honnef.co/go/tools/cmd/staticcheck@${STATICCHECK_VERSION}" ./...
