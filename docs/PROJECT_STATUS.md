@@ -58,7 +58,8 @@ dash leaves windows, panes and layouts to the multiplexer.
   with exactly what was running
   ([#85](https://github.com/wuyuz99/taskspace/issues/85)).
 - **Its formats are stable.** Task records, `status --json` and the adapter
-  protocol only change in ways older readers can still read.
+  protocol only change in ways older readers can still read; see
+  [Formats](FORMATS.md).
 
 The way there is a few waypoints, each a release once its work is done, not
 on a date. Fixes ship as patch releases in between. Each waypoint shows up in

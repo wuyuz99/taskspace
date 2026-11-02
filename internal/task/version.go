@@ -34,6 +34,9 @@ import (
 //     cannot read, so downgrading past a format change means losing access to
 //     records written since, never silently damaging them.
 //
+// docs/FORMATS.md says what is promised to readers outside tspace, and
+// TestRecordFieldsAreDecided stops a new field from skipping this policy.
+//
 // config.json, projects and signals carry no version: they change only by
 // adding optional fields, which older and newer tspace alike ignore or leave
 // empty. They will get one when a change cannot be made that way.

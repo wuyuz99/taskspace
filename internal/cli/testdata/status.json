@@ -1,0 +1,66 @@
+[
+  {
+    "task": "PAY-142",
+    "session": "tspace@PAY-142",
+    "running": true,
+    "interrupted": false,
+    "root": {
+      "agent": "claude",
+      "runtime": "running",
+      "signal": {
+        "state": "blocked",
+        "message": "needs a decision",
+        "at": "2026-11-01T12:00:00Z"
+      },
+      "bell": true,
+      "output_at": "2026-11-01T12:00:00Z",
+      "agent_state": {
+        "state": "blocked",
+        "source": "signal",
+        "at": "2026-11-01T12:00:00Z",
+        "message": "needs a decision"
+      }
+    },
+    "repos": [
+      {
+        "repo": "api",
+        "branch": "agent/PAY-142",
+        "worktree": "/w/PAY-142/api",
+        "agent": "shell",
+        "runtime": "dead",
+        "git": "dirty",
+        "upstream": "origin/x",
+        "staged": 1,
+        "modified": 2,
+        "untracked": 3,
+        "conflicted": 4,
+        "stashes": 5,
+        "ahead": 6,
+        "behind": 7,
+        "unpushed": 8,
+        "error": "a problem"
+      }
+    ],
+    "windows": [
+      {
+        "name": "_mon",
+        "saved": true,
+        "repo": "api",
+        "command": [
+          "top"
+        ],
+        "runtime": "no-session"
+      }
+    ]
+  },
+  {
+    "task": "OTHER",
+    "session": "tspace@OTHER",
+    "running": false,
+    "interrupted": true,
+    "runtime_error": "no multiplexer",
+    "root": null,
+    "repos": [],
+    "windows": []
+  }
+]

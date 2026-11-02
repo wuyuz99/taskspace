@@ -56,13 +56,13 @@ func ParseSignalState(s string) (SignalState, error) {
 // At is the file's modification time, as for notes, so an agent that writes the
 // file itself needs to get only the state right.
 type Signal struct {
-	State   SignalState `json:"state"`
-	Message string      `json:"message,omitempty"`
-	At      time.Time   `json:"at"`
+	State   SignalState
+	Message string
+	At      time.Time
 	// Owner is set only on a blocked signal from a hook, and names the thread
 	// of the agent that is waiting: SignalOwnerMain, or a subagent's id. Only
 	// that thread's hook takes the signal back; see `tspace signal --help`.
-	Owner string `json:"-"`
+	Owner string
 }
 
 // signalFile is a signal as stored: the time is the file's own.
