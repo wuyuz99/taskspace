@@ -3,7 +3,7 @@
 What changed in each release of tspace; see [Installation](docs/INSTALL.md) to
 upgrade.
 
-## Unreleased
+## v0.4.0 — 2026-11-06
 
 ### Fixed
 
