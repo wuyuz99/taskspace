@@ -63,22 +63,24 @@ The way there is a few waypoints, each a release once its work is done, not
 on a date. Fixes ship as patch releases in between. Each waypoint shows up in
 dash, not only in the CLI.
 
-- **0.2 — Nothing lost.** Every command that removes or rewrites refuses when
-  it cannot tell ([#87](https://github.com/wuyuz99/taskspace/issues/87)), and
-  the clean and recovery fixes made since 0.1.1 are released. In dash, a
-  refused action says why, and what to do about it.
-- **0.3 — Comes back.** Recovery restores exactly what was running
-  ([#85](https://github.com/wuyuz99/taskspace/issues/85)), tested against one
-  fake multiplexer that behaves like tmux and zellij do
+- **0.2 — Nothing lost.** Released in v0.2.0. Every command that removes or
+  rewrites refuses when it cannot tell
+  ([#87](https://github.com/wuyuz99/taskspace/issues/87)), and the clean and
+  recovery fixes made since 0.1.1 are released. In dash, a refused action says
+  why, and what to do about it.
+- **0.3 — Comes back.** Released in v0.3.0. Recovery restores exactly what was
+  running ([#85](https://github.com/wuyuz99/taskspace/issues/85)), tested
+  against one fake multiplexer that behaves like tmux and zellij do
   ([#88](https://github.com/wuyuz99/taskspace/issues/88)); dash's offer on
   launch brings back just that. Operations move into one place that dash and
   the CLI both call ([#86](https://github.com/wuyuz99/taskspace/issues/86)),
   so dash can grow without a second copy of the logic.
-- **0.4 — Settled.** Task records, `status --json` and the adapter protocol
-  are documented as stable. The first run goes through dash: `tspace` with no
-  arguments opens it, and an empty dash walks through registering a
-  repository and creating a first task. Running tspace on a remote machine
-  over SSH, where the code and the agents are, is documented as a workflow.
+- **0.4 — Settled.** Released in v0.4.0. Task records, `status --json` and the
+  adapter protocol are documented as stable. The first run goes through dash:
+  `tspace` with no arguments opens it, and an empty dash walks through
+  registering a repository and creating a first task. Running tspace on a
+  remote machine over SSH, where the code and the agents are, is documented as
+  a workflow.
 - **1.0** — all of that holds up on real work: several tasks across the usual
   repositories, at least two of them running at once, through agent exits and
   restarts, interrupted setup, a computer restart, and cleanup that has to

@@ -156,6 +156,11 @@ Run tspace where the code and the agents are. Install it on that machine, as in
 ssh -t dev-box tspace
 ```
 
+A command given to `ssh` runs in a shell that is not a login shell, so it sees
+only the system's `PATH`. If tspace or the multiplexer is in `~/.local/bin`, or
+`TSPACE_ROOT` is set in `~/.profile`, start a login shell instead:
+`ssh -t dev-box 'bash -lc tspace'`.
+
 `tspace` with no command opens dash there. Sessions belong to the multiplexer on
 that machine, so agents keep running when you disconnect, or when your laptop
 sleeps, and dash shows them when you come back. Detaching from a session returns
