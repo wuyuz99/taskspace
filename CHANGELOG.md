@@ -3,6 +3,15 @@
 What changed in each release of tspace; see [Installation](docs/INSTALL.md) to
 upgrade.
 
+## Unreleased
+
+### Changed
+
+- When tmux or zellij can't run, the error says how to choose another
+  multiplexer, and dash's `t` without a terminal set says `enter` attaches in
+  the one you're in. On a fresh remote machine reached over SSH, those were the
+  first errors seen.
+
 ## v0.4.0 — 2026-11-07
 
 ### Fixed

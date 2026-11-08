@@ -41,7 +41,7 @@ func TestTerminalRootInBothCommandForms(t *testing.T) {
 // error says how to set it.
 func TestOpenInNewTab(t *testing.T) {
 	h := newHarness(t)
-	if err := h.app.openInNewTab(t.Context(), "PAY-1"); err == nil || !strings.Contains(err.Error(), "tspace config terminal") {
+	if err := h.app.openInNewTab(t.Context(), "PAY-1"); err == nil || !strings.Contains(err.Error(), "tspace config terminal") || !strings.Contains(err.Error(), "press enter") {
 		t.Fatalf("without a terminal = %v", err)
 	}
 	out := fakeShell(t) // the test binary records what it was run with
