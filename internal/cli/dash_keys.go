@@ -37,7 +37,7 @@ var dashKeys = []dashKey{
 	{keys: "m", press: "m", group: "Repo", label: "m move", help: "move the selected repository to another task, in a form\n(tspace repo move)"},
 	{keys: "t", press: "t", group: "Window", label: "t tab", help: "open the task in a new terminal tab (tspace config terminal)"},
 	{keys: "c", press: "c", group: "Window", label: "c clear", help: "clear the row's signal"},
-	{keys: "n", press: "n", group: "Task", label: "n new", common: true, help: "create a task, in a form below the table (tspace task create)"},
+	{keys: "n", press: "n", group: "Task", label: "n new", common: true, help: "create a task, in a form that takes the screen (tspace task create)"},
 	{keys: "N", press: "N", group: "Task", label: "N rename", help: "rename the selected task (tspace task rename)"},
 	{keys: "a", press: "a", group: "Repo", label: "a register", help: "register a repository on this machine, in a form (tspace config repo)"},
 	{keys: "w", press: "w", group: "Window", label: "w new", help: "open another window at the row's place, in a form: a shell,\nthe task's agent or a command (tspace window -d)"},

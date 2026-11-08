@@ -928,6 +928,11 @@ func (m dashModel) View() string {
 	if !m.loaded {
 		return "tspace dash: loading...\n"
 	}
+	// A form with a list takes the whole screen; the table comes back when
+	// it closes.
+	if m.form != nil && m.form.full() {
+		return m.fit(m.form.view(m.height))
+	}
 	var b, detail, foot strings.Builder
 	now := time.Now()
 	note := m.noteLines()
@@ -994,7 +999,7 @@ func (m dashModel) View() string {
 	}
 	switch {
 	case m.form != nil:
-		foot.WriteString(m.form.view(m.width))
+		foot.WriteString(m.form.view(m.height))
 	case m.confirm != nil:
 		foot.WriteString(dashBold.Render(m.confirm.prompt) + "\n")
 	case len(note) == 0:
@@ -1016,9 +1021,13 @@ func (m dashModel) View() string {
 		detail.Reset()
 	}
 	b.WriteString(detail.String() + foot.String())
+	return m.fit(b.String())
+}
 
-	// Nothing may wrap: a wrapped line pushes the rest off the alt screen.
-	lines := strings.Split(b.String(), "\n")
+// fit cuts each line of s to the screen's width. Nothing may wrap: a wrapped
+// line pushes the rest off the alt screen.
+func (m dashModel) fit(s string) string {
+	lines := strings.Split(s, "\n")
 	for i, l := range lines {
 		lines[i] = ansi.Truncate(l, m.width, "…")
 	}
