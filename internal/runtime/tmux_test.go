@@ -388,3 +388,22 @@ func TestParsePanesReadsBellAndOutput(t *testing.T) {
 		t.Errorf("old = %+v, want neither", p)
 	}
 }
+
+// A multiplexer that cannot run says how to get one that can: on a fresh
+// machine, such as one reached over SSH, the default may not be installed.
+func TestAvailableSaysHowToChooseAnother(t *testing.T) {
+	cases := []struct {
+		name string
+		rt   Runtime
+		want string
+	}{
+		{"tmux", NewTmux(tsexec.NewFake().Fail("-V", "not found", 127)), "tspace config multiplexer zellij"},
+		{"zellij", NewZellij(tsexec.NewFake().Fail("--version", "not found", 127)), "tspace config multiplexer --unset"},
+	}
+	for _, c := range cases {
+		err := c.rt.Available(ctx())
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: Available = %v, want it to mention %q", c.name, err, c.want)
+		}
+	}
+}

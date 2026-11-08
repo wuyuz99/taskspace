@@ -27,7 +27,7 @@ func (a *App) openInNewTab(ctx context.Context, taskName string) error {
 		return err
 	}
 	if len(c.Terminal) == 0 {
-		return fmt.Errorf("no terminal is set for new tabs; set yours with tspace config terminal, e.g.: tspace config terminal wezterm cli spawn --")
+		return fmt.Errorf("no terminal is set for new tabs; press enter to attach in this one, or set yours with tspace config terminal, e.g.: tspace config terminal wezterm cli spawn --")
 	}
 	self, err := os.Executable()
 	if err != nil {

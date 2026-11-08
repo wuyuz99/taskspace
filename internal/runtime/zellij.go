@@ -67,7 +67,7 @@ func (z *Zellij) action(ctx context.Context, session string, args ...string) (ts
 // Available implements Runtime.
 func (z *Zellij) Available(ctx context.Context) error {
 	if _, err := z.zellij(ctx, "--version"); err != nil {
-		return fmt.Errorf("zellij is required but not usable: %w", err)
+		return fmt.Errorf("zellij is required but not usable (%w); install it, or go back to tmux: tspace config multiplexer --unset", err)
 	}
 	// list-panes is the newest action this runtime depends on.
 	if _, err := z.zellij(ctx, "action", "list-panes", "--help"); err != nil {
