@@ -134,6 +134,9 @@ func (s *Service) launch(ctx context.Context, t *task.Task, opts StartOptions) (
 	if err := s.Runtime.Start(ctx, result.Session, p.windows); err != nil {
 		return nil, nil, err
 	}
+	// Where its windows are named after repositories, the label says which
+	// task this is. It is a courtesy: a multiplexer without one still runs.
+	_ = s.Runtime.SetLabel(ctx, result.Session, t.Label())
 	at := time.Now()
 	for _, w := range p.windows {
 		if _, ok := p.fresh[w.Name]; ok {

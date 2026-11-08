@@ -77,6 +77,19 @@ func Conformance(t *testing.T, target func(t *testing.T) Target) {
 				t.Fatal("restarted a window with no session")
 			}
 		}},
+		{name: "a label leaves the session as it was", run: func(t *testing.T, tg Target, s, dir string) {
+			start(t, tg, s, runtime.Window{Name: "_root", Dir: dir, Command: alive})
+			// A title is text: nothing in it may run, style or end anything.
+			if err := tg.Runtime.SetLabel(ctx, s, "t - #(false) #[fg=red] 100% \"q\" 'q'"); err != nil {
+				t.Fatalf("SetLabel: %v", err)
+			}
+			if ok, err := tg.Runtime.HasSession(ctx, s); err != nil || !ok {
+				t.Fatalf("after SetLabel, HasSession = %v, %v", ok, err)
+			}
+			if _, ok := state(t, tg, s).Pane("_root"); !ok {
+				t.Fatal("window lost after SetLabel")
+			}
+		}},
 		{name: "start shows every window at once", run: func(t *testing.T, tg Target, s, dir string) {
 			start(t, tg, s, runtime.Window{Name: "_root", Dir: dir, Command: alive},
 				runtime.Window{Name: "api.v1", Dir: dir, Command: alive})

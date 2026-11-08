@@ -29,10 +29,9 @@ at, its `runtime` is `no-window`, and `behind` counts the commits on its base
 it does not have. `task show --json` gives its `base` and an empty `branch`.
 
 `signal.state` is one of `working`, `blocked`, `done` or `failed`.
-`agent_state.state` is one of those, or `bell`, `quiet` or `idle`.
-`agent_state.source` is `signal`, `bell`, `silence`, or the name of an
-integration such as `claude`. A reader should treat a state it does not know as
-nothing to act on. Times are RFC 3339.
+`agent_state.state` is one of those, or `bell` or `quiet`. `agent_state.source`
+is `signal`, `bell` or `silence`. A reader should treat a state or source it
+does not know as nothing to act on. Times are RFC 3339.
 
 ## Task records
 
@@ -60,8 +59,8 @@ ordinary one in the task it creates.
 
 The protocol in [Multiplexers](MULTIPLEXERS.md) is version 1, passed to `check`.
 Within a version, operations and arguments keep their meaning, and new fields
-on `state`'s lines are optional. `rename` and `close` are optional operations:
-an adapter without them fails them, and only that feature is unavailable. A
-later release may add optional operations on the same terms, so an existing
+on `state`'s lines are optional. `rename`, `close` and `label` are optional
+operations: an adapter without them fails them, and only that feature is
+unavailable. A later release may add optional operations on the same terms, so an existing
 adapter keeps working without them. A change an existing adapter could not
 follow gets a new version, which such an adapter refuses in `check`.

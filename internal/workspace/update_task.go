@@ -106,6 +106,11 @@ func (s *Service) UpdateTask(ctx context.Context, name string, o UpdateTaskOptio
 	if err := s.Store.Save(t); err != nil {
 		return nil, err
 	}
+	// A running session shows the new title at once; one that is not running
+	// gets it when it starts.
+	if o.SetTitle && s.Runtime != nil {
+		_ = s.Runtime.SetLabel(ctx, s.Runtime.SessionName(t.Name), t.Label())
+	}
 	if o.SetBrief {
 		if err := s.Store.WriteNote(t.Name, task.BriefFile, o.Brief); err != nil {
 			return nil, err

@@ -41,6 +41,9 @@ const AdapterPrefix = "tspace-mux-"
 //	ADAPTER close SESSION NAME       close window NAME, letting its processes exit
 //	                                 cleanly (optional, as rename is: only
 //	                                 stopping a single window is unavailable)
+//	ADAPTER label SESSION TEXT       show TEXT, the task's name and title, as
+//	                                 the session's description (optional: its
+//	                                 failure is ignored)
 //
 // WIN is the arguments NAME DIR keep|close -- COMMAND...: COMMAND is never
 // empty (tspace resolves the user's shell), and keep says the window must stay
@@ -241,6 +244,15 @@ func (a *Adapter) Focus(ctx context.Context, session, window string) (bool, erro
 func (a *Adapter) Select(ctx context.Context, session, window string) error {
 	if _, err := a.call(ctx, "select", session, WindowName(window)); err != nil {
 		return fmt.Errorf("select %s in %s: %w", window, session, err)
+	}
+	return nil
+}
+
+// SetLabel implements Runtime. An adapter without the label operation fails
+// it, which callers ignore.
+func (a *Adapter) SetLabel(ctx context.Context, session, label string) error {
+	if _, err := a.call(ctx, "label", session, label); err != nil {
+		return fmt.Errorf("label %s: %w", session, err)
 	}
 	return nil
 }

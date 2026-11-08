@@ -28,6 +28,7 @@ const (
 	OpRename     Op = "RenameWindow"
 	OpState      Op = "State"
 	OpClose      Op = "CloseWindow"
+	OpLabel      Op = "SetLabel"
 )
 
 // Call is one thing the fake did. Start records one per window it launched.
@@ -50,6 +51,7 @@ type Fake struct {
 	crashing map[string]bool
 	inside   bool
 	vanish   bool
+	labels   map[string]string
 }
 
 // New returns a fake with no sessions.
@@ -59,7 +61,30 @@ func New() *Fake {
 		windows:  map[string]map[string]runtime.Window{},
 		errs:     map[Op]error{},
 		crashing: map[string]bool{},
+		labels:   map[string]string{},
 	}
+}
+
+// SetLabel implements runtime.Runtime, keeping the label for Label to give.
+func (f *Fake) SetLabel(_ context.Context, session, label string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.errs[OpLabel]; err != nil {
+		return err
+	}
+	if _, ok := f.sessions[session]; !ok {
+		return fmt.Errorf("label %s: no such session", session)
+	}
+	f.labels[session] = label
+	f.record(OpLabel, session, runtime.Window{})
+	return nil
+}
+
+// Label is the label last set on session, or "" for none.
+func (f *Fake) Label(session string) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.labels[session]
 }
 
 // Fail makes op return err until it is given a nil one. Each operation fails
@@ -197,6 +222,7 @@ func (f *Fake) remove(session, id string) {
 	delete(f.windows[session], id)
 	if len(f.sessions[session]) == 0 {
 		delete(f.sessions, session)
+		delete(f.labels, session)
 		delete(f.windows, session)
 	}
 }
@@ -264,6 +290,7 @@ func (f *Fake) Start(_ context.Context, session string, windows []runtime.Window
 	}
 	if f.vanish {
 		delete(f.sessions, session)
+		delete(f.labels, session)
 		delete(f.windows, session)
 	}
 	return nil
@@ -326,6 +353,7 @@ func (f *Fake) Stop(_ context.Context, session string) error {
 	}
 	f.record(OpStop, session, runtime.Window{})
 	delete(f.sessions, session)
+	delete(f.labels, session)
 	delete(f.windows, session)
 	return nil
 }

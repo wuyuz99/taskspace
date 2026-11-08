@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	tsexec "github.com/wuyuz99/taskspace/internal/exec"
 )
@@ -35,7 +38,7 @@ func (t *Tmux) tmux(ctx context.Context, args ...string) (tsexec.Result, error) 
 // Available implements Runtime.
 func (t *Tmux) Available(ctx context.Context) error {
 	if _, err := t.tmux(ctx, "-V"); err != nil {
-		return fmt.Errorf("tmux is required but not usable: %w", err)
+		return fmt.Errorf("tmux is required but not usable (%w); install it, or choose another multiplexer, such as: tspace config multiplexer zellij", err)
 	}
 	return nil
 }
@@ -245,6 +248,41 @@ func (t *Tmux) Select(ctx context.Context, session, window string) error {
 func (t *Tmux) RenameWindow(ctx context.Context, session, from, to string) error {
 	if _, err := t.tmux(ctx, "rename-window", "-t", windowTarget(session, WindowName(from)), WindowName(to)); err != nil {
 		return fmt.Errorf("rename %s to %s in %s: %w", from, to, session, err)
+	}
+	return nil
+}
+
+// tmuxDefaultStatusLeft are tmux's own status-left: [#S] before 3.2, then
+// spelled out. Only over one of these does SetLabel put the label in the
+// status line; a status line of the user's own is theirs to arrange.
+var tmuxDefaultStatusLeft = []string{"[#S] ", "[#{session_name}] "}
+
+// SetLabel implements Runtime. The label is kept in the session's
+// @tspace_label option, with '#' doubled so the status line shows it as
+// written: a title is text, never a style or a command. Where status-left is
+// still tmux's default, the session's shows the label instead of the session
+// name; anyone else can put #{@tspace_label} in theirs.
+func (t *Tmux) SetLabel(ctx context.Context, session, label string) error {
+	// set-option resolves "=NAME" as a pane and does not find it; "=NAME:"
+	// is the session, matched exactly.
+	at := target(session) + ":"
+	if _, err := t.tmux(ctx, "set-option", "-t", at, "@tspace_label", strings.ReplaceAll(label, "#", "##")); err != nil {
+		return fmt.Errorf("label %s: %w", session, err)
+	}
+	res, err := t.tmux(ctx, "show-options", "-gv", "status-left")
+	if err != nil {
+		return fmt.Errorf("label %s: %w", session, err)
+	}
+	if !slices.Contains(tmuxDefaultStatusLeft, strings.TrimSuffix(res.Stdout, "\n")) {
+		return nil
+	}
+	if _, err := t.tmux(ctx, "set-option", "-t", at, "status-left", "[#{@tspace_label}] "); err != nil {
+		return fmt.Errorf("label %s: %w", session, err)
+	}
+	// tmux cuts status-left at 10 columns by default, less than most labels.
+	width := strconv.Itoa(utf8.RuneCountInString(label) + 3)
+	if _, err := t.tmux(ctx, "set-option", "-t", at, "status-left-length", width); err != nil {
+		return fmt.Errorf("label %s: %w", session, err)
 	}
 	return nil
 }

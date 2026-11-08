@@ -74,19 +74,16 @@ from the most trusted source that has one:
 
 1. **Signals**: `working`, `blocked`, `done` or `failed`, the agent's own
    word through `tspace signal`, usually from its hooks (below).
-2. **Published status**, if you turn it on for an agent that publishes its
-   own (below): `working`, `blocked` or `idle`, followed by the agent's name,
-   such as `blocked (claude)`.
-3. **The bell**: `bell`, when the window rang the terminal bell since you last
+2. **The bell**: `bell`, when the window rang the terminal bell since you last
    looked at it. Something there wants you, though tspace can't say what.
-4. **Silence**: `quiet`, when an agent's window has printed nothing for 10
+3. **Silence**: `quiet`, when an agent's window has printed nothing for 10
    minutes. It is a hint that the agent may be waiting, never a claim that it
    is blocked: an agent thinking hard is quiet too. A window running a shell
    is never called quiet.
 
 A `working` signal is the exception to that order. The agent said it needed
-nothing, so a published status that says otherwise, or the bell, outranks
-it. `blocked`, `done` and `failed` already ask for you and stand.
+nothing, so the bell outranks it. `blocked`, `done` and `failed` already ask
+for you and stand.
 
 Each is followed by how long ago it was signalled, or the window last printed
 (`blocked 3m`, `bell 2m`, `quiet 25m`). The bell and silence come from the
@@ -94,30 +91,8 @@ multiplexer and only for live windows. tmux tracks both for every window,
 whatever your `monitor-*` options; Zellij doesn't, so there you see signals
 only. An adapter can supply them; see [Multiplexers](MULTIPLEXERS.md).
 `--json` carries the chosen one as each row's `agent_state`, with `state`,
-`source` (`signal`, `bell`, `silence` or the agent's name), `at` and
-`message`, beside the raw `signal`, `bell` and `output_at`.
-
-#### Published status
-
-**Deprecated.** `config agent-status` goes in the release after 0.4. Claude
-Code's hooks, from `tspace config hooks claude`, report the same states. Until
-then a setting already in `config.json` keeps working, and `status` warns
-about it.
-
-Some agents report what each of their sessions is doing through an interface
-of their own. tspace can read one, matching each session to the window that
-runs in its directory, once you turn it on:
-
-```bash
-tspace config agent-status claude     # --unset turns it off
-```
-
-`claude` reads `claude agents --json`, which lists Claude Code's interactive
-sessions as `busy`, `waiting` (with what it waits for) or `idle`. It needs no
-hooks, and it also catches what hooks miss, such as an agent you interrupted
-before its `Stop` hook could run. It costs one call to `claude` per refresh,
-which is why it's off by default. An agent's published status describes the
-moment, so it carries no age.
+`source` (`signal`, `bell` or `silence`), `at` and `message`, beside the raw
+`signal`, `bell` and `output_at`.
 
 tspace never reads an agent's screen for its wording: silent reasoning looks
 idle, a printed `(y/n)` looks like a prompt, and every new release of an agent

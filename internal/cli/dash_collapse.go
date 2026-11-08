@@ -25,7 +25,7 @@ func reportUrgency(r *status.Report) int {
 		return 4
 	case status.ReportState(task.SignalWorking):
 		return 3
-	case status.ReportState(task.SignalDone), status.ReportIdle:
+	case status.ReportState(task.SignalDone):
 		return 2
 	default:
 		return 1

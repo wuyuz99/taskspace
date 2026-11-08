@@ -1,7 +1,7 @@
 // Package agents holds tspace's integrations with particular agents. Each is
 // opt-in and named after its agent, and the rest of tspace knows only what it
-// implements: hooks that call tspace signal, a workspace.ConversationCarrier
-// or a status.PublishedReader.
+// implements: hooks that call tspace signal, or a
+// workspace.ConversationCarrier.
 package agents
 
 import (

@@ -67,7 +67,7 @@ func (z *Zellij) action(ctx context.Context, session string, args ...string) (ts
 // Available implements Runtime.
 func (z *Zellij) Available(ctx context.Context) error {
 	if _, err := z.zellij(ctx, "--version"); err != nil {
-		return fmt.Errorf("zellij is required but not usable: %w", err)
+		return fmt.Errorf("zellij is required but not usable (%w); install it, or go back to tmux: tspace config multiplexer --unset", err)
 	}
 	// list-panes is the newest action this runtime depends on.
 	if _, err := z.zellij(ctx, "action", "list-panes", "--help"); err != nil {
@@ -536,6 +536,11 @@ func (z *Zellij) tabPosition(ctx context.Context, session, name string) (int, bo
 	}
 	return 0, false, nil
 }
+
+// SetLabel implements Runtime. zellij shows a session by its name, which is
+// how tspace finds it, and has nowhere else for a description, so the label
+// is left to the terminal's tab title.
+func (z *Zellij) SetLabel(context.Context, string, string) error { return nil }
 
 // RenameWindow implements Runtime. zellij renames the focused tab, and only
 // with a client attached does focusing one take effect.

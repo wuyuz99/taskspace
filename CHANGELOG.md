@@ -14,6 +14,27 @@ upgrade.
   shows how far behind its base it is, `repo update --base` fetches and moves
   it, and `repo update --branch` makes it a working repository. A task with a
   reference is written as record version 4, which tspace 0.4 refuses.
+- Each task's session and terminal tab are labelled with its name and title,
+  such as `PAY-142 - Totals endpoint`, so its `api` window can be told from
+  another task's (#203). On tmux the status line shows it while `status-left`
+  is tmux's own; a `status-left` of your own can show `#{@tspace_label}`. On
+  zellij only the terminal tab shows it. Adapters can show it with the new
+  optional `label` operation; one without it works as before.
+
+### Changed
+
+- When tmux or zellij can't run, the error says how to choose another
+  multiplexer, and dash's `t` without a terminal set says `enter` attaches in
+  the one you're in. On a fresh remote machine reached over SSH, those were the
+  first errors seen.
+
+### Removed
+
+- `tspace config agent-status`, deprecated in v0.4.0 (#140). Claude Code's
+  hooks, from `tspace config hooks claude`, report the same states. An
+  `agent_status` left in `config.json` is ignored, and dropped the next time
+  tspace writes the config. `status --json` no longer gives `idle` as a state
+  or an agent's name as a source.
 
 ## v0.4.0 — 2026-11-07
 
