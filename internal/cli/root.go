@@ -52,9 +52,6 @@ type App struct {
 	// settle is how long start waits before checking that what it launched
 	// is still running.
 	settle time.Duration
-	// run runs the agent CLIs that agent-status integrations read; nil is
-	// the real one.
-	run tsexec.Runner
 }
 
 // launchSettle is long enough for an agent that dies on launch, or a session
@@ -75,7 +72,6 @@ func NewApp() (*App, error) {
 		Out:     os.Stdout,
 		Err:     os.Stderr,
 		settle:  launchSettle,
-		run:     runner,
 	}, nil
 }
 

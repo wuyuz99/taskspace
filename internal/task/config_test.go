@@ -71,6 +71,20 @@ func TestConfigRoundTrip(t *testing.T) {
 	}
 }
 
+// A setting from an older tspace that this one no longer reads, such as
+// agent_status (#140), is ignored rather than refused.
+func TestLoadConfigIgnoresRemovedSettings(t *testing.T) {
+	s := newTestStore(t)
+	mustWrite(t, s.ConfigPath(), `{"multiplexer": "zellij", "agent_status": ["claude"]}`)
+	c, err := s.LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig = %v", err)
+	}
+	if c.Multiplexer != "zellij" {
+		t.Errorf("multiplexer = %q, want the rest of the config read", c.Multiplexer)
+	}
+}
+
 func TestLoadConfigErrors(t *testing.T) {
 	s := newTestStore(t)
 	mustWrite(t, s.ConfigPath(), "{not json")
