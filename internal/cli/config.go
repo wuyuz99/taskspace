@@ -45,9 +45,6 @@ func (a *App) newConfigCmd() *cobra.Command {
 			if c.TicketPattern != "" {
 				a.printf("ticket pattern: %s%s\n", c.TicketPattern, ticketPatternProblem(c))
 			}
-			if len(c.AgentStatus) > 0 {
-				a.printf("agent status: %s (deprecated)\n", agentStatusDisplay(c.AgentStatus))
-			}
 			if len(c.CarryConversations) > 0 {
 				a.printf("conversations carried: %s\n", carryConversationsDisplay(c.CarryConversations))
 			}
@@ -60,7 +57,7 @@ func (a *App) newConfigCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.AddCommand(a.newConfigAgentCmd(), a.newConfigRepoCmd(), a.newConfigBranchPrefixCmd(), a.newConfigMultiplexerCmd(), a.newConfigHooksCmd(), a.newConfigResumeCmd(), a.newConfigTicketPatternCmd(), a.newConfigTerminalCmd(), a.newConfigEditorCmd(), a.newConfigAgentStatusCmd(), a.newConfigCarryConversationsCmd())
+	cmd.AddCommand(a.newConfigAgentCmd(), a.newConfigRepoCmd(), a.newConfigBranchPrefixCmd(), a.newConfigMultiplexerCmd(), a.newConfigHooksCmd(), a.newConfigResumeCmd(), a.newConfigTicketPatternCmd(), a.newConfigTerminalCmd(), a.newConfigEditorCmd(), a.newConfigCarryConversationsCmd())
 	return cmd
 }
 

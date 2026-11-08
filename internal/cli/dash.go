@@ -870,7 +870,7 @@ func reportStyle(r *status.Report) lipgloss.Style {
 		return dashYellow.Bold(true)
 	case status.ReportState(task.SignalFailed):
 		return dashRed.Bold(true)
-	case status.ReportState(task.SignalDone), status.ReportIdle:
+	case status.ReportState(task.SignalDone):
 		return dashGreen
 	}
 	return dashFaint
