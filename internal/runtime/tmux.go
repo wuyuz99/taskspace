@@ -38,7 +38,7 @@ func (t *Tmux) tmux(ctx context.Context, args ...string) (tsexec.Result, error) 
 // Available implements Runtime.
 func (t *Tmux) Available(ctx context.Context) error {
 	if _, err := t.tmux(ctx, "-V"); err != nil {
-		return fmt.Errorf("tmux is required but not usable: %w", err)
+		return fmt.Errorf("tmux is required but not usable (%w); install it, or choose another multiplexer, such as: tspace config multiplexer zellij", err)
 	}
 	return nil
 }

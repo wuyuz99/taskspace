@@ -24,10 +24,9 @@ the task's own `interrupted` is true. A worktree's `git` is one of `clean`,
 `dirty`, `missing` or `error`.
 
 `signal.state` is one of `working`, `blocked`, `done` or `failed`.
-`agent_state.state` is one of those, or `bell`, `quiet` or `idle`.
-`agent_state.source` is `signal`, `bell`, `silence`, or the name of an
-integration such as `claude`. A reader should treat a state it does not know as
-nothing to act on. Times are RFC 3339.
+`agent_state.state` is one of those, or `bell` or `quiet`. `agent_state.source`
+is `signal`, `bell` or `silence`. A reader should treat a state or source it
+does not know as nothing to act on. Times are RFC 3339.
 
 ## Task records
 

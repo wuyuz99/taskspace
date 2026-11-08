@@ -14,6 +14,21 @@ upgrade.
   zellij only the terminal tab shows it. Adapters can show it with the new
   optional `label` operation; one without it works as before.
 
+### Changed
+
+- When tmux or zellij can't run, the error says how to choose another
+  multiplexer, and dash's `t` without a terminal set says `enter` attaches in
+  the one you're in. On a fresh remote machine reached over SSH, those were the
+  first errors seen.
+
+### Removed
+
+- `tspace config agent-status`, deprecated in v0.4.0 (#140). Claude Code's
+  hooks, from `tspace config hooks claude`, report the same states. An
+  `agent_status` left in `config.json` is ignored, and dropped the next time
+  tspace writes the config. `status --json` no longer gives `idle` as a state
+  or an agent's name as a source.
+
 ## v0.4.0 — 2026-11-07
 
 ### Fixed
