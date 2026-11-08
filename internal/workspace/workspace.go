@@ -67,11 +67,13 @@ type Event interface{ event() }
 // Warning is a problem that did not stop the operation, ready to show.
 type Warning struct{ Text string }
 
-// WorktreeReady reports a repository's worktree is there for Start.
+// WorktreeReady reports a repository's worktree is there for Start. A
+// Reference's is checked out at Result.Base, with no branch.
 type WorktreeReady struct {
-	Repo   string
-	Branch string
-	Result tsgit.EnsureResult
+	Repo      string
+	Branch    string
+	Reference bool
+	Result    tsgit.EnsureResult
 }
 
 // HookStarted and HookFailed bracket a post_create hook; its output goes to

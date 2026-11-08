@@ -7,6 +7,13 @@ upgrade.
 
 ### Added
 
+- Reference repositories: `tspace repo add TASK REPO --ref`, `task create
+  --ref` and a pick in dash's create form add a repository the task only
+  reads (#95). It is checked out at its base, detached, with its files
+  read-only, and has no branch or window: the root window sees it. `status`
+  shows how far behind its base it is, `repo update --base` fetches and moves
+  it, and `repo update --branch` makes it a working repository. A task with a
+  reference is written as record version 4, which tspace 0.4 refuses.
 - Each task's session and terminal tab are labelled with its name and title,
   such as `PAY-142 - Totals endpoint`, so its `api` window can be told from
   another task's (#203). On tmux the status line shows it while `status-left`

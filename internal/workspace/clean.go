@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/wuyuz99/taskspace/internal/fspath"
 	tsgit "github.com/wuyuz99/taskspace/internal/git"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
@@ -119,7 +120,17 @@ func (s *Service) Clean(ctx context.Context, name string, opts CleanOptions) err
 
 	for _, p := range plans {
 		if p.Present {
+			// git cannot delete a read-only file on Windows, and leaves the
+			// directory behind if it fails part way.
+			if p.Repo.Reference {
+				if err := fspath.SetReadOnly(p.Repo.Worktree, false); err != nil {
+					return fmt.Errorf("%s: make its files writable to remove them: %w", p.Name, err)
+				}
+			}
 			if err := s.Git.RemoveWorktree(ctx, p.Repo.Path, p.Repo.Worktree, opts.Force); err != nil {
+				if p.Repo.Reference {
+					s.protect(p.Name, p.Repo.Worktree)
+				}
 				return fmt.Errorf("%s: %w", p.Name, err)
 			}
 			s.report(WorktreeRemoved{Repo: p.Name})
@@ -272,6 +283,8 @@ func (s *Service) inspectForClean(ctx context.Context, t *task.Task, wantBranchI
 		p.Present = st.Exists
 
 		if st.Exists {
+			// A reference is detached, and a commit made in it anyway is
+			// lost with it unless something else points at it.
 			if st.Branch == "" {
 				excludedBranch := ""
 				if wantBranchInfo {
@@ -305,7 +318,8 @@ func (s *Service) inspectForClean(ctx context.Context, t *task.Task, wantBranchI
 			}
 		}
 
-		if wantBranchInfo {
+		// A reference has no branch, so nothing of the task's is in one.
+		if wantBranchInfo && !r.Reference {
 			d, err := s.Git.CanDiscardBranch(ctx, r.Path, r.Branch, r.Base)
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", name, err)

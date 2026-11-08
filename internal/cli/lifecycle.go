@@ -66,6 +66,10 @@ func (a *App) newLaunchCmd(open bool) *cobra.Command {
 			if err != nil || noRuntime {
 				return err
 			}
+			if res.NoWindows {
+				a.printf("\n%s: references have no window; the task's root window sees them\n", joinNames(args[1:]))
+				return nil
+			}
 			if open {
 				// Start has let go of the task: nobody holds one while attached.
 				a.printf("\nworkspace: %s\n", res.Task.Name)

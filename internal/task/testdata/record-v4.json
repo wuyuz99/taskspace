@@ -1,0 +1,19 @@
+{
+  "version": 4,
+  "name": "PAY-142",
+  "repos": {
+    "api": {
+      "path": "/src/api",
+      "branch": "agent/PAY-142",
+      "base": "origin/main",
+      "worktree": "/w/PAY-142/api"
+    },
+    "schema": {
+      "path": "/src/schema",
+      "branch": "",
+      "base": "origin/main",
+      "worktree": "/w/PAY-142/schema",
+      "reference": true
+    }
+  }
+}

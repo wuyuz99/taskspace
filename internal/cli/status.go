@@ -88,8 +88,12 @@ func paneJSON(p runtime.PaneState, r *status.Report) statusPaneJSON {
 }
 
 type statusRepoJSON struct {
-	Repo       string `json:"repo"`
-	Branch     string `json:"branch"`
+	Repo   string `json:"repo"`
+	Branch string `json:"branch"`
+	// Reference marks a repository the task only reads, checked out at Base
+	// with no branch; its behind counts the commits on Base it lacks.
+	Reference  bool   `json:"reference,omitempty"`
+	Base       string `json:"base,omitempty"`
 	Worktree   string `json:"worktree"`
 	Agent      string `json:"agent"`
 	Runtime    string `json:"runtime"`
@@ -113,8 +117,11 @@ type statusRepoJSON struct {
 // later than the field's values were fixed, so there it stays no-session,
 // and the task's own "interrupted" says the rest.
 func jsonRuntime(s status.RuntimeState) string {
-	if s == status.RuntimeInterrupted {
+	switch s {
+	case status.RuntimeInterrupted:
 		return string(status.RuntimeNoSession)
+	case status.RuntimeReference:
+		return string(status.RuntimeNoWindow)
 	}
 	return string(s)
 }
@@ -165,6 +172,9 @@ func (a *App) printStatusJSON(tasks []*task.Task, results []status.TaskStatus) e
 				Signal:     signalJSON(r.Signal),
 
 				statusPaneJSON: paneJSON(r.Pane, r.Report),
+			}
+			if r.Reference {
+				repo.Reference, repo.Branch, repo.Base = true, "", r.Branch
 			}
 			if r.Err != nil {
 				repo.Error = r.Err.Error()

@@ -10,6 +10,8 @@ import (
 	"time"
 
 	tsexec "github.com/wuyuz99/taskspace/internal/exec"
+	"github.com/wuyuz99/taskspace/internal/fspath"
+	tsgit "github.com/wuyuz99/taskspace/internal/git"
 	"github.com/wuyuz99/taskspace/internal/runtime"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
@@ -34,8 +36,11 @@ type StartOptions struct {
 type StartResult struct {
 	// Task is the record as Start left it, after its hooks.
 	Task *task.Task
-	// Session is the task's session, up unless NoRuntime.
+	// Session is the task's session, up unless NoRuntime or NoWindows.
 	Session string
+	// NoWindows says only references were started, which have no windows:
+	// their worktrees are ready, and nothing was launched.
+	NoWindows bool
 }
 
 // Start creates the task's missing worktrees, running each new one's
@@ -87,7 +92,8 @@ func (s *Service) launch(ctx context.Context, t *task.Task, opts StartOptions) (
 	}
 	result := &StartResult{Task: t, Session: s.Runtime.SessionName(t.Name)}
 	p := s.planWindows(t, opts, names, created)
-	if opts.NoRuntime {
+	result.NoWindows = len(p.windows) == 0
+	if opts.NoRuntime || result.NoWindows {
 		return result, nil, nil
 	}
 	if p.atRoot {
@@ -145,7 +151,7 @@ func (s *Service) launch(ctx context.Context, t *task.Task, opts StartOptions) (
 	return result, &launched{
 		task: t, session: result.Session, at: at,
 		before:  before,
-		windows: p.windows, names: append([]string{task.RootWindowName}, names...), fresh: p.fresh,
+		windows: p.windows, names: append([]string{task.RootWindowName}, t.WindowRepos(names)...), fresh: p.fresh,
 	}, nil
 }
 
@@ -193,6 +199,19 @@ func (s *Service) ensureWorktrees(ctx context.Context, t *task.Task, names []str
 		r, ok := t.Repos[name]
 		if !ok {
 			return nil, nil, fmt.Errorf("%s was removed from %s while it started", name, t.Name)
+		}
+		if r.Reference {
+			res, err := s.ensureReference(ctx, name, r)
+			if err != nil {
+				return nil, nil, err
+			}
+			if res.Created {
+				created[name] = true
+			}
+			if res.Base != "" && r.Base != res.Base {
+				bases[name] = res.Base
+			}
+			continue
 		}
 		res, err := s.Git.EnsureWorktree(ctx, r.Path, r.Worktree, r.Branch, r.Base)
 		if err != nil {
@@ -244,6 +263,28 @@ func (s *Service) ensureWorktrees(ctx context.Context, t *task.Task, names []str
 	return t, created, nil
 }
 
+// ensureReference creates a reference's worktree, at its base, and makes its
+// files read-only. One already there is left where it is.
+func (s *Service) ensureReference(ctx context.Context, name string, r task.Repo) (tsgit.EnsureResult, error) {
+	res, err := s.Git.EnsureReference(ctx, r.Path, r.Worktree, r.Base)
+	if err != nil {
+		return res, fmt.Errorf("%s: %w", name, err)
+	}
+	s.report(WorktreeReady{Repo: name, Reference: true, Result: res})
+	if res.Created {
+		s.protect(name, r.Worktree)
+	}
+	return res, nil
+}
+
+// protect makes a reference's files read-only. Failing is a warning: the
+// worktree is still the reference, only less protected.
+func (s *Service) protect(name, worktree string) {
+	if err := fspath.SetReadOnly(worktree, true); err != nil {
+		s.warnf("%s: could not make every file read-only: %v", name, err)
+	}
+}
+
 // windowPlan is the windows Start launches.
 type windowPlan struct {
 	windows []runtime.Window
@@ -274,7 +315,8 @@ func (s *Service) planWindows(t *task.Task, opts StartOptions, names []string, c
 	if p.withRoot {
 		p.windows = append(p.windows, resume(RootWindow(s.Store, t)))
 	}
-	for _, name := range names {
+	// A reference has no window: the root window sees it.
+	for _, name := range t.WindowRepos(names) {
 		p.windows = append(p.windows, resume(RepoWindow(s.Store, t, name)))
 	}
 	// Saved windows go with what is started: those at the root with the whole

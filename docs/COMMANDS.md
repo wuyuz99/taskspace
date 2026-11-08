@@ -26,7 +26,7 @@ require explicit task names.
 | `tspace config multiplexer [NAME [CMD ARGS...] / --unset]` | Choose tmux, zellij or an adapter; see [Multiplexers](MULTIPLEXERS.md) |
 | `tspace project save NAME --from TASK [--replace]` | Save a reusable repository recipe |
 | `tspace project list` / `tspace project show NAME` | Inspect saved recipes |
-| `tspace task create NAME [REPO...] [--agent CMD / --shell] [--project P] [--with-root] [--start]` | Create a task; each REPO is `REPO[@BRANCH][:BASE]`; `--start` starts it too. Also `tspace new` and `task new` |
+| `tspace task create NAME [REPO...] [--ref REPO[:BASE]...] [--agent CMD / --shell] [--project P] [--with-root] [--start]` | Create a task; each REPO is `REPO[@BRANCH][:BASE]`, and each `--ref` a reference; `--start` starts it too. Also `tspace new` and `task new` |
 | `tspace task update NAME [--agent CMD / --shell] [--agent-at-root / --agent-in REPO] [--title ...]` | Update a task's agent, where it runs, and details |
 | `tspace task list [--json]` | List tasks |
 | `tspace task show [NAME] [--json]` | Show a task's repos in detail |
@@ -35,8 +35,9 @@ require explicit task names.
 | `tspace task rename OLD NEW [--branches]` | Rename a stopped task, moving worktrees and notes; optionally rename unpublished default branches. Directory-based agent conversations stay at the old paths unless carried (`config carry-conversations`). Dash: `N` |
 | `tspace task rm NAME [--force]` | Delete the record; refuses while worktrees exist unless `--force` |
 | `tspace repo add TASK REPO [--name --branch --base --agent --post-create]` | Attach a repository, by registered name or path |
+| `tspace repo add TASK REPO[:BASE] --ref [--name]` | Attach a reference: a repository the task only reads, checked out at its base, detached and read-only, with no branch or window |
 | `tspace repo rm TASK REPO [--force \| --keep-worktree]` | Clean the repository's worktree and windows safely, then detach it; `--force` discards work clean would refuse to lose; `--keep-worktree` only forgets it |
-| `tspace repo update TASK REPO [--agent CMD / --shell] [--post-create SH] [--branch NAME] [--base REF [--rebase]]` | Update a repository's agent, setup, branch or base |
+| `tspace repo update TASK REPO [--agent CMD / --shell] [--post-create SH] [--branch NAME] [--base REF [--rebase]]` | Update a repository's agent, setup, branch or base. For a reference, `--base` fetches and moves it there, the same base bringing it up to date, and `--branch` makes it a working repository on a new branch |
 | `tspace repo move OLD REPO --to NEW [--name NAME]` | Move a repository to another task with its worktree, uncommitted files, settings and saved windows; rolls back on failure. Refuses while its windows are open. Directory-based agent conversations stay at the old path unless carried (`config carry-conversations`). Dash: `m` |
 | `tspace start TASK [REPO... / --root] [--no-runtime] [--fresh]` | Create worktrees, launch the session, resuming agents' conversations where they ran before; naming REPOs or `--root` starts only those windows; `--no-runtime` stops after the worktrees |
 | `tspace start --interrupted [--fresh]` | Start every task a computer restart, or anything but stop and clean, interrupted |

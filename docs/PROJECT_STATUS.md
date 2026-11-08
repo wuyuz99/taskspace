@@ -102,9 +102,10 @@ top of a neutral interface, the way `config hooks claude` sits on top of
 `tspace signal`.
 
 **Reference repositories**
-([#95](https://github.com/wuyuz99/taskspace/issues/95)): a repository the task
-needs only to read, checked out on its base with no task branch and made
-read-only, so an agent can see it and cannot change it.
+([#95](https://github.com/wuyuz99/taskspace/issues/95)), built for the next
+release: a repository the task needs only to read, checked out on its base
+with no task branch and made read-only, so an agent can see it and cannot
+change it.
 
 ### Later
 

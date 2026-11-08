@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/wuyuz99/taskspace/internal/fspath"
 	"github.com/wuyuz99/taskspace/internal/task"
 )
 
@@ -44,6 +45,12 @@ func (s *Service) RemoveRepo(ctx context.Context, name, repo string, keepWorktre
 		// What is saved is what clean left.
 		if t, err = s.Store.Load(t.Name); err != nil {
 			return "", err
+		}
+	}
+	// What is left is the user's to change, as any directory is.
+	if keepWorktree && r.Reference && fspath.IsDir(r.Worktree) {
+		if err := fspath.SetReadOnly(r.Worktree, false); err != nil {
+			s.warnf("note: some of %s's files are still read-only: %v", repo, err)
 		}
 	}
 	s.noteAgentToRoot(t, repo)

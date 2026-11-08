@@ -57,6 +57,7 @@ type Repo struct {
 	// Path is the canonical absolute path of the source repository.
 	Path string `json:"path"`
 	// Branch is the branch checked out in the worktree, by default agent/<task>.
+	// A reference has none.
 	Branch string `json:"branch"`
 	// Base is the ref the branch was created from, recorded at creation time so
 	// that later safety checks compare against the same ref.
@@ -73,6 +74,10 @@ type Repo struct {
 	Agent []string `json:"agent,omitempty"`
 	// Resume brings Agent back with its conversation; see Task.Resume.
 	Resume []string `json:"resume,omitempty"`
+	// Reference marks a repository the task only reads: its worktree is
+	// checked out at Base, detached, with its files read-only, and it has no
+	// branch, window, agent or post_create hook. The task-root window sees it.
+	Reference bool `json:"reference,omitempty"`
 }
 
 // AgentLabel renders the agent for display.
@@ -242,7 +247,19 @@ func (t *Task) RemoveRepo(name string) (dropped []Window) {
 // an agent of its own would leave the task's agent nowhere to run.
 func (t *Task) CanRunAgentIn(name string) bool {
 	r, ok := t.Repos[name]
-	return ok && len(r.Agent) == 0
+	return ok && len(r.Agent) == 0 && !r.Reference
+}
+
+// WindowRepos returns the repositories with a window of their own, which is
+// every one but a reference, in RepoNames' order.
+func (t *Task) WindowRepos(names []string) []string {
+	var out []string
+	for _, n := range names {
+		if r, ok := t.Repos[n]; ok && !r.Reference {
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
 // New returns an empty task with the given name.
@@ -272,6 +289,12 @@ func (t *Task) Repo(name string) (Repo, bool) {
 // NoRepo is the error for a repository name the task doesn't have.
 func (t *Task) NoRepo(name string) error {
 	return fmt.Errorf("task %q has no repo named %q (has: %s)", t.Name, name, strings.Join(t.RepoNames(), ", "))
+}
+
+// NoWindowError is the error for a reference named where a repository's
+// window is wanted.
+func NoWindowError(name string) error {
+	return fmt.Errorf("%s is a reference, which has no window; the task's root window sees it", name)
 }
 
 // SetRepo adds or replaces a repo entry.

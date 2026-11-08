@@ -23,6 +23,11 @@ In `status --json`, a runtime is one of `running`, `dead`, `no-window`,
 the task's own `interrupted` is true. A worktree's `git` is one of `clean`,
 `dirty`, `missing` or `error`.
 
+A reference, a repository the task only reads, has `reference` true. In
+`status --json` its `branch` is empty, its `base` is what it is checked out
+at, its `runtime` is `no-window`, and `behind` counts the commits on its base
+it does not have. `task show --json` gives its `base` and an empty `branch`.
+
 `signal.state` is one of `working`, `blocked`, `done` or `failed`.
 `agent_state.state` is one of those, or `bell` or `quiet`. `agent_state.source`
 is `signal`, `bell` or `silence`. A reader should treat a state or source it
@@ -38,12 +43,16 @@ refused too; change it once with tspace v0.3 to bring it up to date.
 
 A record is written in the oldest format that holds everything in it. A field
 an older tspace would drop on saving gets a new version, which that older
-tspace then refuses.
+tspace then refuses. Version 2 adds saved windows, version 3 guessed bases and
+version 4 reference repositories, so a task with a reference needs a tspace
+from after 0.4.
 
 The record and the notes beside it in `.context` are for tspace to read and
 write. Edit a record by hand at your own risk; the notes are yours.
 
-`config.json` and project recipes change only by adding optional fields.
+`config.json` and project recipes change only by adding optional fields. A
+recipe's `reference` is one: a tspace from before it makes that repository an
+ordinary one in the task it creates.
 `run/` is session memory, not a format: nothing outside tspace should read it.
 
 ## Adapter protocol

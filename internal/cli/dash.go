@@ -546,6 +546,10 @@ func (m dashModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "enter":
+		if row.Runtime == status.RuntimeReference {
+			m.note = task.NoWindowError(row.label()).Error()
+			return m, nil
+		}
 		if row.Runtime != status.RuntimeRunning && row.Runtime != status.RuntimeDead {
 			m.note = fmt.Sprintf("%s has no window to attach to (%s); press s to start the task", row.label(), row.Runtime)
 			return m, nil
