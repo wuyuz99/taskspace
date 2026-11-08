@@ -12,8 +12,9 @@ import (
 // project, then the user's config.
 type CreateTaskOptions struct {
 	Name string
-	// Repos are repositories to attach, each as ParseRepoSpec reads them.
-	Repos []string
+	// Repos are repositories to attach, each as ParseRepoSpec reads them,
+	// and Refs those to attach as references.
+	Repos, Refs []string
 	// Project, with SetProject, snapshots that saved recipe into the task.
 	Project    string
 	SetProject bool
@@ -117,7 +118,7 @@ func (s *Service) CreateTask(ctx context.Context, o CreateTaskOptions) (*CreateT
 			if err != nil {
 				return nil, err
 			}
-			if err := adding.AddRepo(ctx, t, c, ExpandHome(r.Path), AddRepoOptions{Name: repoName, Base: r.Base, Agent: r.Agent, Resume: r.Resume, PostCreate: r.PostCreate}); err != nil {
+			if err := adding.AddRepo(ctx, t, c, ExpandHome(r.Path), AddRepoOptions{Name: repoName, Base: r.Base, Agent: r.Agent, Resume: r.Resume, PostCreate: r.PostCreate, Reference: r.Reference}); err != nil {
 				return nil, err
 			}
 		}
@@ -129,6 +130,15 @@ func (s *Service) CreateTask(ctx context.Context, o CreateTaskOptions) (*CreateT
 			return nil, err
 		}
 		if err := adding.AddRepoSpec(ctx, t, c, spec, AddRepoOptions{}); err != nil {
+			return nil, err
+		}
+	}
+	for _, spec := range o.Refs {
+		c, err := config()
+		if err != nil {
+			return nil, err
+		}
+		if err := adding.AddRepoSpec(ctx, t, c, spec, AddRepoOptions{Reference: true}); err != nil {
 			return nil, err
 		}
 	}

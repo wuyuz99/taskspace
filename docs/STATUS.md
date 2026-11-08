@@ -11,6 +11,7 @@ TASK               REPO      BRANCH                   AGENT   RUNTIME     GIT
 checkout-redesign  (root)    -                        claude  running     -
 checkout-redesign  backend   agent/checkout-redesign  shell   running     dirty (3 files)
 checkout-redesign  frontend  agent/checkout-redesign  codex   dead        clean, ahead 2
+checkout-redesign  schema    origin/main              -       reference   clean, behind 3
 checkout-redesign  _mon      -                        htop    running     -
 payments-fix       backend   agent/payments-fix       codex   no-session  missing
 ```
@@ -19,13 +20,22 @@ A task's first row is its `_root` window; `payments-fix` has one repository,
 so its agent runs there and it has none. It has a runtime state but no git
 state of its own: whatever its agent changes shows up in the repositories' rows.
 
+`schema` is a reference, added with `repo add --ref`: the task only reads it.
+Its BRANCH is the base it is checked out at, and `behind 3` counts the commits
+on that base it does not have yet, as of the last fetch; `tspace repo update
+TASK schema --base origin/main` fetches and moves it there. A commit made in it
+anyway shows as `N commits not pushed`. It has no window of its own: the root
+window's agent sees it, so a task with one repository and a reference has a
+root window, as with two.
+
 Extra windows, opened with `tspace window`, follow as `_NAME` rows, marked
 `(saved)` when start opens them again; a saved window that is not open shows
 as `no-window`. `--json` lists them in each task's `windows` array, with
 `name`, `saved`, `runtime` and, for a saved one, its `repo` and `command`.
 
 - **RUNTIME** — `running`, `dead`, `no-window`, `no-session`, `interrupted`,
-  `unknown`. `interrupted` is a task with no session that was not stopped on
+  `unknown`, or `reference` for a reference, which never has a window; `--json`
+  gives that as `no-window` with `reference` set. `interrupted` is a task with no session that was not stopped on
   purpose: one that has run, and that neither `tspace stop`, dash `x`, clean
   nor closing its last window ended, such as after a computer restart.
   Only the windows that would come back say `interrupted`; the rest of the

@@ -71,6 +71,11 @@ func (a *App) render(e workspace.Event) {
 	case workspace.RepoAdded:
 		a.printf("added %s to %s\n", e.Repo, e.Task)
 		a.printf("  repo:     %s\n", e.Path)
+		if e.Reference {
+			a.printf("  reference at %s, read-only, with no window of its own\n", e.Base)
+			a.printf("  worktree: %s\n", e.Worktree)
+			break
+		}
 		a.printf("  branch:   %s (%s)\n", e.Branch, e.BranchNote)
 		if e.Existing {
 			a.printf("  base:     %s\n", e.Base)
@@ -85,6 +90,10 @@ func (a *App) render(e workspace.Event) {
 			a.warnf("%-12s could not fetch, using the refs already here: %v\n", e.Repo, res.FetchErr)
 		}
 		switch {
+		case e.Reference && res.Created:
+			a.printf("%-12s created read-only reference at %s\n", e.Repo, res.Base)
+		case e.Reference:
+			a.printf("%-12s reference ready\n", e.Repo)
 		case res.Tracking != "":
 			a.printf("%-12s created worktree on %s (tracking %s)\n", e.Repo, e.Branch, res.Tracking)
 		case res.Created && res.Base != "":

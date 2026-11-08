@@ -163,43 +163,18 @@ type EnsureResult struct {
 func (g *Git) EnsureWorktree(ctx context.Context, repo, path, branch, base string) (EnsureResult, error) {
 	out := EnsureResult{Path: path, Branch: branch, Base: base}
 
-	existing, err := g.FindWorktree(ctx, repo, path)
+	existing, err := g.registered(ctx, repo, path, &out)
 	if err != nil {
 		return out, err
 	}
 	if existing != nil {
-		info, statErr := os.Stat(path)
-		if statErr == nil {
-			if !info.IsDir() {
-				return out, fmt.Errorf("%s has a stale worktree registration: not a directory; restore the original worktree before retrying", path)
-			}
-			if err := g.verifyWorktree(ctx, repo, path); err != nil {
-				return out, fmt.Errorf("%s has a stale or invalid worktree registration: %w; restore the original worktree or repair its registration with git worktree repair before retrying", path, err)
-			}
-			if existing.Branch != "" && existing.Branch != branch {
-				return out, fmt.Errorf(
-					"%s already exists as a worktree on branch %q, not %q; remove it or choose another branch",
-					path, existing.Branch, branch)
-			}
-			out.Base = "" // nothing was forked
-			return out, nil
+		if existing.Branch != "" && existing.Branch != branch {
+			return out, fmt.Errorf(
+				"%s already exists as a worktree on branch %q, not %q; remove it or choose another branch",
+				path, existing.Branch, branch)
 		}
-		if !os.IsNotExist(statErr) {
-			return out, fmt.Errorf("inspect worktree %s: %w", path, statErr)
-		}
-		// Registered but the directory is gone: git will refuse to reuse the
-		// path until the stale record is pruned.
-		if err := g.Prune(ctx, repo); err != nil {
-			return out, err
-		}
-		out.Pruned = true
-	}
-
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return out, fmt.Errorf("create %s: %w", filepath.Dir(path), err)
-	}
-	if entries, err := os.ReadDir(path); err == nil && len(entries) > 0 {
-		return out, fmt.Errorf("%s already exists and is not empty; remove it or choose another location", path)
+		out.Base = "" // nothing was forked
+		return out, nil
 	}
 
 	branchExists, err := g.BranchExists(ctx, repo, branch)
@@ -257,6 +232,97 @@ func (g *Git) EnsureWorktree(ctx context.Context, repo, path, branch, base strin
 	}
 	out.Created = true
 	return out, nil
+}
+
+// registered is the worktree registered at path, if its directory is there
+// and is that worktree. A registration whose directory is gone is pruned,
+// which out records, and the path made ready for a new worktree: its parent
+// created, and refused if something else is already in it.
+func (g *Git) registered(ctx context.Context, repo, path string, out *EnsureResult) (*Worktree, error) {
+	existing, err := g.FindWorktree(ctx, repo, path)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		info, statErr := os.Stat(path)
+		if statErr == nil {
+			if !info.IsDir() {
+				return nil, fmt.Errorf("%s has a stale worktree registration: not a directory; restore the original worktree before retrying", path)
+			}
+			if err := g.verifyWorktree(ctx, repo, path); err != nil {
+				return nil, fmt.Errorf("%s has a stale or invalid worktree registration: %w; restore the original worktree or repair its registration with git worktree repair before retrying", path, err)
+			}
+			return existing, nil
+		}
+		if !os.IsNotExist(statErr) {
+			return nil, fmt.Errorf("inspect worktree %s: %w", path, statErr)
+		}
+		// Registered but the directory is gone: git will refuse to reuse the
+		// path until the stale record is pruned.
+		if err := g.Prune(ctx, repo); err != nil {
+			return nil, err
+		}
+		out.Pruned = true
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, fmt.Errorf("create %s: %w", filepath.Dir(path), err)
+	}
+	if entries, err := os.ReadDir(path); err == nil && len(entries) > 0 {
+		return nil, fmt.Errorf("%s already exists and is not empty; remove it or choose another location", path)
+	}
+	return nil, nil
+}
+
+// EnsureReference makes path a worktree of repo checked out at base,
+// detached, for a repository the task only reads, creating it if needed. An
+// existing one is reused where it is: it moves to a newer base only when
+// asked, with CheckoutDetached. A missing base is fetched once.
+func (g *Git) EnsureReference(ctx context.Context, repo, path, base string) (EnsureResult, error) {
+	out := EnsureResult{Path: path, Base: base}
+	existing, err := g.registered(ctx, repo, path, &out)
+	if err != nil {
+		return out, err
+	}
+	if existing != nil {
+		if existing.Branch != "" {
+			return out, fmt.Errorf("%s already exists as a worktree on branch %q, and a reference has none; remove it, or make the repository a working one with tspace repo update --branch", path, existing.Branch)
+		}
+		return out, nil
+	}
+	if base == "" {
+		if base, err = g.ResolveBase(ctx, repo); err != nil {
+			return out, err
+		}
+		out.Base = base
+	}
+	if ok, err := g.ok(ctx, repo, "rev-parse", "--verify", "--quiet", base+"^{commit}"); err != nil {
+		return out, err
+	} else if !ok {
+		_, out.FetchErr = g.FetchRemotes(ctx, repo, base)
+	}
+	if _, err := g.git(ctx, repo, "worktree", "add", "--detach", path, base); err != nil {
+		return out, fmt.Errorf("create worktree %s at %s: %w", path, base, err)
+	}
+	out.Created = true
+	return out, nil
+}
+
+// CheckoutDetached checks out ref in worktree, detached.
+func (g *Git) CheckoutDetached(ctx context.Context, worktree, ref string) error {
+	if _, err := g.git(ctx, worktree, "checkout", "--quiet", "--detach", ref); err != nil {
+		return fmt.Errorf("check out %s in %s: %w", ref, worktree, err)
+	}
+	return nil
+}
+
+// CreateBranchHere creates branch at worktree's HEAD and checks it out, with
+// no upstream, keeping any changes in the worktree.
+func (g *Git) CreateBranchHere(ctx context.Context, worktree, branch string) error {
+	if _, err := g.git(ctx, worktree, "switch", "--quiet", "--no-track", "-c", branch); err != nil {
+		return fmt.Errorf("create branch %s in %s: %w", branch, worktree, err)
+	}
+	return nil
 }
 
 // verifyWorktree checks both directions of a linked worktree's identity.

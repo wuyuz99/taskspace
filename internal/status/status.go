@@ -35,6 +35,9 @@ const (
 	RuntimeInterrupted RuntimeState = "interrupted"
 	// RuntimeUnknown means the runtime could not be queried.
 	RuntimeUnknown RuntimeState = "unknown"
+	// RuntimeReference means the repository is a reference, which never has
+	// a window of its own.
+	RuntimeReference RuntimeState = "reference"
 )
 
 // GitState is the worktree's condition.
@@ -53,12 +56,16 @@ const (
 // at the same time — that is the normal state of an agent doing its job — so
 // collapsing them into a single column would be actively misleading.
 type RepoStatus struct {
-	Task    string
-	Repo    string
-	Branch  string
-	Agent   string
-	Runtime RuntimeState
-	Git     GitState
+	Task string
+	Repo string
+	// Branch is the branch checked out, or for a Reference, its base.
+	Branch string
+	// Reference says the task only reads it. Its Detail.Behind counts the
+	// commits on its base it does not have, and Unpushed any made in it.
+	Reference bool
+	Agent     string
+	Runtime   RuntimeState
+	Git       GitState
 
 	// Detail carries the observed git numbers. Zero when Git is Missing or Error.
 	Detail tsgit.Status
@@ -311,6 +318,9 @@ func (a *Aggregator) task(ctx context.Context, t *task.Task, published map[strin
 		go func() {
 			defer wg.Done()
 			rows[i] = a.repoStatus(ctx, t.Name, name, repo, sess, runtimeUnknown)
+			if repo.Reference {
+				return
+			}
 			agent := t.RepoAgent(name)
 			rows[i].Agent = task.Repo{Agent: agent}.AgentLabel()
 			rows[i].Signal = signal(name)
@@ -388,6 +398,10 @@ func (a *Aggregator) repoStatus(ctx context.Context, taskName, repoName string, 
 		Git:     GitClean,
 	}
 
+	if r.Reference {
+		row.Reference, row.Branch, row.Agent, row.Runtime = true, r.Base, "-", RuntimeReference
+	}
+
 	defer a.gitSlot(ctx)()
 	st, err := a.Git.WorktreeStatus(ctx, r.Worktree)
 	switch {
@@ -403,6 +417,10 @@ func (a *Aggregator) repoStatus(ctx context.Context, taskName, repoName string, 
 		} else {
 			row.Git = GitClean
 		}
+		if r.Reference {
+			a.referenceCounts(ctx, r, &row)
+			break
+		}
 		if st.Branch != "" {
 			row.Branch = st.Branch
 		}
@@ -415,6 +433,20 @@ func (a *Aggregator) repoStatus(ctx context.Context, taskName, repoName string, 
 		}
 	}
 	return row
+}
+
+// referenceCounts fills in how far a reference is from its base. A base that
+// does not resolve leaves them unknown, shown as nothing.
+func (a *Aggregator) referenceCounts(ctx context.Context, r task.Repo, row *RepoStatus) {
+	if r.Base == "" {
+		return
+	}
+	if n, err := a.Git.CountCommits(ctx, r.Worktree, "HEAD", r.Base); err == nil {
+		row.Detail.Behind = n
+	}
+	if n, err := a.Git.CountCommits(ctx, r.Worktree, r.Base, "HEAD"); err == nil {
+		row.Unpushed = n
+	}
 }
 
 // windowState is what the session says about one window.

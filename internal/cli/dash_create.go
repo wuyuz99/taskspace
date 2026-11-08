@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -15,11 +16,14 @@ import (
 // saved projects are picked; anything else is typed under more.
 func (m dashModel) createForm() *dashForm {
 	repos := dashField{label: "repositories", hint: "none registered (tspace config repo); type them under more"}
+	refs := dashField{label: "references", hint: "none registered; read-only, with no window (--ref)"}
 	if c, err := m.app.Store.LoadConfig(); err != nil {
 		repos.hint = oneLine(err.Error()) + "; type them under more"
 		repos = repos.pick(nil, false)
+		refs = refs.pick(nil, false)
 	} else {
 		repos = repos.pick(c.RepoNames(), false)
+		refs = refs.pick(c.RepoNames(), false)
 	}
 	// A project the shelf cannot list may still load, so it can be typed.
 	project := dashField{label: "project", hint: "optional; saved projects unreadable, so type it"}
@@ -37,6 +41,7 @@ func (m dashModel) createForm() *dashForm {
 			{label: "name", hint: "letters, digits, '.', '_' or '-'"},
 			repos,
 			{label: "more", hint: "REPO[@BRANCH][:BASE] ...  a branch, a base or a path"},
+			refs,
 			project,
 			{label: "start", hint: "start it once it is created (--start)", toggle: true, on: true},
 		},
@@ -61,7 +66,13 @@ func (m dashModel) checkCreate(f *dashForm) string {
 	if m.app.Store.Exists(name) {
 		return fmt.Sprintf("task %s already exists", name)
 	}
-	repos := f.field("repositories").text() != "" || f.field("more").text() != ""
+	refs := strings.Fields(f.field("references").text())
+	for _, r := range createRepos(f) {
+		if s, err := parseRepoSpec(r); err == nil && (slices.Contains(refs, s.Source) || slices.Contains(refs, s.Name)) {
+			return fmt.Sprintf("%s is picked both to work in and as a reference; pick one", s.Source)
+		}
+	}
+	repos := f.field("repositories").text() != "" || f.field("more").text() != "" || len(refs) > 0
 	if p := f.field("project").text(); p != "" {
 		project, err := m.app.Store.LoadProject(p)
 		if err != nil {
@@ -80,7 +91,7 @@ func (m dashModel) checkCreate(f *dashForm) string {
 func (m dashModel) create(f *dashForm) tea.Cmd {
 	name := f.field("name").text()
 	start := f.field("start").on
-	opts := workspace.CreateTaskOptions{Name: name, Repos: createRepos(f), Start: start}
+	opts := workspace.CreateTaskOptions{Name: name, Repos: createRepos(f), Refs: strings.Fields(f.field("references").text()), Start: start}
 	if p := f.field("project").text(); p != "" {
 		opts.Project, opts.SetProject = p, true
 	}

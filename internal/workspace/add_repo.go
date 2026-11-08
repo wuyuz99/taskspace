@@ -20,14 +20,18 @@ type AddRepoOptions struct {
 	Agent      []string
 	Resume     []string
 	PostCreate string
+	// Reference adds it to be read only: checked out at Base, detached and
+	// read-only, with no branch, window, agent or hook.
+	Reference bool
 }
 
 // RepoAdded reports a repository attached to a task. BranchNote says what
 // start will do with its branch, and Existing that the branch is already
-// there, so Base is what it is compared with, not created from.
+// there, so Base is what it is compared with, not created from. A Reference
+// has no branch: start checks out Base.
 type RepoAdded struct {
 	Task, Repo, Path, Branch, BranchNote, Base, Worktree string
-	Existing, BaseAssumed                                bool
+	Existing, BaseAssumed, Reference                     bool
 }
 
 // WorktreeReused reports that a repository's branch is already checked out at
@@ -88,6 +92,10 @@ func (s *Service) AddRepo(ctx context.Context, t *task.Task, c *task.Config, pat
 		if fspath.Same(t.Repos[other].Path, canonical) {
 			return fmt.Errorf("%s is already attached to task %q as %q", canonical, t.Name, other)
 		}
+	}
+
+	if opts.Reference {
+		return s.addReference(ctx, t, canonical, name, opts)
 	}
 
 	branch := opts.Branch
@@ -190,6 +198,38 @@ func (s *Service) AddRepo(ctx context.Context, t *task.Task, c *task.Config, pat
 		Task: t.Name, Repo: name, Path: canonical, Branch: branch, BranchNote: branchNote,
 		Base: base, Existing: local || remote != "", BaseAssumed: assumed, Worktree: worktree,
 	})
+	return nil
+}
+
+// addReference records a reference repository, read only at its base.
+func (s *Service) addReference(ctx context.Context, t *task.Task, canonical, name string, opts AddRepoOptions) error {
+	switch {
+	case opts.Branch != "":
+		return fmt.Errorf("a reference has no branch of its own; give the ref to check out as its base, REPO:BASE, or drop --ref to work on %s", opts.Branch)
+	case len(opts.Agent) > 0 || len(opts.Resume) > 0:
+		return fmt.Errorf("a reference has no window, so no agent; the task's root window sees it")
+	case opts.PostCreate != "":
+		return fmt.Errorf("a reference's files are read-only, so it runs no post_create hook")
+	}
+	var base string
+	var err error
+	if opts.Base == "" {
+		base, err = s.Git.ResolveBase(ctx, canonical)
+	} else {
+		base, err = s.ResolveBase(ctx, canonical, opts.Base, nil)
+	}
+	if err != nil {
+		return err
+	}
+	// Status counts how far behind its base the reference is, and repo
+	// update moves it there, so the base must name the same commit
+	// everywhere.
+	if base, err = s.stableRef(ctx, canonical, base); err != nil {
+		return err
+	}
+	worktree := s.Store.WorktreePath(t.Name, name)
+	t.SetRepo(name, task.Repo{Path: canonical, Base: base, Worktree: worktree, Reference: true})
+	s.report(RepoAdded{Task: t.Name, Repo: name, Path: canonical, Base: base, Worktree: worktree, Reference: true})
 	return nil
 }
 

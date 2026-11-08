@@ -119,9 +119,12 @@ func (s *Service) Restart(ctx context.Context, name string, opts RestartOptions)
 		if opts.Window == "" {
 			return "", false, fmt.Errorf("name a repository of %s to restart, or its root window", t.Name)
 		}
-		_, repo, err := WorktreeDir(t, opts.Window)
+		r, repo, err := WorktreeDir(t, opts.Window)
 		if err != nil {
 			return "", false, err
+		}
+		if r.Reference {
+			return "", false, task.NoWindowError(repo)
 		}
 		w = RepoWindow(s.Store, t, repo)
 		label += "/" + repo

@@ -26,7 +26,7 @@ func (a *App) newTaskCmd() *cobra.Command {
 }
 
 func (a *App) newTaskCreateCmd() *cobra.Command {
-	var repos []string
+	var repos, refs []string
 	var project string
 	var details taskDetails
 	var agent agentOptions
@@ -41,6 +41,9 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 			"registered with `tspace config repo` or a path, optionally with a branch and\n" +
 			"a base, as for `tspace repo add`:\n\n" +
 			"  tspace task create PAY-142 backend frontend@feature/x infra:develop\n\n" +
+			"--ref adds a repository the task only reads, as `tspace repo add --ref`\n" +
+			"does, with an optional base:\n\n" +
+			"  tspace task create PAY-142 backend --ref schema --ref shared:origin/v2\n\n" +
 			"NAME starts with a letter or digit and holds only letters, digits, '.',\n" +
 			"'_' and '-'. It names the task's directory, session and default branch.\n\n" +
 			"The task's agent is the one from `tspace config agent`, or a shell. --agent\n" +
@@ -72,7 +75,7 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 			}
 			return a.createTask(cmd.Context(), a.workspaceFor(cmd), workspace.CreateTaskOptions{
 				Name:  args[0],
-				Repos: append(repos, args[1:]...),
+				Repos: append(repos, args[1:]...), Refs: refs,
 
 				Project: project, SetProject: cmd.Flags().Changed("project"),
 				Title: details.title, TicketURL: details.ticketURL,
@@ -86,6 +89,8 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 	}
 	cmd.Flags().StringArrayVar(&repos, "repo", nil,
 		"attach a repository, the same as a REPO argument (repeatable)")
+	cmd.Flags().StringArrayVar(&refs, "ref", nil,
+		"attach a repository to read only, REPO[:BASE], as tspace repo add --ref does (repeatable)")
 	cmd.Flags().StringVar(&project, "project", "", "snapshot a saved project recipe into this task")
 	resume.flags(cmd, true)
 	cmd.Flags().BoolVar(&start, "start", false, "start the task once it is created, as tspace start NAME does")
@@ -147,6 +152,8 @@ type taskRepoJSON struct {
 	Agent       []string `json:"agent"`
 	Resume      []string `json:"resume"`
 	PostCreate  string   `json:"post_create,omitempty"`
+	// Reference marks a repository the task only reads, at Base.
+	Reference bool `json:"reference,omitempty"`
 }
 
 // describeTask renders a task's record and notes. An empty agent is the shell.
@@ -179,8 +186,8 @@ func (a *App) describeTask(t *task.Task) taskJSON {
 		r := t.Repos[name]
 		out.Repos = append(out.Repos, taskRepoJSON{
 			Name: name, Path: r.Path, Branch: r.Branch, Base: r.Base, Worktree: r.Worktree,
-			BaseAssumed: r.BaseAssumed,
-			Agent:       append([]string{}, t.RepoAgent(name)...), Resume: append([]string{}, t.ResumeFor(name)...), PostCreate: r.PostCreate,
+			BaseAssumed: r.BaseAssumed, Reference: r.Reference,
+			Agent: append([]string{}, t.RepoAgent(name)...), Resume: append([]string{}, t.ResumeFor(name)...), PostCreate: r.PostCreate,
 		})
 	}
 	for _, w := range t.Windows {
@@ -296,6 +303,11 @@ func (a *App) newTaskShowCmd() *cobra.Command {
 				r := t.Repos[name]
 				a.printf("\n%s\n", name)
 				a.printf("  repo:      %s\n", r.Path)
+				if r.Reference {
+					a.printf("  reference: at %s, read-only, with no window\n", r.Base)
+					a.printf("  worktree:  %s\n", r.Worktree)
+					continue
+				}
 				a.printf("  branch:    %s\n", r.Branch)
 				if r.Base != "" {
 					a.printf("  base:      %s\n", r.Base)

@@ -3,6 +3,18 @@
 What changed in each release of tspace; see [Installation](docs/INSTALL.md) to
 upgrade.
 
+## Unreleased
+
+### Added
+
+- Reference repositories: `tspace repo add TASK REPO --ref`, `task create
+  --ref` and a pick in dash's create form add a repository the task only
+  reads (#95). It is checked out at its base, detached, with its files
+  read-only, and has no branch or window: the root window sees it. `status`
+  shows how far behind its base it is, `repo update --base` fetches and moves
+  it, and `repo update --branch` makes it a working repository. A task with a
+  reference is written as record version 4, which tspace 0.4 refuses.
+
 ## v0.4.0 — 2026-11-07
 
 ### Fixed

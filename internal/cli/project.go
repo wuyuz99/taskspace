@@ -23,8 +23,9 @@ func (a *App) newProjectCmd() *cobra.Command {
 	var replace bool
 	save := &cobra.Command{Use: "save NAME --from TASK", Short: "Save a task's reusable repository configuration",
 		Long: "save records the task's root agent and, for each of its repositories, the\n" +
-			"path, base, agent and setup hook, as the recipe NAME. Branches are not\n" +
-			"saved: a task created from the recipe gets its own.",
+			"path, base, agent and setup hook, and whether it is a reference, as the\n" +
+			"recipe NAME. Branches are not saved: a task created from the recipe gets\n" +
+			"its own.",
 		Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 			if from == "" {
 				return fmt.Errorf("specify a source task with --from TASK")
@@ -87,6 +88,10 @@ func (a *App) newProjectCmd() *cobra.Command {
 				base := r.Base
 				if base == "" {
 					base = "auto (resolved when creating a task)"
+				}
+				if r.Reference {
+					a.printf("\n%s\n  repo: %s\n  base: %s\n  reference: read-only, with no window\n", name, r.Path, base)
+					continue
 				}
 				a.printf("\n%s\n  repo: %s\n  base: %s\n  agent: %s\n", name, r.Path, base, agentDisplay(task.Repo{Agent: r.Agent}))
 				if len(r.Resume) > 0 {

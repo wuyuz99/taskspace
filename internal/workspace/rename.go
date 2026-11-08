@@ -137,7 +137,8 @@ func (s *Service) planRenameRepo(ctx context.Context, p *renamePlan, repo string
 	if rr.present, err = s.movableWorktree(ctx, r.Path, rr.from); err != nil {
 		return renameRepo{}, err
 	}
-	if !opts.Branches {
+	// A reference has no branch to rename.
+	if !opts.Branches || r.Reference {
 		return rr, nil
 	}
 	if r.Branch != p.cfg.Branch(p.old) {

@@ -29,12 +29,15 @@ type ProjectRepo struct {
 	Agent      []string `json:"agent,omitempty"`
 	Resume     []string `json:"resume,omitempty"`
 	PostCreate string   `json:"post_create,omitempty"`
+	// Reference makes it a reference in tasks made from the recipe; see
+	// Repo.Reference.
+	Reference bool `json:"reference,omitempty"`
 }
 
 func ProjectFromTask(name string, t *Task) *Project {
 	p := &Project{Name: name, Repos: map[string]ProjectRepo{}, Agent: append([]string(nil), t.Agent...), Resume: append([]string(nil), t.Resume...)}
 	for repoName, r := range t.Repos {
-		p.Repos[repoName] = ProjectRepo{Path: r.Path, Base: r.Base, Agent: append([]string(nil), r.Agent...), Resume: append([]string(nil), r.Resume...), PostCreate: r.PostCreate}
+		p.Repos[repoName] = ProjectRepo{Path: r.Path, Base: r.Base, Agent: append([]string(nil), r.Agent...), Resume: append([]string(nil), r.Resume...), PostCreate: r.PostCreate, Reference: r.Reference}
 	}
 	p.Windows = CopyWindows(t.Windows)
 	return p

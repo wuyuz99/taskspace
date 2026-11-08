@@ -80,7 +80,7 @@ func TestDashCreateCancelAndToggle(t *testing.T) {
 	}
 	m = drive(t, m, key("n"))
 	m = drive(t, m, key("T"))
-	for range 4 {
+	for range 5 {
 		m = drive(t, m, tab)
 	}
 	m = drive(t, m, key(" "))
@@ -210,5 +210,54 @@ func testPickScrolls(t *testing.T, stem string) {
 	f.key(tea.KeyMsg{Type: tea.KeyLeft})
 	if l := line(); !strings.Contains(l, stem+"-8") {
 		t.Fatalf("one back: %q", l)
+	}
+}
+
+// The create form picks references beside the repositories to work in, and
+// one repository cannot be both.
+func TestDashCreateWithReference(t *testing.T) {
+	h := newHarness(t)
+	lib := mkRepo(t)
+	for name, path := range map[string]string{"backend": h.repo, "lib": lib} {
+		if err := h.exec(t, h.app.newConfigCmd(), "repo", name, path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m := newDashModel(t.Context(), h.app, time.Second)
+	m = drive(t, m, dashDataMsg(h.app.dashLoad(t.Context())))
+	m = drive(t, m, key("n"))
+	m = drive(t, m, key("NEW-1"))
+	m = drive(t, m, tab)
+	m = drive(t, m, key(" ")) // backend, to work in
+	m = drive(t, m, tab)
+	m = drive(t, m, tab)
+	m = drive(t, m, key(" ")) // backend, as a reference too
+	if !strings.Contains(m.form.note, "both to work in and as a reference") {
+		t.Fatalf("note %q", m.form.note)
+	}
+	m = drive(t, m, key(" "))
+	m = drive(t, m, tea.KeyMsg{Type: tea.KeyRight})
+	m = drive(t, m, key(" ")) // lib
+	if got := m.form.field("references").text(); got != "lib" || m.form.note != "" {
+		t.Fatalf("references %q, note %q", got, m.form.note)
+	}
+	m = drive(t, m, key("enter"))
+	if m.form != nil || m.noteErr {
+		t.Fatalf("form=%v note=%q", m.form != nil, m.note)
+	}
+	tk := h.load(t, "NEW-1")
+	if !tk.Repos["lib"].Reference || tk.Repos["backend"].Reference {
+		t.Fatalf("repos %+v", tk.Repos)
+	}
+	m = drive(t, m, dashDataMsg(h.app.dashLoad(t.Context())))
+	m = drive(t, m, tea.KeyMsg{Type: tea.KeyRight})
+	for i, r := range m.data.Rows {
+		if r.Window == "lib" {
+			m.cursor = i
+		}
+	}
+	m = drive(t, m, key("enter"))
+	if !strings.Contains(m.note, "is a reference, which has no window") {
+		t.Fatalf("enter on a reference: %q", m.note)
 	}
 }

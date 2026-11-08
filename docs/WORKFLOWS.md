@@ -179,6 +179,28 @@ A few things differ from working locally:
   SSH agent, a later connection's agent may not reach windows already open.
   Credentials stored on the remote machine avoid that.
 
+## Repositories the task only reads: `--ref`
+
+A feature often needs another repository only to read: a shared library, the
+API's schema, the infra repository. Add it as a reference:
+
+```bash
+tspace task create PAY-142 backend --ref schema
+tspace repo add PAY-142 shared:origin/v2 --ref
+```
+
+`start` checks a reference out in the task's directory like the others, at its
+base and detached, and makes its files read-only, so an edit fails whether an
+agent's edit tool or a shell command tries it. It has no branch, window, agent
+or `post_create`: the root window's agent sees it, and a task with one
+repository and a reference gets a root window, as with two. `status` shows how
+far behind its base it is; `tspace repo update PAY-142 schema --base
+origin/main` fetches and moves it there. `clean` removes it without looking for
+a branch, but refuses if something was changed in it anyway. To work in it after
+all, `tspace repo update PAY-142 schema --branch me/schema` puts it on a new
+branch where it stands and makes its files writable; `tspace start PAY-142
+schema` then opens its window.
+
 ## Adopting a worktree you already have: `import`
 
 A worktree you made yourself with `git worktree add` can become a task's:

@@ -34,8 +34,12 @@ func (s *Service) StopWindow(ctx context.Context, name, window string) error {
 			return fmt.Errorf("task %s has no open window %s", t.Name, window)
 		}
 	default:
-		if _, ok := t.Repo(window); !ok {
+		r, ok := t.Repo(window)
+		if !ok {
 			return fmt.Errorf("task %s has no repository %s", t.Name, window)
+		}
+		if r.Reference {
+			return task.NoWindowError(window)
 		}
 	}
 	return s.closeWindow(ctx, t.Name, window)

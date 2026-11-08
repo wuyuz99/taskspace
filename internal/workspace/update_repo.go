@@ -52,6 +52,9 @@ func (s *Service) UpdateRepo(ctx context.Context, name, repo string, opts Update
 	if !ok {
 		return nil, t.NoRepo(repo)
 	}
+	if r.Reference {
+		return s.updateReference(ctx, t, repo, r, opts)
+	}
 	// The agent repository's window runs the task's agent, unless it has one
 	// of its own, so that is what its agent flags change.
 	taskAgent := repo == t.AgentRepo && len(r.Agent) == 0

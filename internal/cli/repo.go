@@ -150,6 +150,16 @@ func (a *App) newRepoAddCmd() *cobra.Command {
 			"root window with a shell, opened at once if the session is running.\n" +
 			"If tspace cannot tell whether the session is running, the agent stays in\n" +
 			"the root window, and a new root window waits for the next start.\n\n" +
+			"--ref adds a repository the task only reads, such as a shared library or\n" +
+			"a schema: start checks it out at its base, detached, with its files made\n" +
+			"read-only, so an edit fails whether an agent's tool or a shell makes it.\n" +
+			"It has no branch, window, agent or --post-create; the task's root window\n" +
+			"sees it, and a task with one gets a root window as with two repositories.\n" +
+			"status shows how far behind its base it is, and `tspace repo update TASK\n" +
+			"REPO --base BASE` fetches and moves it there; --branch makes it a working\n" +
+			"repository:\n\n" +
+			"  tspace repo add PAY-142 schema --ref\n" +
+			"  tspace repo add PAY-142 shared:origin/v2 --ref\n\n" +
 			"Nothing else is created on disk here — `tspace start` makes the worktrees.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -170,6 +180,7 @@ func (a *App) newRepoAddCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.Name, "name", "", "repo name (default: the registered name or the directory's base name)")
 	cmd.Flags().StringVar(&opts.Branch, "branch", "", "branch to use, the same as REPO@BRANCH (default: agent/TASK)")
 	cmd.Flags().StringVar(&opts.Base, "base", "", "ref to branch from, the same as REPO:BASE (default: origin/HEAD, then the local default branch)")
+	cmd.Flags().BoolVar(&opts.Reference, "ref", false, "add it to read only: at its base, detached and read-only, with no window")
 	cmd.Flags().StringArrayVar(&opts.Agent, "agent", nil, "agent command to run in this worktree, one flag per word")
 	resume.flags(cmd, false)
 	cmd.Flags().StringVar(&opts.PostCreate, "post-create", "",
@@ -228,7 +239,11 @@ func (a *App) newRepoMoveCmd() *cobra.Command {
 				return err
 			}
 			a.printf("%s\n", movedRepoText(args[1], args[0], to, name))
-			a.printf("start its window with: tspace start %s %s\n", to, cmp.Or(name, args[1]))
+			moved := cmp.Or(name, args[1])
+			if t, err := a.Store.Load(to); err == nil && t.Repos[moved].Reference {
+				return nil
+			}
+			a.printf("start its window with: tspace start %s %s\n", to, moved)
 			return nil
 		},
 	}
