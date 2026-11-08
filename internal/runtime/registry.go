@@ -83,6 +83,7 @@ func (u Unavailable) Select(context.Context, string, string) error      { return
 func (u Unavailable) RenameWindow(context.Context, string, string, string) error {
 	return u.Err
 }
+func (u Unavailable) SetLabel(context.Context, string, string) error { return u.Err }
 func (u Unavailable) Focus(context.Context, string, string) (bool, error) {
 	return false, u.Err
 }

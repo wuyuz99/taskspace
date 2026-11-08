@@ -50,8 +50,8 @@ write. Edit a record by hand at your own risk; the notes are yours.
 
 The protocol in [Multiplexers](MULTIPLEXERS.md) is version 1, passed to `check`.
 Within a version, operations and arguments keep their meaning, and new fields
-on `state`'s lines are optional. `rename` and `close` are optional operations:
-an adapter without them fails them, and only that feature is unavailable. A
-later release may add optional operations on the same terms, so an existing
+on `state`'s lines are optional. `rename`, `close` and `label` are optional
+operations: an adapter without them fails them, and only that feature is
+unavailable. A later release may add optional operations on the same terms, so an existing
 adapter keeps working without them. A change an existing adapter could not
 follow gets a new version, which such an adapter refuses in `check`.

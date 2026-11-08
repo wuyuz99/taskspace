@@ -5,6 +5,15 @@ upgrade.
 
 ## Unreleased
 
+### Added
+
+- Each task's session and terminal tab are labelled with its name and title,
+  such as `PAY-142 - Totals endpoint`, so its `api` window can be told from
+  another task's (#203). On tmux the status line shows it while `status-left`
+  is tmux's own; a `status-left` of your own can show `#{@tspace_label}`. On
+  zellij only the terminal tab shows it. Adapters can show it with the new
+  optional `label` operation; one without it works as before.
+
 ### Changed
 
 - When tmux or zellij can't run, the error says how to choose another

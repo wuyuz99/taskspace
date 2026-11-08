@@ -82,7 +82,7 @@ func (a *App) runDash(ctx context.Context, interval time.Duration) error {
 		session := a.Runtime.SessionName(target.Task)
 		err = a.Runtime.Select(ctx, session, target.Window)
 		if err == nil {
-			setTitle(a.Out, "tspace: "+target.Task, a.noTitle)
+			setTitle(a.Out, "tspace: "+task.Label(target.Task, m.data.Tasks[target.Task].Title), a.noTitle)
 			err = a.Runtime.Attach(ctx, session)
 		}
 		m.note, m.noteErr = "detached from "+target.label(), false

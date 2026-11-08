@@ -96,6 +96,11 @@ type Runtime interface {
 	Select(ctx context.Context, session, window string) error
 	// RenameWindow gives a window of a running session another name.
 	RenameWindow(ctx context.Context, session, from, to string) error
+	// SetLabel shows label, the task's name and title, wherever the
+	// multiplexer can show a session's description, or does nothing where it
+	// cannot. The session keeps its name, which stays the way tspace finds it.
+	// A label is a courtesy: callers ignore its error.
+	SetLabel(ctx context.Context, session, label string) error
 	// State reports what is observably running.
 	State(ctx context.Context, session string) (SessionState, error)
 }

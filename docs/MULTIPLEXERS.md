@@ -31,6 +31,16 @@ switching; `tspace config multiplexer` names any that are still up.
 | `tspace restart` | respawns the pane | reruns the held pane in place |
 | `tspace attach` from inside | switches the client | switches the session |
 | detach | prefix, then `d` | `Ctrl-o`, then `d` |
+| task's name and title | status line, while `status-left` is tmux's own | terminal tab only |
+
+A task's windows are named after its repositories, so every task has an `api`
+window. tspace labels each session with its task's name and title, such as
+`PAY-142 - Totals endpoint`, when it starts and when `tspace task update
+--title` changes the title. On tmux the label is the session's `@tspace_label`
+option, and the status line shows it while `status-left` is still tmux's
+default. If you have a `status-left` of your own, tspace leaves it alone; put
+`#{@tspace_label}` in it where you want the label. zellij has nowhere to show
+it, so there the terminal tab's title carries it.
 
 zellij cannot add a tab to a session that no client is attached to. The tab
 gets no size and is dropped when a client attaches, while its process keeps
@@ -86,6 +96,7 @@ success. Any other status is a failure, and tspace shows the adapter's stderr.
 | `select SESSION NAME` | Make NAME the window the next `attach` lands on. |
 | `rename SESSION OLD NEW` | Optional. Rename window OLD to NEW. Without it, `tspace window --rename` fails with your error and everything else works. |
 | `close SESSION NAME` | Optional. Close window NAME, interrupting its processes first as `stop` does. Closing the last window may end the session. Without it, `tspace stop TASK REPO` and dash's `X` fail with your error and everything else works. |
+| `label SESSION TEXT` | Optional. Show TEXT, the task's name and title such as `PAY-142 - Totals endpoint`, wherever your multiplexer can describe a session. Keep the session's name: it is how tspace finds it. TEXT is a title someone typed, so show it as text, never as markup or a command. Without it, tspace ignores the failure and the terminal tab still shows the label. |
 
 `WIN` is four arguments and the command: `NAME DIR keep|close -- COMMAND...`.
 

@@ -389,6 +389,36 @@ func TestParsePanesReadsBellAndOutput(t *testing.T) {
 	}
 }
 
+// A label is kept with '#' doubled, so tmux shows it as written, and takes
+// over status-left only while that is still tmux's own.
+func TestTmuxSetLabel(t *testing.T) {
+	for _, c := range []struct {
+		name, statusLeft string
+		takesOver        bool
+	}{
+		{"tmux 3.2 and later", "[#{session_name}] \n", true},
+		{"before 3.2", "[#S] \n", true},
+		{"the user's own", "#[fg=green]#H \n", false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := tsexec.NewFake().RespondOut("show-options -gv status-left", c.statusLeft)
+			if err := NewTmux(f).SetLabel(ctx(), "tspace@pay", "pay - C# #(id)"); err != nil {
+				t.Fatal(err)
+			}
+			cmds := strings.Join(f.Commands(), "\n")
+			if !strings.Contains(cmds, "set-option -t =tspace@pay: @tspace_label pay - C## ##(id)") {
+				t.Errorf("label not kept escaped:\n%s", cmds)
+			}
+			if got := strings.Contains(cmds, "status-left [#{@tspace_label}] "); got != c.takesOver {
+				t.Errorf("status-left set = %v, want %v:\n%s", got, c.takesOver, cmds)
+			}
+			if got := strings.Contains(cmds, "status-left-length 17"); got != c.takesOver {
+				t.Errorf("status-left-length set = %v, want %v:\n%s", got, c.takesOver, cmds)
+			}
+		})
+	}
+}
+
 // A multiplexer that cannot run says how to get one that can: on a fresh
 // machine, such as one reached over SSH, the default may not be installed.
 func TestAvailableSaysHowToChooseAnother(t *testing.T) {
