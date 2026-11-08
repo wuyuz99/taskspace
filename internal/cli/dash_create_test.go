@@ -1,13 +1,11 @@
 package cli
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 var tab = tea.KeyMsg{Type: tea.KeyTab}
@@ -22,7 +20,7 @@ func TestDashCreateTask(t *testing.T) {
 	m = drive(t, m, dashDataMsg(h.app.dashLoad(t.Context())))
 
 	m = drive(t, m, key("n"))
-	if m.form == nil || !strings.Contains(m.View(), "[ ] backend") {
+	if m.form == nil || !strings.Contains(m.View(), "repositories  none picked") || strings.Join(m.form.field("repositories").choices, " ") != "backend" {
 		t.Fatalf("form:\n%s", m.View())
 	}
 	// Keys go to the form, not to dash: q types a q.
@@ -51,8 +49,14 @@ func TestDashCreateTask(t *testing.T) {
 	if !strings.Contains(m.form.check(m.form), "needs a repository") {
 		t.Fatal("start without a repository allowed")
 	}
-	// Letters do not type into a pick; space picks the choice at the cursor.
+	// Letters filter a pick: q leaves nothing to pick, and space picks the
+	// choice at the cursor once backspace brings it back.
 	m = drive(t, m, key("q"))
+	m = drive(t, m, key(" "))
+	if got := m.form.field("repositories").text(); got != "" || !strings.Contains(m.View(), "nothing matches") {
+		t.Fatalf("picked %q from an empty filter:\n%s", got, m.View())
+	}
+	m = drive(t, m, tea.KeyMsg{Type: tea.KeyBackspace})
 	m = drive(t, m, key(" "))
 	if got := m.form.field("repositories").text(); got != "backend" {
 		t.Fatalf("picked %q", got)
@@ -167,49 +171,6 @@ func TestDashCreatePicks(t *testing.T) {
 	f.key(key(" "))
 	if got := f.field("project").text(); got != "" {
 		t.Fatalf("dropped project %q", got)
-	}
-}
-
-// A pick longer than the screen scrolls to keep the choice at the cursor in
-// view, marking the side where more are hidden.
-func TestDashPickScrolls(t *testing.T) {
-	for _, stem := range []string{"repo", "仓库"} {
-		t.Run(stem, func(t *testing.T) { testPickScrolls(t, stem) })
-	}
-}
-
-// testPickScrolls scrolls a pick of names made from stem, which may be
-// wide characters, two columns each.
-func testPickScrolls(t *testing.T, stem string) {
-	var names []string
-	for i := range 10 {
-		names = append(names, fmt.Sprintf("%s-%d", stem, i))
-	}
-	f := &dashForm{fields: []dashField{dashField{label: "repositories"}.pick(names, false)}}
-	line := func() string {
-		for _, l := range strings.Split(f.view(40), "\n") {
-			if strings.Contains(l, "repositories") {
-				if w := lipgloss.Width(l); w > 40 {
-					t.Fatalf("%d columns: %q", w, l)
-				}
-				return l
-			}
-		}
-		t.Fatal("no pick line")
-		return ""
-	}
-	if l := line(); !strings.Contains(l, stem+"-0") || strings.Contains(l, "‹") || !strings.HasSuffix(l, "›") {
-		t.Fatalf("at the start: %q", l)
-	}
-	for range 9 {
-		f.key(tea.KeyMsg{Type: tea.KeyRight})
-	}
-	if l := line(); !strings.Contains(l, stem+"-9") || strings.Contains(l, stem+"-0") || !strings.Contains(l, "‹") || strings.HasSuffix(l, "›") {
-		t.Fatalf("at the end: %q", l)
-	}
-	f.key(tea.KeyMsg{Type: tea.KeyLeft})
-	if l := line(); !strings.Contains(l, stem+"-8") {
-		t.Fatalf("one back: %q", l)
 	}
 }
 

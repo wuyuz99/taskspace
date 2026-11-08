@@ -27,6 +27,10 @@ upgrade.
   multiplexer, and dash's `t` without a terminal set says `enter` attaches in
   the one you're in. On a fresh remote machine reached over SSH, those were the
   first errors seen.
+- dash's `n` and `m` forms take the whole screen, and a pick in them lists its
+  choices one per line instead of along one line that scrolls sideways (#97).
+  `↑`/`↓` move along the list, typing filters it, and space picks; letters no
+  longer pick, and `↑`/`↓` move between fields only outside a list.
 
 ### Removed
 

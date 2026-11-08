@@ -285,22 +285,26 @@ shows on the note line and nothing changes; `repo rm`'s notes, such as a
 saved window it forgot, follow the result. It works only on a repository
 row: on a collapsed task, expand it first.
 
-`m` moves the selected repository to another task, through a form below the
-table: `tspace repo move TASK REPO --to NEW`. Pick the task, and optionally
+`m` moves the selected repository to another task, through a form that
+takes the screen, as `n`'s does: `tspace repo move TASK REPO --to NEW`. Pick the task, and optionally
 give the repository another name there. Like `-`, it works only on a
 repository row. Its refusals, such as a window still open, show on the note
 line and nothing changes; once it is done the cursor goes to the new task.
 
-`n` creates a task, through a form below the table: its name, checked as
-you type it (a bad or taken name is refused before anything is written),
-its repositories, picked from the registered ones, with more typed as
-`REPO[@BRANCH][:BASE]` words for a branch, a base or an unregistered path
-(a picked name typed there too is named once, as typed), an optional
-project, picked from the saved ones, and whether to start it, ticked by
-default. `tab` moves between fields, `←`/`→` move along a list (one wider
-than the screen scrolls, `‹` and `›` marking hidden choices), space picks
-or ticks, `enter` runs `tspace task create NAME REPO... [--project P]
-[--start]` and `esc` cancels without writing. The cursor then goes to the
+`n` creates a task, through a form that takes the screen until it closes:
+its name, checked as you type it (a bad or taken name is refused before
+anything is written), its repositories, picked from the registered ones,
+with more typed as `REPO[@BRANCH][:BASE]` words for a branch, a base or an
+unregistered path (a picked name typed there too is named once, as typed),
+references, picked the same way, an optional project, picked from the saved
+ones, and whether to start it, ticked by default. `tab` and `shift+tab`
+move between fields. The focused pick lists its choices one per line, with
+what is picked beside its name: `↑`/`↓` move along the list, which scrolls
+when it is longer than the screen, typing filters it (`pay` keeps
+`payments-service`, and backspace or `ctrl+u` clears it), and space picks or
+ticks. `enter` runs `tspace task create NAME REPO... [--ref REPO]...
+[--project P] [--start]` and `esc` cancels without writing; the table comes
+back either way. The cursor then goes to the
 new task. Agents, briefs and tickets are set afterwards with `tspace task
 update` and `tspace task brief`.
 

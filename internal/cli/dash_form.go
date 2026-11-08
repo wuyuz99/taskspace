@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // dashField is one line of a dashForm: text, a choice toggled with space,
@@ -19,12 +18,15 @@ type dashField struct {
 	// toggle makes the field a yes/no choice; on is its value.
 	toggle bool
 	on     bool
-	// choices make the field a pick: ← and → move to one, space picks it or
-	// drops it. picked is by index; single allows only one.
+	// choices make the field a pick, listed one per line: ↑ and ↓ move to
+	// one, space picks it or drops it, and what is typed filters the list.
+	// picked is by index; single allows only one. at is the index of the
+	// choice at the cursor, one the filter shows whenever any is shown.
 	choices []string
 	picked  []bool
 	at      int
 	single  bool
+	filter  []rune
 }
 
 // text is what was typed, or the picked choices in order, blank-separated.
@@ -48,7 +50,8 @@ func (f dashField) pick(choices []string, single bool) dashField {
 }
 
 // dashForm is a few fields typed in below the table, for the actions that
-// need more than a y. Keys go to it while it is open; enter submits it, esc
+// need more than a y. A form with a pick takes the whole screen instead, so
+// that its list has a line for each choice. Keys go to it while it is open; enter submits it, esc
 // cancels it. It is a line editor, not a widget library: dash needs no more.
 type dashForm struct {
 	title  string
@@ -92,10 +95,23 @@ func (f *dashForm) key(msg tea.KeyMsg) (tea.Cmd, bool) {
 			return nil, false
 		}
 		return f.submit(f), true
-	case tea.KeyTab, tea.KeyDown:
+	case tea.KeyTab:
 		f.focus = (f.focus + 1) % len(f.fields)
 		return nil, false
-	case tea.KeyShiftTab, tea.KeyUp:
+	case tea.KeyShiftTab:
+		f.focus = (f.focus + len(f.fields) - 1) % len(f.fields)
+		return nil, false
+	}
+	if len(cur.choices) > 0 {
+		cur.pickKey(msg)
+		f.recheck()
+		return nil, false
+	}
+	switch msg.Type {
+	case tea.KeyDown:
+		f.focus = (f.focus + 1) % len(f.fields)
+		return nil, false
+	case tea.KeyUp:
 		f.focus = (f.focus + len(f.fields) - 1) % len(f.fields)
 		return nil, false
 	}
@@ -107,20 +123,7 @@ func (f *dashForm) key(msg tea.KeyMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	if cur.choices != nil {
-		switch {
-		case len(cur.choices) == 0:
-		case msg.Type == tea.KeyLeft:
-			cur.at = max(cur.at-1, 0)
-		case msg.Type == tea.KeyRight:
-			cur.at = min(cur.at+1, len(cur.choices)-1)
-		case msg.Type == tea.KeySpace || msg.String() == " " || msg.String() == "x":
-			on := !cur.picked[cur.at]
-			if cur.single {
-				clear(cur.picked)
-			}
-			cur.picked[cur.at] = on
-			f.recheck()
-		}
+		// A pick with nothing to pick from.
 		return nil, false
 	}
 	switch msg.Type {
@@ -164,15 +167,27 @@ func (f *dashForm) key(msg tea.KeyMsg) (tea.Cmd, bool) {
 	return nil, false
 }
 
-// view draws the form, one line per field and one for what is wrong, in
-// cols columns.
-func (f *dashForm) view(cols int) string {
+// view draws the form: a line for each field, the focused pick's choices
+// under it, a line each, as many as rows leaves room for, and a line for
+// what is wrong.
+func (f *dashForm) view(rows int) string {
 	var b strings.Builder
 	b.WriteString(dashBold.Render(f.title) + "\n")
+	full := f.full()
+	if full {
+		b.WriteString("\n")
+	}
 	width := 0
 	for _, fl := range f.fields {
 		width = max(width, len(fl.label))
 	}
+	// The focused list gets the lines the rest leave: the title and the
+	// blank after it, a line for each field, the note and the help.
+	room := rows - 3 - len(f.fields)
+	if f.note != "" {
+		room--
+	}
+	room = max(room, 1)
 	for i, fl := range f.fields {
 		mark := "  "
 		if i == f.focus {
@@ -182,11 +197,10 @@ func (f *dashForm) view(cols int) string {
 		switch {
 		case fl.toggle:
 			line += box(fl.on) + " " + dashFaint.Render(fl.hint)
+		case fl.choices != nil && len(fl.choices) == 0:
+			line += dashFaint.Render(fl.hint)
 		case fl.choices != nil:
-			if len(fl.choices) == 0 {
-				line += dashFaint.Render(fl.hint)
-			}
-			line += fl.pickLine(i == f.focus, cols-lipgloss.Width(line))
+			line += fl.pickSummary(i == f.focus, room)
 		case i == f.focus:
 			line += string(fl.value[:fl.cursor]) + dashBold.Render("▏") + string(fl.value[fl.cursor:])
 			if len(fl.value) == 0 {
@@ -199,62 +213,23 @@ func (f *dashForm) view(cols int) string {
 			}
 		}
 		b.WriteString(line + "\n")
+		if i == f.focus && len(fl.choices) > 0 {
+			for _, l := range fl.pickList(strings.Repeat(" ", 4+width), room) {
+				b.WriteString(l + "\n")
+			}
+		}
 	}
 	if f.note != "" {
 		b.WriteString(dashRed.Render("  "+f.note) + "\n")
 	}
-	b.WriteString(dashFaint.Render("tab next field · ←/→ choose · space picks · enter submit · esc cancel"))
-	return b.String()
-}
-
-// pickLine is f's choices in room columns: those around the one at, with ‹
-// or › where more are hidden to that side, scrolled only as far as at needs.
-func (f dashField) pickLine(focused bool, room int) string {
-	if len(f.choices) == 0 {
-		return ""
+	help := "tab next field · enter submit · esc cancel"
+	switch {
+	case full:
+		help = "tab field · ↑/↓ choose · space picks · type filters · enter submit · esc cancel"
+	case f.hasToggle():
+		help = "tab next field · space ticks · enter submit · esc cancel"
 	}
-	items := make([]string, len(f.choices))
-	for j, c := range f.choices {
-		items[j] = box(f.picked[j]) + " " + c
-	}
-	// fits says items first..last, with their markers, take room or less.
-	fits := func(first, last int) bool {
-		w := 2 * (last - first)
-		for _, it := range items[first : last+1] {
-			w += lipgloss.Width(it)
-		}
-		if first > 0 {
-			w += 2
-		}
-		if last < len(items)-1 {
-			w += 2
-		}
-		return w <= room
-	}
-	first, last := 0, f.at
-	for first < f.at && !fits(first, f.at) {
-		first++
-	}
-	for last+1 < len(items) && fits(first, last+1) {
-		last++
-	}
-	var b strings.Builder
-	if first > 0 {
-		b.WriteString(dashFaint.Render("‹ "))
-	}
-	for j := first; j <= last; j++ {
-		if j > first {
-			b.WriteString("  ")
-		}
-		if focused && j == f.at {
-			b.WriteString(dashPicked.Render(items[j]))
-		} else {
-			b.WriteString(items[j])
-		}
-	}
-	if last < len(items)-1 {
-		b.WriteString(dashFaint.Render(" ›"))
-	}
+	b.WriteString(dashFaint.Render(help))
 	return b.String()
 }
 
