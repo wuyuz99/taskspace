@@ -144,6 +144,7 @@ func (r dashRow) label() string {
 // dashTask is what the detail pane shows about a row's task.
 type dashTask struct {
 	Title   string
+	Kind    string
 	Ticket  string
 	Handoff task.Note
 	Rollup  status.Rollup
@@ -182,7 +183,7 @@ func (a *App) dashLoad(ctx context.Context) dashData {
 	byName := make(map[string]*task.Task, len(tasks))
 	for _, t := range tasks {
 		byName[t.Name] = t
-		info := dashTask{Title: t.Title, Ticket: t.Ticket}
+		info := dashTask{Title: t.Title, Kind: t.Kind, Ticket: t.Ticket}
 		// Read, never upgraded: a refresh every two seconds must not rewrite
 		// notes or records. Only the session snapshot follows what it sees.
 		if _, n, err := a.Store.Notes(t); err == nil {
@@ -203,7 +204,22 @@ func (a *App) dashLoad(ctx context.Context) dashData {
 	agg := a.aggregator()
 	agg.Observer = observer
 	before := len(d.Warn)
-	for _, ts := range agg.All(ctx, tasks) {
+	results := agg.All(ctx, tasks)
+	// Tasks of a kind are together, kinds in order and those without one
+	// last; by name within each.
+	slices.SortStableFunc(results, func(x, y status.TaskStatus) int {
+		kx, ky := strings.ToLower(byName[x.Task].Kind), strings.ToLower(byName[y.Task].Kind)
+		switch {
+		case kx == ky:
+			return 0
+		case kx == "":
+			return 1
+		case ky == "":
+			return -1
+		}
+		return strings.Compare(kx, ky)
+	})
+	for _, ts := range results {
 		info := d.Tasks[ts.Task]
 		info.Rollup = ts.Rollup()
 		d.Tasks[ts.Task] = info
@@ -1075,7 +1091,11 @@ func (m dashModel) table(b *strings.Builder, now time.Time, shrink int) {
 		if row[0] == "" {
 			continue
 		}
-		title := oneLine(m.data.Tasks[row[0]].Title)
+		info := m.data.Tasks[row[0]]
+		title := oneLine(info.Title)
+		if k := oneLine(info.Kind); k != "" {
+			title = strings.TrimSpace("[" + k + "] " + title)
+		}
 		if title != "" && spare > 3 {
 			row[0] += "  " + ansi.Truncate(title, spare-2, "…")
 		}
@@ -1165,7 +1185,11 @@ func (m dashModel) detail(b *strings.Builder, now time.Time) {
 		title += "  " + row.Branch
 	}
 	b.WriteString("\n" + dashBold.Render(title) + "\n")
-	if s := strings.TrimSpace(oneLine(info.Ticket) + "  " + oneLine(info.Title)); s != "" {
+	s := strings.TrimSpace(oneLine(info.Ticket) + "  " + oneLine(info.Title))
+	if info.Kind != "" {
+		s = strings.TrimSpace("[" + oneLine(info.Kind) + "]  " + s)
+	}
+	if s != "" {
 		b.WriteString("  " + s + "\n")
 	}
 	if row.Dir != "" {

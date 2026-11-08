@@ -1,6 +1,7 @@
 {
   "version": 4,
   "name": "PAY-142",
+  "kind": "review",
   "repos": {
     "api": {
       "path": "/src/api",

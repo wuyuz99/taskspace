@@ -23,12 +23,15 @@ import (
 // where a person and an agent in a worktree can both reach it. See notes.go.
 type Task struct {
 	// Version is the record's format; see CurrentVersion and formatVersion.
-	Version   int             `json:"version,omitempty"`
-	Name      string          `json:"name"`
-	Repos     map[string]Repo `json:"repos,omitempty"`
-	Title     string          `json:"title,omitempty"`
-	Ticket    string          `json:"ticket,omitempty"`
-	TicketURL string          `json:"ticket_url,omitempty"`
+	Version int             `json:"version,omitempty"`
+	Name    string          `json:"name"`
+	Repos   map[string]Repo `json:"repos,omitempty"`
+	Title   string          `json:"title,omitempty"`
+	// Kind is what sort of work the task is, in the person's own words, such
+	// as review or investigation. tspace only shows it and groups by it.
+	Kind      string `json:"kind,omitempty"`
+	Ticket    string `json:"ticket,omitempty"`
+	TicketURL string `json:"ticket_url,omitempty"`
 	// Agent is the command for the task's root window, as argv. That window
 	// opens in the directory holding every worktree, where one agent can reach
 	// every repository. Empty means the user's shell.

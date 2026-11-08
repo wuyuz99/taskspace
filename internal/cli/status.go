@@ -22,6 +22,7 @@ import (
 // statusJSON is one task in `tspace status --json`.
 type statusJSON struct {
 	Task         string           `json:"task"`
+	Kind         string           `json:"kind,omitempty"`
 	Session      string           `json:"session"`
 	Running      bool             `json:"running"`
 	Interrupted  bool             `json:"interrupted"`
@@ -140,6 +141,9 @@ func (a *App) printStatusJSON(tasks []*task.Task, results []status.TaskStatus) e
 			Interrupted: ts.Interrupted,
 			Repos:       make([]statusRepoJSON, 0, len(ts.Repos)),
 			Windows:     make([]statusWindowJSON, 0, len(ts.Extra)),
+		}
+		if t := byName[ts.Task]; t != nil {
+			row.Kind = t.Kind
 		}
 		for _, e := range ts.Extra {
 			row.Windows = append(row.Windows, statusWindowJSON{Name: e.Name, Saved: e.Saved, Repo: e.Repo, Command: e.Command, Runtime: jsonRuntime(e.Runtime)})

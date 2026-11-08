@@ -16,10 +16,11 @@ func (a *App) notes(t *task.Task) (brief, handoff task.Note, err error) {
 	return a.Store.Notes(t)
 }
 
-type taskDetails struct{ title, ticket, ticketURL, brief, briefFile string }
+type taskDetails struct{ title, kind, ticket, ticketURL, brief, briefFile string }
 
 func (d *taskDetails) flags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&d.title, "title", "", "human-readable task title")
+	cmd.Flags().StringVar(&d.kind, "kind", "", "what sort of work the task is, in your own words (e.g. review); dash groups tasks by it")
 	cmd.Flags().StringVar(&d.ticket, "ticket", "", "ticket key, independent of workspace name (e.g. PAY-142)")
 	cmd.Flags().StringVar(&d.ticketURL, "ticket-url", "", "ticket HTTP(S) URL; no ticket service is contacted")
 	cmd.Flags().StringVar(&d.brief, "brief", "", "the task brief, as Markdown text")
@@ -33,9 +34,10 @@ func (d *taskDetails) readBrief(cmd *cobra.Command) (string, error) {
 			return "", fmt.Errorf("ticket URL must be an absolute HTTP(S) URL")
 		}
 	}
-	if strings.ContainsAny(d.title+d.ticket, "\r\n\t\x1b") {
-		return "", fmt.Errorf("title and ticket must be single-line text")
+	if strings.ContainsAny(d.title+d.kind+d.ticket, "\r\n\t\x1b") {
+		return "", fmt.Errorf("title, kind and ticket must be single-line text")
 	}
+	d.kind = strings.TrimSpace(d.kind)
 	if cmd.Flags().Changed("brief") {
 		if cmd.Flags().Changed("brief-file") {
 			return "", fmt.Errorf("choose only one of --brief or --brief-file")
@@ -58,8 +60,9 @@ func (a *App) newTaskUpdateCmd() *cobra.Command {
 	var resume resumeOptions
 	var atRoot bool
 	var agentIn string
-	cmd := &cobra.Command{Use: "update NAME", Short: "Update a task's title, ticket, brief or agent", Args: cobra.ExactArgs(1),
-		Long: "update changes the task's title, ticket, brief, agent or resume command.\n\n" +
+	cmd := &cobra.Command{Use: "update NAME", Short: "Update a task's title, kind, ticket, brief or agent", Args: cobra.ExactArgs(1),
+		Long: "update changes the task's title, kind, ticket, brief, agent or resume\n" +
+			"command. An empty value, such as --kind \"\", clears it.\n\n" +
 			"--agent-at-root moves the task's agent to the task-root window, which\n" +
 			"sees every repository; --agent-in REPO moves it to that repository's\n" +
 			"window, in its worktree. The agent and resume command stay as they are;\n" +
@@ -89,6 +92,7 @@ func (a *App) newTaskUpdateCmd() *cobra.Command {
 			flags := cmd.Flags()
 			res, err := a.workspaceFor(cmd).UpdateTask(cmd.Context(), name, workspace.UpdateTaskOptions{
 				SetTitle: flags.Changed("title"), Title: d.title,
+				SetKind: flags.Changed("kind"), Kind: d.kind,
 				SetTicket: flags.Changed("ticket"), Ticket: d.ticket,
 				SetTicketURL: flags.Changed("ticket-url"), TicketURL: d.ticketURL,
 				SetBrief: flags.Changed("brief") || flags.Changed("brief-file"), Brief: brief,
@@ -347,6 +351,9 @@ func handoffTime(n task.Note) string {
 }
 
 func (a *App) printTaskContext(t *task.Task) {
+	if t.Kind != "" {
+		a.printf("kind: %s\n", oneLine(t.Kind))
+	}
 	if t.Title != "" {
 		a.printf("title: %s\n", oneLine(t.Title))
 	}

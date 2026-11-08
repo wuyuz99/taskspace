@@ -3,6 +3,8 @@ package cli
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -78,7 +80,7 @@ func (a *App) newTaskCreateCmd() *cobra.Command {
 				Repos: append(repos, args[1:]...), Refs: refs,
 
 				Project: project, SetProject: cmd.Flags().Changed("project"),
-				Title: details.title, TicketURL: details.ticketURL,
+				Title: details.title, Kind: details.kind, TicketURL: details.ticketURL,
 				Ticket: details.ticket, SetTicket: cmd.Flags().Changed("ticket"),
 				Brief: brief, SetBrief: cmd.Flags().Changed("brief") || cmd.Flags().Changed("brief-file"),
 				SetAgent: cmd.Flags().Changed("agent"), Agent: agent.argv, Shell: agent.shell,
@@ -117,6 +119,7 @@ func (a *App) createTask(ctx context.Context, ws *workspace.Service, o workspace
 type taskJSON struct {
 	Name             string         `json:"name"`
 	Title            string         `json:"title,omitempty"`
+	Kind             string         `json:"kind,omitempty"`
 	Ticket           string         `json:"ticket,omitempty"`
 	TicketURL        string         `json:"ticket_url,omitempty"`
 	Session          string         `json:"session"`
@@ -161,6 +164,7 @@ func (a *App) describeTask(t *task.Task) taskJSON {
 	out := taskJSON{
 		Name:        t.Name,
 		Title:       t.Title,
+		Kind:        t.Kind,
 		Ticket:      t.Ticket,
 		TicketURL:   t.TicketURL,
 		Session:     a.Runtime.SessionName(t.Name),
@@ -198,19 +202,27 @@ func (a *App) describeTask(t *task.Task) taskJSON {
 
 func (a *App) newTaskListCmd() *cobra.Command {
 	var asJSON bool
+	var kind string
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
 		Short:   "List tasks",
-		Long: "list prints one row per task: its ticket and title, the first line of\n" +
-			"its handoff with the time that was written, and its repositories.\n" +
+		Long: "list prints one row per task: its kind, ticket and title, the first\n" +
+			"line of its handoff with the time that was written, and its repositories.\n" +
 			"It reads only the records; `tspace status` adds what is running and dirty.\n\n" +
+			"--kind KIND lists only the tasks of that kind, in any case; --kind \"\"\n" +
+			"lists those with none.\n\n" +
 			"--json prints an array of the objects `tspace task show --json` prints.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			tasks, err := a.Store.List()
 			if err := a.listed(err); err != nil {
 				return err
+			}
+			if cmd.Flags().Changed("kind") {
+				tasks = slices.DeleteFunc(tasks, func(t *task.Task) bool {
+					return !strings.EqualFold(t.Kind, strings.TrimSpace(kind))
+				})
 			}
 			if asJSON {
 				out := make([]taskJSON, 0, len(tasks))
@@ -219,25 +231,34 @@ func (a *App) newTaskListCmd() *cobra.Command {
 				}
 				return a.printJSON(out)
 			}
-			if len(tasks) == 0 {
+			switch {
+			case len(tasks) > 0:
+			case cmd.Flags().Changed("kind") && kind == "":
+				a.printf("every task has a kind\n")
+				return nil
+			case cmd.Flags().Changed("kind"):
+				a.printf("no task is of kind %s\n", oneLine(kind))
+				return nil
+			default:
 				a.printf("no tasks yet; create one with: tspace task create NAME\n")
 				return nil
 			}
 
 			tw := tabwriter.NewWriter(a.Out, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(tw, "TASK\tTICKET\tTITLE\tHANDOFF\tUPDATED (UTC)\tREPOS")
+			fmt.Fprintln(tw, "TASK\tKIND\tTICKET\tTITLE\tHANDOFF\tUPDATED (UTC)\tREPOS")
 			for _, t := range tasks {
 				_, handoff, err := a.notes(t)
 				if err != nil {
 					a.warnf("tspace: %s: %v\n", t.Name, err)
 				}
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", t.Name, dash(t.Ticket), dash(oneLine(t.Title)),
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", t.Name, dash(oneLine(t.Kind)), dash(t.Ticket), dash(oneLine(t.Title)),
 					dash(noteSummary(handoff.Text)), handoffTime(handoff), dash(joinNames(t.RepoNames())))
 			}
 			return tw.Flush()
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print machine-readable JSON instead of the table")
+	cmd.Flags().StringVar(&kind, "kind", "", "list only the tasks of this kind; \"\" for those with none")
 	return cmd
 }
 

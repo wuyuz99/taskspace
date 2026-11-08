@@ -40,10 +40,13 @@ var ErrObsoleteRecord = errors.New("record too old for this tspace")
 
 // formatVersion is the oldest format that holds everything in t. Version 2
 // adds only saved windows, version 3 only assumed bases and version 4 only
-// reference repositories, so a task without them stays readable by an older
-// tspace. An older one would take a reference for a repository to work in,
-// with no branch.
+// reference repositories and a kind, so a task without them stays readable by
+// an older tspace. An older one would take a reference for a repository to
+// work in, with no branch, and drop a kind.
 func (t *Task) formatVersion() int {
+	if t.Kind != "" {
+		return 4
+	}
 	for _, r := range t.Repos {
 		if r.Reference {
 			return 4

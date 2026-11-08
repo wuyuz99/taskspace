@@ -20,6 +20,11 @@ upgrade.
   is tmux's own; a `status-left` of your own can show `#{@tspace_label}`. On
   zellij only the terminal tab shows it. Adapters can show it with the new
   optional `label` operation; one without it works as before.
+- A task can have a kind, free text such as `review` or `investigation`, set
+  with `task create --kind` and `task update --kind` (#144). `task list` shows
+  it and `--kind` lists one kind; `task show` and `status --json` include it,
+  and dash keeps tasks of a kind together. A task with a kind is written as
+  record version 4, as one with a reference is.
 
 ### Changed
 
