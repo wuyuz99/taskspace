@@ -537,6 +537,11 @@ func (z *Zellij) tabPosition(ctx context.Context, session, name string) (int, bo
 	return 0, false, nil
 }
 
+// SetLabel implements Runtime. zellij shows a session by its name, which is
+// how tspace finds it, and has nowhere else for a description, so the label
+// is left to the terminal's tab title.
+func (z *Zellij) SetLabel(context.Context, string, string) error { return nil }
+
 // RenameWindow implements Runtime. zellij renames the focused tab, and only
 // with a client attached does focusing one take effect.
 func (z *Zellij) RenameWindow(ctx context.Context, session, from, to string) error {

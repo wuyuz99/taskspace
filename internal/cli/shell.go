@@ -50,18 +50,18 @@ func (a *App) newShellCmd() *cobra.Command {
 				return err
 			}
 
-			label := t.Name
+			where := t.Name
 			if name != "" {
-				label += "/" + name
+				where += "/" + name
 			}
-			setTitle(a.Out, "tspace: "+label, a.noTitle)
+			setTitle(a.Out, "tspace: "+task.Label(where, t.Title), a.noTitle)
 			a.printTaskContext(t)
 
 			sh := os.Getenv("SHELL")
 			if sh == "" {
 				sh = "/bin/sh"
 			}
-			a.warnf("tspace: %s in %s\n", label, r.Worktree)
+			a.warnf("tspace: %s in %s\n", where, r.Worktree)
 
 			shell := osexec.CommandContext(cmd.Context(), sh)
 			shell.Dir = r.Worktree

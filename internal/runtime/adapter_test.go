@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -88,6 +89,23 @@ func TestAdapterFocus(t *testing.T) {
 	ok, err := NewAdapter("wez", nil, f).Focus(ctx(), "tspace@t", "backend")
 	if err != nil || !ok {
 		t.Errorf("Focus = %v, %v", ok, err)
+	}
+}
+
+// The label goes to the adapter as one argument, as written; an adapter
+// without the operation fails it, which callers ignore.
+func TestAdapterLabel(t *testing.T) {
+	f := tsexec.NewFake()
+	if err := NewAdapter("wez", nil, f).SetLabel(ctx(), "tspace@t", "t - Totals #1"); err != nil {
+		t.Fatal(err)
+	}
+	calls := f.Calls()
+	if len(calls) != 1 || !slices.Equal(calls[0].Argv, []string{"tspace-mux-wez", "label", "tspace@t", "t - Totals #1"}) {
+		t.Errorf("calls = %v", f.Commands())
+	}
+	missing := tsexec.NewFake().Fail("label", "unknown operation", 2)
+	if err := NewAdapter("wez", nil, missing).SetLabel(ctx(), "tspace@t", "t"); err == nil {
+		t.Error("an adapter refusing label reported success")
 	}
 }
 

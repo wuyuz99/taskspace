@@ -100,6 +100,13 @@ rename)
 	tmux rename-window -t "$(wtarget "$1" "$2")" "$3"
 	;;
 
+label)
+	# For a status line that shows #{@tspace_label}. '#' is doubled so tmux
+	# shows the title as written; "=SESSION:" is how set-option matches a
+	# session exactly.
+	tmux set-option -t "$(target "$1"):" @tspace_label "$(printf '%s' "$2" | sed 's/#/##/g')"
+	;;
+
 *)
 	echo "tspace-mux-tmux: unknown operation $op" >&2
 	exit 2
