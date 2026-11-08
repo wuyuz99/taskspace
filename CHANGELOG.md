@@ -3,6 +3,16 @@
 What changed in each release of tspace; see [Installation](docs/INSTALL.md) to
 upgrade.
 
+## Unreleased
+
+### Removed
+
+- `tspace config agent-status`, deprecated in v0.4.0 (#140). Claude Code's
+  hooks, from `tspace config hooks claude`, report the same states. An
+  `agent_status` left in `config.json` is ignored, and dropped the next time
+  tspace writes the config. `status --json` no longer gives `idle` as a state
+  or an agent's name as a source.
+
 ## v0.4.0 — 2026-11-07
 
 ### Fixed
