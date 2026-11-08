@@ -19,7 +19,7 @@ type CreateTaskOptions struct {
 	Project    string
 	SetProject bool
 
-	Title, TicketURL string
+	Title, Kind, TicketURL string
 	// Ticket, with SetTicket, replaces the ticket found in Name.
 	Ticket    string
 	SetTicket bool
@@ -72,7 +72,7 @@ func (s *Service) CreateTask(ctx context.Context, o CreateTaskOptions) (*CreateT
 		return nil, fmt.Errorf("%q: %w", name, task.ErrExists)
 	}
 	t := task.New(name)
-	t.Title, t.TicketURL = o.Title, o.TicketURL
+	t.Title, t.Kind, t.TicketURL = o.Title, o.Kind, o.TicketURL
 	if o.SetTicket {
 		t.Ticket = o.Ticket
 	}

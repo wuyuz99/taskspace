@@ -12,8 +12,8 @@ import (
 
 // UpdateTaskOptions say what UpdateTask changes; what is left unset stays.
 type UpdateTaskOptions struct {
-	SetTitle, SetTicket, SetTicketURL bool
-	Title, Ticket, TicketURL          string
+	SetTitle, SetKind, SetTicket, SetTicketURL bool
+	Title, Kind, Ticket, TicketURL             string
 	// SetBrief stores Brief as the task's brief.
 	SetBrief bool
 	Brief    string
@@ -84,6 +84,9 @@ func (s *Service) UpdateTask(ctx context.Context, name string, o UpdateTaskOptio
 	}
 	if o.SetTitle {
 		t.Title = o.Title
+	}
+	if o.SetKind {
+		t.Kind = o.Kind
 	}
 	if o.SetTicket {
 		t.Ticket = o.Ticket

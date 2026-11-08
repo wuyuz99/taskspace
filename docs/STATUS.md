@@ -263,7 +263,10 @@ worst runtime, the most urgent state and every git state among them; space
 or right expands it and left collapses it again. A task with a dead window,
 a blocked or failed signal, or a bell always shows every window. `enter`, `S` and
 `X` on a collapsed task act on its root window. Each task's title follows its
-name, using only the width the other columns leave.
+name, using only the width the other columns leave, after its kind in
+brackets, such as `[review]`. Tasks given a kind with `tspace task create
+--kind` or `task update --kind` are listed together by kind, in order, with
+those without one last.
 
 `D` cleans the selected task, after confirming: `tspace clean TASK` without
 `--force`, so it keeps the record and branches, and when work could be lost

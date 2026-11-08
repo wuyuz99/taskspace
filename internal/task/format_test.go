@@ -26,7 +26,7 @@ func jsonFields(v any) []string {
 func TestRecordFieldsAreDecided(t *testing.T) {
 	got := slices.Concat(jsonFields(Task{}), jsonFields(Repo{}), jsonFields(Window{}))
 	want := []string{
-		"Task.version", "Task.name", "Task.repos", "Task.title", "Task.ticket", "Task.ticket_url",
+		"Task.version", "Task.name", "Task.repos", "Task.title", "Task.kind", "Task.ticket", "Task.ticket_url",
 		"Task.agent", "Task.resume", "Task.agent_repo", "Task.root_window", "Task.windows",
 		"Repo.path", "Repo.branch", "Repo.base", "Repo.base_assumed", "Repo.worktree",
 		"Repo.post_create", "Repo.agent", "Repo.resume", "Repo.reference",

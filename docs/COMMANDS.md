@@ -26,9 +26,9 @@ require explicit task names.
 | `tspace config multiplexer [NAME [CMD ARGS...] / --unset]` | Choose tmux, zellij or an adapter; see [Multiplexers](MULTIPLEXERS.md) |
 | `tspace project save NAME --from TASK [--replace]` | Save a reusable repository recipe |
 | `tspace project list` / `tspace project show NAME` | Inspect saved recipes |
-| `tspace task create NAME [REPO...] [--ref REPO[:BASE]...] [--agent CMD / --shell] [--project P] [--with-root] [--start]` | Create a task; each REPO is `REPO[@BRANCH][:BASE]`, and each `--ref` a reference; `--start` starts it too. Also `tspace new` and `task new` |
-| `tspace task update NAME [--agent CMD / --shell] [--agent-at-root / --agent-in REPO] [--title ...]` | Update a task's agent, where it runs, and details |
-| `tspace task list [--json]` | List tasks |
+| `tspace task create NAME [REPO...] [--ref REPO[:BASE]...] [--agent CMD / --shell] [--project P] [--kind K] [--with-root] [--start]` | Create a task; each REPO is `REPO[@BRANCH][:BASE]`, and each `--ref` a reference; `--start` starts it too. Also `tspace new` and `task new` |
+| `tspace task update NAME [--agent CMD / --shell] [--agent-at-root / --agent-in REPO] [--title ...] [--kind ...]` | Update a task's agent, where it runs, and details such as its kind |
+| `tspace task list [--kind K] [--json]` | List tasks, or those of one kind |
 | `tspace task show [NAME] [--json]` | Show a task's repos in detail |
 | `tspace task brief NAME [TEXT / --file F / --edit / --clear]` | Show or replace the task's brief |
 | `tspace task handoff NAME [TEXT / --file F / --edit / --clear]` | Show or replace the task's handoff |
